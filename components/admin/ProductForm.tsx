@@ -145,7 +145,7 @@ function ProductFormInner({ product }: { product?: Product }) {
       {data.categories.length === 0 && (
         <Notice tone="warning" className="mb-6">
           This store has no categories yet.{" "}
-          <Link href={`${base}/settings#categories`} className="font-semibold underline">Add a category</Link> first.
+          <Link href={`${base}/categories`} className="font-semibold underline">Add a category</Link> first.
         </Notice>
       )}
 

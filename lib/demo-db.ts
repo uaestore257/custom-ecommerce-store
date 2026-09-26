@@ -249,18 +249,74 @@ export function deleteStore(storeId: string) {
 
 // ---------------- Categories ----------------
 
-export function addCategory(storeId: string, name: string): Category {
-  const category: Category = { id: makeId(`${storeId}-cat`), storeId, name: name.trim() };
+export function isCategoryNameTaken(data: StoreData, name: string, exceptCategoryId?: string) {
+  const normalised = name.trim().toLowerCase();
+  return data.categories.some(
+    (c) => c.name.trim().toLowerCase() === normalised && c.id !== exceptCategoryId,
+  );
+}
+
+export function addCategory(storeId: string, input: { name: string; imageUrl?: string }): Category {
+  const category: Category = {
+    id: makeId(`${storeId}-cat`),
+    storeId,
+    name: input.name.trim(),
+    imageUrl: input.imageUrl?.trim() ?? "",
+  };
   updateStoreData(storeId, (data) => ({ ...data, categories: [...data.categories, category] }));
   return category;
 }
 
-export function deleteCategory(storeId: string, categoryId: string) {
+/** Rename a category or change its image. Products keep pointing at it by ID. */
+export function updateCategory(
+  storeId: string,
+  categoryId: string,
+  patch: { name?: string; imageUrl?: string },
+) {
+  updateStoreData(storeId, (data) => ({
+    ...data,
+    categories: data.categories.map((c) =>
+      c.id === categoryId
+        ? {
+            ...c,
+            ...(patch.name !== undefined && { name: patch.name.trim() }),
+            ...(patch.imageUrl !== undefined && { imageUrl: patch.imageUrl.trim() }),
+          }
+        : c,
+    ),
+  }));
+}
+
+/** Moves a category one place up (-1) or down (+1). The list order is the storefront order. */
+export function moveCategory(storeId: string, categoryId: string, direction: -1 | 1) {
   updateStoreData(storeId, (data) => {
-    if (data.products.some((p) => p.categoryId === categoryId)) {
-      throw new Error("This category still has products.");
+    const index = data.categories.findIndex((c) => c.id === categoryId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= data.categories.length) return data;
+    const categories = [...data.categories];
+    [categories[index], categories[target]] = [categories[target], categories[index]];
+    return { ...data, categories };
+  });
+}
+
+/**
+ * Deletes a category. If products still use it, they are moved to
+ * `moveProductsTo` (another category of the SAME store) first.
+ */
+export function deleteCategory(storeId: string, categoryId: string, moveProductsTo?: string) {
+  updateStoreData(storeId, (data) => {
+    const inUse = data.products.some((p) => p.categoryId === categoryId);
+    if (inUse) {
+      const target = data.categories.find((c) => c.id === moveProductsTo && c.id !== categoryId);
+      if (!target) throw new Error("Choose another category for this category's products.");
     }
-    return { ...data, categories: data.categories.filter((c) => c.id !== categoryId) };
+    return {
+      ...data,
+      categories: data.categories.filter((c) => c.id !== categoryId),
+      products: inUse
+        ? data.products.map((p) => (p.categoryId === categoryId ? { ...p, categoryId: moveProductsTo! } : p))
+        : data.products,
+    };
   });
 }
 
