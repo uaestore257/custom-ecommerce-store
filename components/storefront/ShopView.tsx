@@ -41,15 +41,15 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10 md:py-14">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Shop</h1>
-      <p className="mt-1.5 max-w-xl text-sm text-slate-600 sm:mt-3 sm:text-base">
+      <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">Shop</h1>
+      <p className="mt-1.5 max-w-xl text-sm text-slate-600 sm:mt-2 sm:text-base">
         Browse the full {store.name} collection of {products.length}{" "}
         {products.length === 1 ? "product" : "products"}.
       </p>
 
-      {/* Filters */}
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-8 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-3">
-        <div className="relative col-span-2 sm:col-span-1">
+      {/* Search + sort */}
+      <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:mt-8 sm:gap-3">
+        <div className="relative">
           <label htmlFor="shop-search" className="sr-only">Search products</label>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
           <input
@@ -62,26 +62,12 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
           />
         </div>
         <div>
-          <label htmlFor="shop-category" className="sr-only">Category</label>
-          <select
-            id="shop-category"
-            value={activeCategory}
-            onChange={(e) => setCategory(e.target.value)}
-            className={inputClass()}
-          >
-            <option value="">All categories</option>
-            {data.categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
           <label htmlFor="shop-sort" className="sr-only">Sort by</label>
           <select
             id="shop-sort"
             value={sort}
             onChange={(e) => setSort(e.target.value as Sort)}
-            className={inputClass()}
+            className={`${inputClass()} w-[8.5rem] sm:w-44`}
           >
             <option value="featured">Featured</option>
             <option value="price-asc">Price: low–high</option>
@@ -90,6 +76,32 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
             <option value="name-desc">Name: Z to A</option>
           </select>
         </div>
+      </div>
+
+      {/* Category chips (categories are managed in the admin) */}
+      <div
+        role="group"
+        aria-label="Filter by category"
+        className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
+      >
+        {[{ id: "", name: "All" }, ...data.categories].map((c) => {
+          const active = activeCategory === c.id;
+          return (
+            <button
+              key={c.id || "all"}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setCategory(c.id)}
+              className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                active
+                  ? "border-brand bg-brand text-white"
+                  : "border-slate-300 bg-white text-slate-700 hover:border-brand hover:text-brand"
+              }`}
+            >
+              {c.name}
+            </button>
+          );
+        })}
       </div>
 
       <p className="mt-3 text-xs text-slate-500 sm:mt-4 sm:text-sm" aria-live="polite">

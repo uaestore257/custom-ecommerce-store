@@ -40,7 +40,8 @@ Level 3  Client stores (store-a, store-b…)  own branding, settings and data
 | --- | --- | --- |
 | `/` | `/admin` | `/admin/stores/[storeId]` |
 | `/shop` | `/admin/stores` | `…/products`, `…/products/new`, `…/products/[productId]` |
-| `/products/[id]` | `/admin/stores/new` | `…/orders`, `…/orders/[orderId]` |
+| `/products/[id]` | `/admin/stores/new` | `…/categories` (add, rename, image, reorder, delete) |
+| | | `…/orders`, `…/orders/[orderId]` |
 | `/cart`, `/checkout` | `/admin/template` | `…/customers` |
 | `/about`, `/contact` | `/admin/settings` | `…/settings` |
 
