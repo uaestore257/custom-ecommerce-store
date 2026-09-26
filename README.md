@@ -3,9 +3,11 @@
 A reusable ecommerce template run by an agency. Built with Next.js (App Router),
 TypeScript and Tailwind CSS.
 
-> **This is a frontend demo.** There is no backend, database, login, payment
-> provider, email or domain/DNS integration. All data is sample data saved in
-> the browser's `localStorage`. See [Demo limitations](#demo-limitations).
+> **The app is still a frontend demo.** The pages use sample data saved in the
+> browser's `localStorage`. A PostgreSQL database foundation now exists
+> ([Database](#database-phase-1)) but no page uses it yet. There is no login,
+> payment provider, email or domain/DNS integration. See
+> [Demo limitations](#demo-limitations).
 
 ## Getting started
 
@@ -14,6 +16,23 @@ npm install
 npm run dev      # http://localhost:3000
 npm run lint
 npm run build
+```
+
+## Database (Phase 1)
+
+An international, multi-store PostgreSQL schema (Prisma 7) sits alongside the
+demo: ISO country and currency codes, BigInt minor-unit money (0/2/3-decimal
+currencies), per-store languages with translations, default product variants,
+per-store customers and order numbers, and database-enforced store isolation.
+Full details: [docs/database.md](docs/database.md).
+
+```bash
+docker compose up -d   # local PostgreSQL 16
+cp .env.example .env
+npm install            # also generates the Prisma client
+npm run db:migrate && npm run db:seed
+npm run test:unit      # no database needed
+npm run test:db        # resets the TEST database, then runs database tests
 ```
 
 ## How it is organised
@@ -75,8 +94,9 @@ These parts are **not** implemented and need a backend:
 
 - **Authentication and roles.** There is no login, so anyone who opens `/admin`
   can use it. Checks in the browser are not security.
-- **Separate databases / tenant isolation.** Data is split per store in the
-  browser only. Real isolation must be enforced on the server.
+- **Separate databases / tenant isolation.** The pages still split data per
+  store in the browser only. The new database enforces isolation, but the pages
+  don't use it yet.
 - **Payments.** Nothing is paid and no card details are collected. "Online card
   payment" can't be switched on because no payment provider is connected.
 - **Orders.** Demo orders are saved in this browser only. They are not sent to

@@ -1,0 +1,18 @@
+# Local PostgreSQL for development and tests (no cloud account needed):
+#   docker compose up -d
+# Creates shop_dev and shop_test, matching .env.example.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop # local development only
+      POSTGRES_DB: shop_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prisma/docker-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+volumes:
+  pgdata:
