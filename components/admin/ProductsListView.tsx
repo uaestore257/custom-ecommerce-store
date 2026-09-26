@@ -9,7 +9,7 @@ import { ProductImage } from "@/components/ProductImage";
 import { StatusBadge } from "@/components/StatusBadge";
 import { buttonClass, inputClass, LinkButton, PageHeader } from "@/components/ui";
 import { categoryName, deleteProduct } from "@/lib/demo-db";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, isOnSale } from "@/lib/format";
 import type { Product } from "@/lib/types";
 import { useSelectedStore } from "./StoreContext";
 
@@ -99,7 +99,14 @@ export function ProductsListView() {
                   </div>
                   <div className="flex w-full items-center justify-between gap-4 sm:w-auto sm:justify-end">
                     <div className="text-right text-sm">
-                      <p className="font-semibold tabular-nums">{formatMoney(product.price, store.settings.currency)}</p>
+                      <p className="font-semibold tabular-nums">
+                        {formatMoney(product.price, store.settings.currency)}
+                        {isOnSale(product) && (
+                          <span className="ml-1.5 text-xs font-normal text-slate-400 line-through">
+                            {formatMoney(product.compareAtPrice!, store.settings.currency)}
+                          </span>
+                        )}
+                      </p>
                       <p className={product.stock === 0 ? "text-red-600" : "text-slate-500"}>
                         {product.stock === 0 ? "Out of stock" : `${product.stock} in stock`}
                       </p>

@@ -20,6 +20,7 @@ interface ProductFormValues {
   categoryId: string;
   description: string;
   price: string;
+  compareAtPrice: string;
   imageUrl: string;
   stock: string;
   status: ProductStatus;
@@ -33,6 +34,7 @@ function toValues(product?: Product): ProductFormValues {
     categoryId: product?.categoryId ?? "",
     description: product?.description ?? "",
     price: product ? String(product.price) : "",
+    compareAtPrice: product?.compareAtPrice ? String(product.compareAtPrice) : "",
     imageUrl: product?.imageUrl ?? "",
     stock: product ? String(product.stock) : "0",
     status: product?.status ?? "active",
@@ -87,6 +89,11 @@ function ProductFormInner({ product }: { product?: Product }) {
     const price = Number(v.price);
     if (v.price.trim() === "" || !Number.isFinite(price) || price <= 0) e.price = "Enter a price greater than 0.";
     else if (!/^\d+(\.\d{1,2})?$/.test(v.price.trim())) e.price = "Use at most 2 decimal places.";
+    const compareAt = v.compareAtPrice.trim();
+    if (compareAt) {
+      if (!/^\d+(\.\d{1,2})?$/.test(compareAt)) e.compareAtPrice = "Enter an amount with at most 2 decimal places.";
+      else if (Number(compareAt) <= price) e.compareAtPrice = "Must be higher than the price, or leave empty.";
+    }
     if (!/^\d+$/.test(v.stock.trim())) e.stock = "Enter a whole number (0 or more).";
     if (v.imageUrl.trim() && !isHttpUrl(v.imageUrl.trim())) e.imageUrl = "Enter a full URL starting with https://";
     return e;
@@ -106,6 +113,7 @@ function ProductFormInner({ product }: { product?: Product }) {
       categoryId: values.categoryId,
       description: values.description.trim(),
       price: Number(values.price),
+      compareAtPrice: values.compareAtPrice.trim() ? Number(values.compareAtPrice) : 0,
       imageUrl: values.imageUrl.trim(),
       stock: Number(values.stock),
       status: values.status,
@@ -161,6 +169,14 @@ function ProductFormInner({ product }: { product?: Product }) {
             </Field>
             <Field label={`Price (${store.settings.currency})`} htmlFor="product-price" required error={errors.price}>
               <input {...errorProps("product-price", errors.price)} type="number" min="0" step="0.01" inputMode="decimal" value={values.price} onChange={(e) => set("price", e.target.value)} className={inputClass(!!errors.price)} />
+            </Field>
+            <Field
+              label={`Original price (${store.settings.currency})`}
+              htmlFor="product-compareAtPrice"
+              error={errors.compareAtPrice}
+              hint="Optional. Set higher than the price to show a SALE badge and the old price crossed out."
+            >
+              <input {...errorProps("product-compareAtPrice", errors.compareAtPrice)} type="number" min="0" step="0.01" inputMode="decimal" value={values.compareAtPrice} onChange={(e) => set("compareAtPrice", e.target.value)} className={inputClass(!!errors.compareAtPrice)} />
             </Field>
             <Field label="Stock quantity" htmlFor="product-stock" required error={errors.stock}>
               <input {...errorProps("product-stock", errors.stock)} type="number" min="0" step="1" inputMode="numeric" value={values.stock} onChange={(e) => set("stock", e.target.value)} className={inputClass(!!errors.stock)} />

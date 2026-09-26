@@ -121,8 +121,8 @@ export function CheckoutView() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 md:py-16">
-      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
+      <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
 
       <Notice className="mt-6">
         <strong>Demo checkout.</strong> No payment is taken and no card details are collected.
@@ -143,7 +143,7 @@ export function CheckoutView() {
 
       <form onSubmit={handleSubmit} noValidate className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-8">
-          <fieldset className="rounded-2xl border border-slate-200 p-6">
+          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
             <legend className="px-1 text-lg font-semibold">Contact details</legend>
             <div className="mt-2 grid gap-4 sm:grid-cols-2">
               <Field label="Full name" htmlFor="checkout-name" required error={errors.name} className="sm:col-span-2">
@@ -179,7 +179,7 @@ export function CheckoutView() {
             </div>
           </fieldset>
 
-          <fieldset className="rounded-2xl border border-slate-200 p-6">
+          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
             <legend className="px-1 text-lg font-semibold">
               {isUae ? "UAE delivery address" : "Delivery address"}
             </legend>
@@ -230,7 +230,7 @@ export function CheckoutView() {
             </div>
           </fieldset>
 
-          <fieldset className="rounded-2xl border border-slate-200 p-6">
+          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
             <legend className="px-1 text-lg font-semibold">Payment method</legend>
             <div
               id="checkout-paymentMethod"
@@ -312,8 +312,8 @@ export function CheckoutView() {
 
 function OrderConfirmation({ order, storeName }: { order: Order; storeName: string }) {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
-      <div className="rounded-3xl border border-slate-200 p-8 text-center">
+    <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-16">
+      <div className="rounded-3xl border border-slate-200 p-5 text-center sm:p-8">
         <CircleCheck className="mx-auto h-12 w-12 text-emerald-600" aria-hidden />
         <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">Demo order placed</h1>
         <p className="mt-2 text-slate-600">

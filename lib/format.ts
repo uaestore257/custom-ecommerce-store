@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "./types";
+import type { CurrencyCode, Product } from "./types";
 
 export function formatMoney(amount: number, currency: CurrencyCode) {
   return new Intl.NumberFormat("en-US", {
@@ -37,4 +37,9 @@ export function slugify(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/** A product is on sale when its original (compare-at) price is higher. */
+export function isOnSale(product: Pick<Product, "price" | "compareAtPrice">) {
+  return (product.compareAtPrice ?? 0) > product.price;
 }

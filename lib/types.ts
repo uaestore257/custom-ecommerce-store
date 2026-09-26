@@ -76,6 +76,8 @@ export interface Product {
   categoryId: string;
   description: string;
   price: number;
+  /** Original price shown struck through when on sale. Empty/0 = not on sale. */
+  compareAtPrice?: number;
   imageUrl: string; // optional, empty string = placeholder
   stock: number;
   status: ProductStatus;
