@@ -1,0 +1,554 @@
+// =====================================================================
+// Multi-store ecommerce platform — database schema (Phase 1)
+//
+// International by design:
+//   * Countries   ISO 3166-1 alpha-2   e.g. AE, US, GB, SA
+//   * Currencies  ISO 4217 + minor units (JPY 0, USD 2, KWD 3)
+//   * Languages   BCP 47               e.g. en, ar
+//   * Timezones   IANA                 e.g. Asia/Dubai (validated in code)
+//   * Money       BigInt minor units + a currency code next to every amount
+//   * Dates       stored in UTC
+// Nothing here defaults to a country, currency or language: each store
+// chooses its own. See docs/database.md for the full explanation.
+//
+// Store isolation: every store-owned table has a required storeId, and
+// every reference between store-owned tables is a COMPOSITE foreign key
+// that includes storeId, so Postgres itself rejects cross-store links.
+// Extra rules the Prisma schema cannot express (CHECK constraints, a
+// partial unique index and commit-time triggers) are in the migration SQL.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TextDirection {
+  LTR
+  RTL
+}
+
+enum StoreStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  SUSPENDED
+}
+
+enum StoreRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMode {
+  TEST
+  LIVE
+}
+
+// ---------------------------------------------------------------------
+// Platform-level reference data (shared, read-only for stores)
+// ---------------------------------------------------------------------
+
+/// ISO 3166-1 alpha-2 country.
+model Country {
+  code String @id @db.Char(2)
+  name String
+
+  stores              Store[]
+  customerAddresses   CustomerAddress[]
+  taxRules            TaxRule[]
+  shippingZoneEntries ShippingZoneCountry[]
+}
+
+/// ISO 4217 currency. minorUnits = digits after the decimal point.
+model Currency {
+  code       String @id @db.Char(3)
+  name       String
+  minorUnits Int
+
+  stores Store[]
+  orders Order[]
+}
+
+/// BCP 47 language tag, with its writing direction (Arabic = RTL).
+model Language {
+  code       String        @id @db.VarChar(35)
+  name       String
+  nativeName String
+  direction  TextDirection @default(LTR)
+
+  storeLanguages   StoreLanguage[]
+  defaultForStores Store[]         @relation("StoreDefaultLanguage")
+}
+
+/// Single row with platform settings. No commercial defaults on purpose.
+model PlatformSettings {
+  id           Int      @id @default(1)
+  platformName String
+  contactEmail String?
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------
+// People and access
+// ---------------------------------------------------------------------
+
+/// Staff/admin account (not a shopper). Passwords and sessions are added
+/// in Phase 2 together with the chosen authentication library.
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  isPlatformOwner Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships StoreMembership[]
+}
+
+/// A user's role in ONE store. A user can belong to several stores.
+model StoreMembership {
+  id        String    @id @default(cuid())
+  userId    String
+  storeId   String
+  role      StoreRole
+  createdAt DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+  @@index([storeId])
+}
+
+// ---------------------------------------------------------------------
+// Store (tenant) and its configuration
+// ---------------------------------------------------------------------
+
+model Store {
+  id           String      @id @default(cuid())
+  slug         String      @unique
+  name         String
+  businessType String?
+  status       StoreStatus @default(DRAFT)
+
+  // Localisation — chosen per store, no platform default.
+  countryCode     String  @db.Char(2)
+  baseCurrency    String  @db.Char(3)
+  timezone        String // IANA, validated in lib/standards.ts
+  defaultLanguage String  @db.VarChar(35) // must be enabled in StoreLanguage (commit-time trigger)
+  formatLocale    String? @db.VarChar(35) // optional override, e.g. "en-AE"
+
+  // Tax setting only; no tax is calculated in Phase 1.
+  pricesIncludeTax Boolean @default(false)
+
+  // Branding and contact
+  logoUrl      String?
+  accentColor  String? @db.VarChar(7)
+  contactEmail String?
+  contactPhone String? // E.164, e.g. +971500000000
+
+  // Business / legal details. Which are required depends on the country
+  // and the payment provider; this must be verified per country later.
+  legalName          String?
+  registrationNumber String?
+  taxId              String?
+  /// Generic address (see docs/database.md): line1, line2, city, region,
+  /// postalCode, countryCode. No country-specific fields.
+  businessAddress    Json?
+
+  // Per-store order numbering, e.g. prefix "NO" -> NO-1001, NO-1002 ...
+  orderNumberPrefix String? @db.VarChar(10)
+  nextOrderNumber   Int     @default(1001)
+
+  /// Soft delete: archived stores are hidden but can be restored.
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  country  Country  @relation(fields: [countryCode], references: [code])
+  currency Currency @relation(fields: [baseCurrency], references: [code])
+  language Language @relation("StoreDefaultLanguage", fields: [defaultLanguage], references: [code])
+
+  memberships     StoreMembership[]
+  languages       StoreLanguage[]
+  categories      Category[]
+  products        Product[]
+  variants        ProductVariant[]
+  customers       Customer[]
+  orders          Order[]
+  taxRules        TaxRule[]
+  shippingZones   ShippingZone[]
+  shippingRates   ShippingRate[]
+  paymentAccounts PaymentProviderAccount[]
+  paymentMethods  StorePaymentMethod[]
+
+  // Lets prices reference (storeId, currency) so they must be in the
+  // store's base currency. Changing baseCurrency is blocked while prices exist.
+  @@unique([id, baseCurrency])
+}
+
+/// Languages a store offers. Content can only be written in these.
+/// Disable (enabled = false) instead of deleting to keep existing content.
+model StoreLanguage {
+  storeId      String
+  languageCode String   @db.VarChar(35)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageCode], references: [code])
+
+  storeContent        StoreContentTranslation[]
+  categoryTranslation CategoryTranslation[]
+  productTranslation  ProductTranslation[]
+
+  @@id([storeId, languageCode])
+}
+
+/// Homepage / about text per language.
+model StoreContentTranslation {
+  storeId   String
+  locale    String  @db.VarChar(35)
+  tagline   String?
+  heroTitle String?
+  heroText  String?
+  aboutText String?
+
+  storeLanguage StoreLanguage @relation(fields: [storeId, locale], references: [storeId, languageCode], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([storeId, locale])
+}
+
+// ---------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------
+
+model Category {
+  id        String   @id @default(cuid())
+  storeId   String
+  position  Int      @default(0)
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store        Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  translations CategoryTranslation[]
+  products     Product[]
+
+  @@unique([id, storeId])
+  @@index([storeId, position])
+}
+
+model CategoryTranslation {
+  categoryId String
+  storeId    String
+  locale     String @db.VarChar(35)
+  name       String
+  slug       String
+
+  category      Category      @relation(fields: [categoryId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  storeLanguage StoreLanguage @relation(fields: [storeId, locale], references: [storeId, languageCode], onDelete: NoAction, onUpdate: Restrict)
+
+  @@id([categoryId, locale])
+  @@unique([storeId, locale, slug])
+}
+
+model Product {
+  id         String        @id @default(cuid())
+  storeId    String
+  categoryId String?
+  status     ProductStatus @default(DRAFT)
+  featured   Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  // Composite: the category must belong to the SAME store.
+  category     Category?            @relation(fields: [categoryId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
+  translations ProductTranslation[]
+  variants     ProductVariant[]
+  images       ProductImage[]
+
+  @@unique([id, storeId])
+  @@index([storeId, status])
+}
+
+model ProductTranslation {
+  productId   String
+  storeId     String
+  locale      String @db.VarChar(35)
+  name        String
+  description String @default("")
+  slug        String
+
+  product       Product       @relation(fields: [productId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  storeLanguage StoreLanguage @relation(fields: [storeId, locale], references: [storeId, languageCode], onDelete: NoAction, onUpdate: Restrict)
+
+  @@id([productId, locale])
+  @@unique([storeId, locale, slug])
+}
+
+/// Every product has at least one variant (enforced at commit time) and
+/// exactly one default variant (partial unique index). Price, SKU and
+/// stock live here so size/colour options can be added later without
+/// moving data.
+model ProductVariant {
+  id             String   @id @default(cuid())
+  storeId        String
+  productId      String
+  sku            String
+  title          String? // null for the default variant; e.g. "Large / Blue" later
+  isDefault      Boolean  @default(false)
+  position       Int      @default(0)
+  priceMinor     BigInt
+  compareAtMinor BigInt?
+  currency       String   @db.Char(3)
+  stock          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  product    Product     @relation(fields: [productId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  // Composite: currency must equal the store's base currency.
+  storeMoney Store       @relation(fields: [storeId, currency], references: [id, baseCurrency], onDelete: Cascade, onUpdate: Restrict)
+  orderItems OrderItem[]
+
+  @@unique([id, storeId])
+  @@unique([storeId, sku])
+  @@index([productId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  storeId   String
+  productId String
+  url       String
+  altText   String?
+  position  Int     @default(0)
+
+  product Product @relation(fields: [productId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([productId, position])
+}
+
+// ---------------------------------------------------------------------
+// Customers (separate per store) and orders
+// ---------------------------------------------------------------------
+
+model Customer {
+  id              String   @id @default(cuid())
+  storeId         String
+  email           String // stored lower-case (CHECK constraint)
+  name            String
+  phone           String? // E.164
+  preferredLocale String?  @db.VarChar(35)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  store     Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  addresses CustomerAddress[]
+  orders    Order[]
+
+  // The same email can be a customer of two stores; they are separate records.
+  @@unique([storeId, email])
+  @@unique([id, storeId])
+}
+
+/// Generic international address. The country decides which fields are
+/// required (validated in code later); no country-specific columns.
+model CustomerAddress {
+  id            String  @id @default(cuid())
+  storeId       String
+  customerId    String
+  recipientName String
+  line1         String
+  line2         String?
+  city          String
+  region        String? // state / province / emirate / county
+  postalCode    String?
+  countryCode   String  @db.Char(2)
+  phone         String?
+
+  customer Customer @relation(fields: [customerId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  country  Country  @relation(fields: [countryCode], references: [code])
+
+  @@index([customerId])
+}
+
+model Order {
+  id               String      @id @default(cuid())
+  storeId          String
+  number           Int // per-store sequence, shown as "<prefix>-<number>"
+  customerId       String?
+  status           OrderStatus @default(PENDING)
+  // Snapshot at purchase time: later store changes never alter an order.
+  currency         String      @db.Char(3)
+  locale           String      @db.VarChar(35)
+  pricesIncludeTax Boolean
+  subtotalMinor    BigInt
+  shippingMinor    BigInt      @default(0)
+  taxMinor         BigInt      @default(0)
+  discountMinor    BigInt      @default(0)
+  totalMinor       BigInt
+  customerName     String
+  customerEmail    String
+  customerPhone    String?
+  shippingAddress  Json
+  billingAddress   Json?
+  paymentMethod    String?
+  isDemo           Boolean     @default(false)
+  placedAt         DateTime    @default(now())
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Orders keep their own currency (not tied to the store's current base
+  // currency) and are never deleted with a store by accident.
+  currencyRef Currency    @relation(fields: [currency], references: [code])
+  store       Store       @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  // Composite: the customer must belong to the SAME store.
+  customer    Customer?   @relation(fields: [customerId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
+  items       OrderItem[]
+
+  @@unique([storeId, number])
+  @@unique([id, storeId, currency])
+  @@index([storeId, placedAt])
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  storeId        String
+  orderId        String
+  currency       String  @db.Char(3)
+  variantId      String?
+  // Snapshot of the product at purchase time (in the order's language).
+  productName    String
+  variantTitle   String?
+  sku            String
+  unitPriceMinor BigInt
+  quantity       Int
+  taxMinor       BigInt  @default(0)
+  lineTotalMinor BigInt
+
+  // Composite: same store AND same currency as the order.
+  order   Order           @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Cascade, onUpdate: Restrict)
+  // Composite: the variant must belong to the SAME store. Variants with
+  // orders cannot be deleted; archive the product instead.
+  variant ProductVariant? @relation(fields: [variantId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------
+// Tax, shipping and payments: configuration only. NO calculations and
+// NO provider integration in Phase 1.
+// ---------------------------------------------------------------------
+
+model TaxRule {
+  id              String  @id @default(cuid())
+  storeId         String
+  name            String
+  countryCode     String  @db.Char(2)
+  region          String?
+  rateBasisPoints Int // 500 = 5.00 %
+  priority        Int     @default(0)
+  active          Boolean @default(true)
+
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  country Country @relation(fields: [countryCode], references: [code])
+
+  @@index([storeId, countryCode])
+}
+
+model ShippingZone {
+  id      String @id @default(cuid())
+  storeId String
+  name    String
+
+  store     Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  countries ShippingZoneCountry[]
+  rates     ShippingRate[]
+
+  @@unique([id, storeId])
+}
+
+model ShippingZoneCountry {
+  id          String  @id @default(cuid())
+  storeId     String
+  zoneId      String
+  countryCode String  @db.Char(2)
+  region      String?
+
+  zone    ShippingZone @relation(fields: [zoneId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  country Country      @relation(fields: [countryCode], references: [code])
+
+  @@unique([zoneId, countryCode, region])
+}
+
+model ShippingRate {
+  id            String  @id @default(cuid())
+  storeId       String
+  zoneId        String
+  name          String
+  priceMinor    BigInt
+  freeOverMinor BigInt?
+  currency      String  @db.Char(3)
+  active        Boolean @default(true)
+
+  zone       ShippingZone @relation(fields: [zoneId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  // Composite: currency must equal the store's base currency.
+  storeMoney Store        @relation(fields: [storeId, currency], references: [id, baseCurrency], onDelete: Cascade, onUpdate: Restrict)
+}
+
+/// A store's account with a payment provider. SECRETS ARE NEVER STORED
+/// HERE: secretRef points to a secret manager / environment variable.
+model PaymentProviderAccount {
+  id           String      @id @default(cuid())
+  storeId      String
+  provider     String // e.g. "stripe" — chosen later
+  displayName  String
+  mode         PaymentMode @default(TEST)
+  enabled      Boolean     @default(false)
+  publicConfig Json        @default("{}")
+  secretRef    String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  store   Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  methods StorePaymentMethod[]
+
+  @@unique([id, storeId])
+}
+
+model StorePaymentMethod {
+  id                String  @id @default(cuid())
+  storeId           String
+  method            String // e.g. cash_on_delivery, card_on_delivery, bank_transfer, online_card
+  enabled           Boolean @default(false)
+  position          Int     @default(0)
+  providerAccountId String?
+
+  store           Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  // Composite: the provider account must belong to the SAME store.
+  providerAccount PaymentProviderAccount? @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
+
+  @@unique([storeId, method])
+}
