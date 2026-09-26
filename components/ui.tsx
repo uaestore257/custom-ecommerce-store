@@ -49,7 +49,7 @@ export function Card({
 }
 
 export function inputClass(hasError = false) {
-  return `block w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
+  return `block w-full min-w-0 rounded-lg border bg-white px-3 py-2.5 text-base text-slate-900 sm:text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
     hasError
       ? "border-red-400 focus:border-red-500 focus:ring-red-200"
       : "border-slate-300 focus:border-teal-600 focus:ring-teal-100"

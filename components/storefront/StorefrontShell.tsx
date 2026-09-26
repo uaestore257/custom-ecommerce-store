@@ -76,12 +76,12 @@ function DemoBar({ view }: { view: StorefrontView }) {
           <span className="rounded bg-white/10 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-white">
             Demo
           </span>
-          <label htmlFor="demo-store-select">Viewing storefront:</label>
+          <label htmlFor="demo-store-select"><span className="hidden sm:inline">Viewing storefront:</span><span className="sr-only sm:hidden">Viewing storefront</span></label>
           <select
             id="demo-store-select"
             value={view.store.id}
             onChange={(event) => requestSwitch(event.target.value)}
-            className="rounded border border-white/20 bg-slate-800 px-1.5 py-0.5 text-white focus:outline-none focus:ring-2 focus:ring-white/40"
+            className="max-w-[11rem] truncate rounded border border-white/20 bg-slate-800 px-1.5 py-0.5 text-white focus:outline-none focus:ring-2 focus:ring-white/40 sm:max-w-none"
           >
             {view.state.stores.map((store) => (
               <option key={store.id} value={store.id}>
@@ -92,12 +92,13 @@ function DemoBar({ view }: { view: StorefrontView }) {
           </select>
           {view.store.status !== "active" && (
             <span className="text-amber-300">
-              Preview only — this store is {labelFor(STORE_STATUSES, view.store.status).toLowerCase()} and not accepting orders.
+              Preview only<span className="hidden sm:inline"> — this store is {labelFor(STORE_STATUSES, view.store.status).toLowerCase()} and not accepting orders</span>.
             </span>
           )}
         </div>
         <Link href="/admin" className="font-medium text-white underline-offset-2 hover:underline">
-          Agency admin →
+          <span className="sm:hidden">Admin →</span>
+          <span className="hidden sm:inline">Agency admin →</span>
         </Link>
       </div>
 

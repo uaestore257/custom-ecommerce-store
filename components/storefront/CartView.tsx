@@ -21,8 +21,8 @@ export function CartView() {
   const currency = store.settings.currency;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 md:py-16">
-      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Your cart</h1>
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
+      <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Your cart</h1>
       <p className="mt-2 text-slate-600">Items from {store.name}.</p>
 
       {unavailableCount > 0 && (
@@ -46,7 +46,7 @@ export function CartView() {
           <section aria-label="Cart items">
             <ul className="divide-y divide-slate-200 rounded-2xl border border-slate-200">
               {cartLines.map(({ product, quantity, lineTotal }) => (
-                <li key={product.id} className="flex gap-3 p-4 sm:gap-4 sm:p-5">
+                <li key={product.id} className="relative flex gap-3 p-4 sm:gap-4 sm:p-5">
                   <Link href={`/products/${product.id}`} className="shrink-0" tabIndex={-1} aria-hidden>
                     <ProductImage
                       src={product.imageUrl}
@@ -55,7 +55,7 @@ export function CartView() {
                     />
                   </Link>
                   <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
+                    <div className="min-w-0 pr-8 sm:pr-0">
                       <p className="text-xs font-medium text-slate-500">
                         {categoryName(data, product.categoryId)}
                       </p>
@@ -76,13 +76,13 @@ export function CartView() {
                         max={product.stock}
                         onChange={(value) => setCartQuantity(product.id, value)}
                       />
-                      <p className="font-semibold tabular-nums">{formatMoney(lineTotal, currency)}</p>
+                      <p className="whitespace-nowrap text-sm font-semibold tabular-nums sm:text-base">{formatMoney(lineTotal, currency)}</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => removeFromCart(product.id)}
-                    className="self-start rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                    className="absolute right-2 top-2 rounded-lg p-2.5 text-slate-400 sm:static sm:self-start sm:p-2 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                     aria-label={`Remove ${product.name} from cart`}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />

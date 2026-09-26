@@ -46,8 +46,8 @@ export function ContactView() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 md:py-16">
-      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Contact {store.name}</h1>
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
+      <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Contact {store.name}</h1>
       <p className="mt-3 max-w-xl text-slate-600">
         Questions about a product, delivery or an order? Get in touch.
       </p>
@@ -76,7 +76,7 @@ export function ContactView() {
           )}
         </ul>
 
-        <div className="rounded-2xl border border-slate-200 p-6">
+        <div className="rounded-2xl border border-slate-200 p-4 sm:p-6">
           <Notice className="mb-6">
             <strong>Demo form.</strong> Messages are checked for errors but are not sent to a
             server or email inbox, and are not saved.

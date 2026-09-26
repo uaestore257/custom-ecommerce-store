@@ -7,7 +7,7 @@ import { buttonClass, inputClass } from "@/components/ui";
 import { categoryName } from "@/lib/demo-db";
 import { useStorefront } from "@/lib/storefront";
 import type { Product } from "@/lib/types";
-import { ProductCard } from "./ProductCard";
+import { PRODUCT_GRID, ProductCard } from "./ProductCard";
 
 type Sort = "featured" | "price-asc" | "price-desc" | "name-asc" | "name-desc";
 
@@ -40,16 +40,16 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
     .sort(sorters[sort]);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 md:py-16">
-      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Shop</h1>
-      <p className="mt-3 max-w-xl text-slate-600">
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10 md:py-14">
+      <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Shop</h1>
+      <p className="mt-1.5 max-w-xl text-sm text-slate-600 sm:mt-3 sm:text-base">
         Browse the full {store.name} collection of {products.length}{" "}
         {products.length === 1 ? "product" : "products"}.
       </p>
 
       {/* Filters */}
-      <div className="mt-8 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-        <div className="relative">
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-8 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-3">
+        <div className="relative col-span-2 sm:col-span-1">
           <label htmlFor="shop-search" className="sr-only">Search products</label>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
           <input
@@ -83,16 +83,16 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
             onChange={(e) => setSort(e.target.value as Sort)}
             className={inputClass()}
           >
-            <option value="featured">Sort: Featured</option>
-            <option value="price-asc">Price: low to high</option>
-            <option value="price-desc">Price: high to low</option>
+            <option value="featured">Featured</option>
+            <option value="price-asc">Price: low–high</option>
+            <option value="price-desc">Price: high–low</option>
             <option value="name-asc">Name: A to Z</option>
             <option value="name-desc">Name: Z to A</option>
           </select>
         </div>
       </div>
 
-      <p className="mt-4 text-sm text-slate-500" aria-live="polite">
+      <p className="mt-3 text-xs text-slate-500 sm:mt-4 sm:text-sm" aria-live="polite">
         Showing {results.length} of {products.length} products
       </p>
 
@@ -117,9 +117,9 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
           />
         </div>
       ) : (
-        <ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className={`mt-3 sm:mt-6 ${PRODUCT_GRID}`}>
           {results.map((product) => (
-            <li key={product.id}>
+            <li key={product.id} className="min-w-0">
               <ProductCard
                 product={product}
                 shownStoreId={store.id}

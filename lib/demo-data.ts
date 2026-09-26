@@ -169,6 +169,7 @@ const storeAProducts: Product[] = [
     description:
       "A deep, comfortable three-seater with a solid oak frame and washable linen-blend covers. Seat height 45 cm, width 210 cm.",
     price: 2499,
+    compareAtPrice: 2999,
     imageUrl: "",
     stock: 6,
     status: "active",
@@ -183,6 +184,7 @@ const storeAProducts: Product[] = [
     description:
       "Nine open cubes for books, baskets and display pieces. Can stand upright or lie flat as a low sideboard.",
     price: 449,
+    compareAtPrice: 599,
     imageUrl: "",
     stock: 24,
     status: "active",
@@ -211,6 +213,7 @@ const storeAProducts: Product[] = [
     description:
       "Two rolling drawers that slide under most beds. Soft-close lids keep out dust.",
     price: 189,
+    compareAtPrice: 249,
     imageUrl: "",
     stock: 40,
     status: "active",
@@ -253,6 +256,7 @@ const storeAProducts: Product[] = [
     description:
       "Foldable woven baskets that fit standard cube shelves. Handles on both sides.",
     price: 79,
+    compareAtPrice: 99,
     imageUrl: "",
     stock: 60,
     status: "active",
@@ -267,6 +271,7 @@ const storeAProducts: Product[] = [
     description:
       "A small desk for home offices and bedrooms, with one drawer and cable hole. 100 × 50 cm.",
     price: 549,
+    compareAtPrice: 649,
     imageUrl: "",
     stock: 12,
     status: "active",
@@ -388,6 +393,7 @@ const storeBProducts: Product[] = [
     categoryId: "store-b-cat-1",
     description: "A lightweight linen wrap dress with a tie waist. Sizes XS–XL.",
     price: 289,
+    compareAtPrice: 349,
     imageUrl: "",
     stock: 18,
     status: "active",
@@ -414,6 +420,7 @@ const storeBProducts: Product[] = [
     categoryId: "store-b-cat-3",
     description: "Roomy hand-woven tote with leather handles.",
     price: 145,
+    compareAtPrice: 179,
     imageUrl: "",
     stock: 12,
     status: "active",
@@ -540,6 +547,7 @@ const storeCProducts: Product[] = [
     categoryId: "store-c-cat-3",
     description: "Compact charger with two USB-C ports and one USB-A port.",
     price: 129,
+    compareAtPrice: 159,
     imageUrl: "",
     stock: 50,
     status: "active",

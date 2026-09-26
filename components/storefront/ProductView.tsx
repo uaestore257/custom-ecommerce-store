@@ -7,10 +7,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { ProductImage } from "@/components/ProductImage";
 import { Breadcrumbs, LinkButton } from "@/components/ui";
 import { categoryName } from "@/lib/demo-db";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, isOnSale } from "@/lib/format";
 import { useStorefront } from "@/lib/storefront";
 import { AddToCartButton, QuantitySelector } from "./CartControls";
-import { ProductCard } from "./ProductCard";
+import { PRODUCT_GRID, ProductCard } from "./ProductCard";
 
 export function ProductView({ productId }: { productId: string }) {
   const view = useStorefront();
@@ -35,15 +35,16 @@ export function ProductView({ productId }: { productId: string }) {
   }
 
   const category = categoryName(data, product.categoryId);
+  const onSale = isOnSale(product);
   const inCart = cartLines.find((l) => l.product.id === product.id)?.quantity ?? 0;
   const available = Math.max(0, product.stock - inCart);
   const safeQuantity = Math.min(quantity, Math.max(1, available));
   const related = products
     .filter((p) => p.categoryId === product.categoryId && p.id !== product.id)
-    .slice(0, 3);
+    .slice(0, 4);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 md:py-14">
+    <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10 md:py-14">
       <Breadcrumbs
         items={[
           { label: "Home", href: "/" },
@@ -53,24 +54,45 @@ export function ProductView({ productId }: { productId: string }) {
         ]}
       />
 
-      <div className="mt-6 grid gap-10 md:grid-cols-2">
-        <ProductImage
-          src={product.imageUrl}
-          alt={product.name}
-          className="aspect-square w-full rounded-3xl border border-slate-200"
-        />
+      <div className="mt-4 grid grid-cols-1 gap-6 sm:mt-6 md:grid-cols-2 md:gap-10">
+        <div className="relative">
+          <ProductImage
+            src={product.imageUrl}
+            alt={product.name}
+            className="aspect-square w-full rounded-2xl border border-slate-200 sm:rounded-3xl"
+          />
+          {onSale && (
+            <span className="absolute left-3 top-3 rounded bg-slate-900 px-2 py-1 text-xs font-bold uppercase tracking-wider text-white">
+              Sale
+            </span>
+          )}
+        </div>
 
-        <div>
+        <div className="min-w-0">
           <span className="inline-block rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
             {category}
           </span>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">{product.name}</h1>
-          <p className="mt-3 text-2xl font-semibold text-brand">
-            {formatMoney(product.price, store.settings.currency)}
-          </p>
-          <p className="mt-6 leading-relaxed text-slate-600">{product.description}</p>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight sm:mt-4 sm:text-4xl">{product.name}</h1>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:mt-3">
+            <p className="text-2xl font-semibold text-brand">
+              {onSale && <span className="sr-only">Sale price </span>}
+              {formatMoney(product.price, store.settings.currency)}
+            </p>
+            {onSale && (
+              <>
+                <p className="text-base text-slate-400 line-through">
+                  <span className="sr-only">Original price </span>
+                  {formatMoney(product.compareAtPrice!, store.settings.currency)}
+                </p>
+                <p className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
+                  Save {formatMoney(product.compareAtPrice! - product.price, store.settings.currency)}
+                </p>
+              </>
+            )}
+          </div>
+          <p className="mt-4 leading-relaxed text-slate-600 sm:mt-6">{product.description}</p>
 
-          <dl className="mt-6 grid grid-cols-2 gap-4 border-y border-slate-200 py-4 text-sm">
+          <dl className="mt-5 grid grid-cols-2 gap-4 sm:mt-6 border-y border-slate-200 py-4 text-sm">
             <div>
               <dt className="text-slate-500">SKU</dt>
               <dd className="font-medium">{product.sku}</dd>
@@ -84,7 +106,7 @@ export function ProductView({ productId }: { productId: string }) {
           </dl>
 
           {product.stock > 0 && (
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-5 flex items-center gap-3 sm:mt-6">
               {available > 0 && (
                 <QuantitySelector value={safeQuantity} max={available} onChange={setQuantity} />
               )}
@@ -94,7 +116,7 @@ export function ProductView({ productId }: { productId: string }) {
                 quantity={safeQuantity}
                 inCart={inCart}
                 size="lg"
-                className="sm:min-w-56"
+                className="min-w-0 flex-1 sm:max-w-xs"
               />
             </div>
           )}
@@ -108,9 +130,9 @@ export function ProductView({ productId }: { productId: string }) {
       </div>
 
       {related.length > 0 && (
-        <section className="mt-16">
-          <h2 className="text-2xl font-bold tracking-tight">More in {category}</h2>
-          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="mt-10 sm:mt-16">
+          <h2 className="text-xl font-bold tracking-tight sm:text-2xl">More in {category}</h2>
+          <div className={`mt-4 sm:mt-6 ${PRODUCT_GRID}`}>
             {related.map((p) => (
               <ProductCard
                 key={p.id}
