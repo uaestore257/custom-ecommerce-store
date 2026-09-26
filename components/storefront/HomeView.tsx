@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CreditCard, Tag, Truck } from "lucide-react";
+import { CreditCard, Tag, Truck } from "lucide-react";
+import { CategoryImage } from "@/components/CategoryImage";
 import { LinkButton } from "@/components/ui";
 import { paymentMethodLabel } from "@/lib/config";
 import { formatMoney } from "@/lib/format";
@@ -24,8 +25,7 @@ export function HomeView() {
     .map((category) => ({
       ...category,
       count: products.filter((p) => p.categoryId === category.id).length,
-    }))
-    .filter((category) => category.count > 0);
+    }));
   const offlineMethods = settings.paymentMethods
     .filter((m) => m.enabled && m.id !== "online_card")
     .map((m) => paymentMethodLabel(m.id));
@@ -58,24 +58,34 @@ export function HomeView() {
         </div>
       </section>
 
-      {/* Categories */}
+      {/* Shop by Category: managed in Admin → Store → Categories */}
       {categories.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 sm:pb-16">
-          <h2 className="text-xl font-bold tracking-tight sm:text-3xl">Shop by category</h2>
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:mt-6 sm:gap-4 lg:grid-cols-4">
+        <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 sm:pb-20">
+          <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+            Shop by Category
+          </h2>
+          <ul className="mt-6 grid grid-cols-1 gap-8 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
             {categories.map((category) => (
               <li key={category.id} className="min-w-0">
                 <Link
                   href={`/shop?category=${encodeURIComponent(category.id)}`}
-                  className="group flex items-center justify-between gap-2 rounded-xl border border-slate-200 p-3.5 transition sm:rounded-2xl sm:p-5 hover:border-brand hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-slate-900 sm:text-base">{category.name}</span>
-                    <span className="text-xs text-slate-500 sm:text-sm">
-                      {category.count} {category.count === 1 ? "product" : "products"}
-                    </span>
-                  </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition sm:h-5 sm:w-5 group-hover:translate-x-0.5 group-hover:text-brand" aria-hidden />
+                  <div className="overflow-hidden rounded-xl bg-slate-100">
+                    <CategoryImage
+                      src={category.imageUrl}
+                      alt={category.name}
+                      className="aspect-[16/10] w-full transition duration-500 group-hover:scale-[1.03]"
+                    />
+                  </div>
+                  <p className="mt-3 text-center font-display text-xl text-slate-900 group-hover:text-brand sm:text-2xl">
+                    {category.name}
+                  </p>
+                  <p className="text-center text-xs text-slate-500 sm:text-sm">
+                    {category.count > 0
+                      ? `${category.count} ${category.count === 1 ? "product" : "products"}`
+                      : "Coming soon"}
+                  </p>
                 </Link>
               </li>
             ))}
@@ -87,7 +97,7 @@ export function HomeView() {
       <section className="bg-slate-50 py-10 sm:py-16">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex items-end justify-between gap-4">
-            <h2 className="text-xl font-bold tracking-tight sm:text-3xl">Featured products</h2>
+            <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-4xl">Featured Products</h2>
             <Link href="/shop" className="text-sm font-semibold text-brand hover:underline">
               View all
             </Link>

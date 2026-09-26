@@ -64,6 +64,8 @@ export interface Category {
   id: string;
   storeId: string;
   name: string;
+  /** Optional banner image for "Shop by Category". Empty = styled placeholder. */
+  imageUrl?: string;
 }
 
 export type ProductStatus = "active" | "draft";
