@@ -11,11 +11,11 @@ export function AboutView() {
   const { settings } = store;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 md:py-16">
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
       <div className="grid gap-10 md:grid-cols-[3fr_2fr]">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-brand">About us</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{store.name}</h1>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">{store.name}</h1>
           <p className="mt-2 text-lg text-slate-600">{settings.tagline}</p>
           <div className="mt-6 space-y-4 leading-relaxed text-slate-700">
             {settings.aboutText
@@ -36,7 +36,7 @@ export function AboutView() {
             <Stat label="Products" value={products.length} />
             <Stat label="Categories" value={data.categories.length} />
           </div>
-          <div className="rounded-2xl border border-slate-200 p-6 text-sm">
+          <div className="rounded-2xl border border-slate-200 p-4 text-sm sm:p-6">
             <h2 className="text-base font-semibold">Visit or reach us</h2>
             <ul className="mt-4 space-y-3 text-slate-600">
               {settings.contactAddress && (
