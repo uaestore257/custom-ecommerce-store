@@ -6,7 +6,8 @@
 // DATABASE_URL and has "test" in the database name.
 import "dotenv/config";
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const testUrl = process.env.TEST_DATABASE_URL;
 if (!testUrl) {
@@ -24,16 +25,20 @@ const testFiles = readdirSync("tests/db")
   .filter((name) => name.endsWith(".test.ts"))
   .sort()
   .map((name) => `tests/db/${name}`);
-// On Windows npx is a batch file (npx.cmd), and Node only runs batch
-// files through a shell (CVE-2024-27980), so the shell is used there only.
-const isWindows = process.platform === "win32";
-const npx = isWindows ? "npx.cmd" : "npx";
-const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: "inherit", env, shell: isWindows });
+// Runs a locally installed CLI (its package.json "bin") with this same
+// Node binary instead of through npx. No shell is involved, so it works
+// the same on every platform: on Windows npx is a batch file that Node
+// can only start through a shell, which also triggers warning DEP0190.
+function localCli(pkg: string) {
+  const { bin } = JSON.parse(readFileSync(join("node_modules", pkg, "package.json"), "utf8"));
+  return join("node_modules", pkg, typeof bin === "string" ? bin : bin[pkg]);
+}
+const run = (pkg: string, args: string[]) =>
+  execFileSync(process.execPath, [localCli(pkg), ...args], { stdio: "inherit", env });
 
-run(npx, ["prisma", "migrate", "reset", "--force"]);
-run(npx, ["prisma", "db", "seed"]);
-run(npx, [
-  "tsx",
+run("prisma", ["migrate", "reset", "--force"]);
+run("prisma", ["db", "seed"]);
+run("tsx", [
   "--conditions=react-server", // lets tests import server-only modules
   "--test",
   "--test-concurrency=1",
