@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { PlatformContactDisclosure } from "@/components/PlatformContactDisclosure";
 import type { Store } from "@/lib/types";
 
-export function PublicFooter({ store }: { store: Store }) {
+export function PublicFooter({ store, isAdminHost }: { store: Store; isAdminHost: boolean }) {
   const { settings } = store;
   return (
     <footer className="mt-auto border-t border-slate-200 bg-slate-50">
@@ -31,12 +32,13 @@ export function PublicFooter({ store }: { store: Store }) {
       <div className="border-t border-slate-200">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 text-xs text-slate-500 sm:flex-row sm:justify-between sm:px-6">
           <p>© {new Date().getFullYear()} {store.name}. All rights reserved.</p>
-          <p>
+          <div className="flex flex-wrap items-center gap-x-1">
             Demo storefront built on the Master Ecommerce Template ·{" "}
-            <Link href="/admin" className="font-medium text-slate-700 hover:underline">
-              Agency admin
-            </Link>
-          </p>
+            <PlatformContactDisclosure
+              label={isAdminHost ? "Agency Admin" : "Contact admin"}
+              variant="footer"
+            />
+          </div>
         </div>
       </div>
     </footer>

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { NextRequest } from "next/server";
 import { passwordProblem } from "../../lib/auth/password-policy";
-import { isAdminPath, normalizeHost } from "../../lib/auth/constants";
+import { isAdminPath, isConfiguredAdminHost, normalizeHost } from "../../lib/auth/constants";
 import { AuthConfigError, readAuthEnv } from "../../lib/server/auth/env";
 import { assertSafeToSeed, SeedRefused } from "../../prisma/seed-guard";
 import { proxy } from "../../proxy";
@@ -66,6 +66,10 @@ test("the seed refuses production and non-dev databases", () => {
 
 test("host helpers", () => {
   assert.equal(normalizeHost(" Admin.CodexStore.com. "), "admin.codexstore.com");
+  assert.equal(isConfiguredAdminHost("Admin.Localhost:3000", "admin.localhost:3000"), true);
+  assert.equal(isConfiguredAdminHost("localhost:3000", "admin.localhost:3000"), false);
+  assert.equal(isConfiguredAdminHost("admin.localhost.evil.com", "admin.localhost:3000"), false);
+  assert.equal(isConfiguredAdminHost("admin.localhost:3000", ""), false);
   for (const p of ["/admin", "/admin/stores/x", "/login", "/api/auth/sign-in/email"]) assert.ok(isAdminPath(p), p);
   for (const p of ["/", "/shop", "/administrator", "/loginx", "/api/other"]) assert.ok(!isAdminPath(p), p);
 });
@@ -119,7 +123,7 @@ function files(dir: string): string[] {
 }
 
 test("every admin page and layout checks the session itself", () => {
-  const entries = files("app/admin").filter((f) => /(^|\/)(page|layout)\.tsx$/.test(f));
+  const entries = files("app/admin").filter((f) => /(^|[\\/])(page|layout)\.tsx$/.test(f));
   assert.ok(entries.length >= 16);
   for (const file of entries) {
     assert.match(readFileSync(file, "utf8"), /await requireAdminPage\(\)/, `${file} must call requireAdminPage()`);
