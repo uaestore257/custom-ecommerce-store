@@ -112,17 +112,116 @@ model PlatformSettings {
 // People and access
 // ---------------------------------------------------------------------
 
-/// Staff/admin account (not a shopper). Passwords and sessions are added
-/// in Phase 2 together with the chosen authentication library.
+/// Staff/admin account (not a shopper). Sign-in is handled by Better Auth
+/// (lib/server/auth), which uses this table plus Session, Account,
+/// Verification and RateLimit below. `isPlatformOwner` is NOT known to
+/// Better Auth, so no auth endpoint can read or set it; it is only set by
+/// the platform-owner CLI (scripts/platform-owner.ts). A partial unique
+/// index in the migration allows at most one platform owner.
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
+  id              String    @id @default(cuid())
+  email           String    @unique
   name            String
-  isPlatformOwner Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  emailVerified   Boolean   @default(false)
+  image           String?
+  isPlatformOwner Boolean   @default(false)
+  /// Set to block sign-in without deleting the user.
+  disabledAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   memberships StoreMembership[]
+  sessions    Session[]
+  accounts    Account[]
+  auditEvents AuditEvent[]
+}
+
+// Better Auth core tables (better-auth 1.7.6). Field names and types follow
+// its core schema; don't rename them without updating lib/server/auth.
+
+/// Sign-in session. The cookie holds a signed copy of `token`.
+model Session {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Login method of a user. Password sign-in uses providerId "credential"
+/// and stores the scrypt password hash in `password`.
+model Account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One password login per user (for "credential", accountId = userId).
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+/// Short-lived verification values used by Better Auth.
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+/// Rate-limit counters (Better Auth `rateLimit.storage: "database"`), so
+/// limits survive restarts and are shared between server instances.
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}
+
+/// Append-only record of sensitive actions. Never stores passwords, raw
+/// session tokens or invitation tokens. Rows stay when the actor or store
+/// is deleted (the reference becomes null).
+model AuditEvent {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  storeId     String?
+  /// e.g. "auth.sign_in", "store.suspend", "platform_owner.create"
+  action      String   @db.VarChar(64)
+  targetType  String?  @db.VarChar(32)
+  targetId    String?  @db.VarChar(64)
+  /// Small, non-secret details (e.g. changed field names, status values).
+  metadata    Json?
+  ipAddress   String?  @db.VarChar(64)
+  createdAt   DateTime @default(now())
+
+  actor User?  @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  store Store? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
 }
 
 /// A user's role in ONE store. A user can belong to several stores.
@@ -201,6 +300,7 @@ model Store {
   shippingRates   ShippingRate[]
   paymentAccounts PaymentProviderAccount[]
   paymentMethods  StorePaymentMethod[]
+  auditEvents     AuditEvent[]
 
   // Lets prices reference (storeId, currency) so they must be in the
   // store's base currency. Changing baseCurrency is blocked while prices exist.
