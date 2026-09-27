@@ -1,8 +1,49 @@
-# Database foundation (Phase 1)
+# Database foundation
 
-PostgreSQL + Prisma 7. This phase adds the database **alongside** the
-existing browser demo: no page reads from the database yet, and the demo
-(`lib/demo-db.ts`, localStorage) is unchanged.
+PostgreSQL + Prisma 7.
+
+**What uses the database:** the admin's store list, create store, store
+overview and settings (including archive/restore), products (list, add,
+edit, delete/archive) and categories (add, rename, reorder, delete).
+
+**Still browser demo data** (`lib/demo-db.ts`, localStorage): the public
+storefront, cart and checkout, admin orders and customers, and agency
+settings. These are connected in later phases.
+
+## Admin data flow
+
+```
+page.tsx (Server Component)  ──>  lib/server/admin/*  ──>  PostgreSQL
+   │  reads with adminDb()           data-access layer:
+   ▼                                 - verifies the store exists
+Client component (props only)        - scopes by (id, storeId)
+   │  calls                          - validates input (lib/admin/validation.ts)
+   ▼                                 - returns plain view types (lib/admin/types.ts)
+app/admin/actions.ts ("use server") ──┘
+   - checks argument types, calls the access hook, revalidates /admin
+```
+
+* Client components only receive plain view objects: money as exact
+  decimal strings plus a server-formatted display string. No Prisma
+  records, BigInt values or credentials reach the browser.
+* The `storeId` always comes from the URL (`/admin/stores/[storeId]`). Form
+  data never decides which store is changed; unknown fields, including a
+  smuggled `storeId`, are ignored by the validators.
+* Products and categories are looked up with both `id` and `storeId`;
+  updates and deletes use the compound key `{ id_storeId: { id, storeId } }`.
+  A product of another store is "not found" (404 page), and no data of the
+  other store is returned in errors.
+* Categories chosen for a product must belong to the same store (checked in
+  the data layer and by the composite foreign key).
+* A store's currency cannot change while prices exist (checked in the data
+  layer and enforced by the database).
+* Products with past orders are archived instead of deleted; stores are
+  archived (soft delete) and can be restored from the store list.
+* **Not authentication.** `authorizeStoreAccess()` / `authorizePlatformAdmin()`
+  in `lib/server/admin/common.ts` are called by every Server Action but
+  allow everything until Phase 2 adds login and `StoreMembership` checks.
+* Unexpected errors are logged on the server; the browser only receives a
+  generic message.
 
 ## International by design
 

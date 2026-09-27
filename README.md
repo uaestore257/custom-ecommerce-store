@@ -3,11 +3,11 @@
 A reusable ecommerce template run by an agency. Built with Next.js (App Router),
 TypeScript and Tailwind CSS.
 
-> **The app is still a frontend demo.** The pages use sample data saved in the
-> browser's `localStorage`. A PostgreSQL database foundation now exists
-> ([Database](#database-phase-1)) but no page uses it yet. There is no login,
-> payment provider, email or domain/DNS integration. See
-> [Demo limitations](#demo-limitations).
+> **Partly connected to a database.** The admin's **stores, products and
+> categories** are stored in PostgreSQL ([Database](#database-phase-1)). The
+> public storefront, orders, customers and agency settings still use sample data
+> saved in the browser's `localStorage`. There is no login, payment provider,
+> email or domain/DNS integration. See [Demo limitations](#demo-limitations).
 
 ## Getting started
 
@@ -92,11 +92,14 @@ stay the same.
 
 These parts are **not** implemented and need a backend:
 
-- **Authentication and roles.** There is no login, so anyone who opens `/admin`
-  can use it. Checks in the browser are not security.
-- **Separate databases / tenant isolation.** The pages still split data per
-  store in the browser only. The new database enforces isolation, but the pages
-  don't use it yet.
+- **Authentication and roles.** There is no login, so anyone who can reach
+  `/admin` can use it — including its Server Actions, which are public POST
+  endpoints. Every action calls one access hook
+  (`lib/server/admin/common.ts`) where Phase 2 will add real checks.
+- **Storefront not connected yet.** Store, product and category changes made in
+  the admin are saved to PostgreSQL but don't appear on the public storefront,
+  which still shows the browser demo data. Orders, customers and agency
+  settings are also still demo data.
 - **Payments.** Nothing is paid and no card details are collected. "Online card
   payment" can't be switched on because no payment provider is connected.
 - **Orders.** Demo orders are saved in this browser only. They are not sent to
