@@ -14,13 +14,13 @@ settings. These are connected in later phases.
 
 ```
 page.tsx (Server Component)  ──>  lib/server/admin/*  ──>  PostgreSQL
-   │  reads with adminDb()           data-access layer:
+   │  requireAdminPage()             data-access layer:
    ▼                                 - verifies the store exists
 Client component (props only)        - scopes by (id, storeId)
    │  calls                          - validates input (lib/admin/validation.ts)
    ▼                                 - returns plain view types (lib/admin/types.ts)
 app/admin/actions.ts ("use server") ──┘
-   - checks argument types, calls the access hook, revalidates /admin
+   - checks argument types, requirePlatformOwner(), revalidates /admin
 ```
 
 * Client components only receive plain view objects: money as exact
@@ -39,9 +39,10 @@ app/admin/actions.ts ("use server") ──┘
   layer and enforced by the database).
 * Products with past orders are archived instead of deleted; stores are
   archived (soft delete) and can be restored from the store list.
-* **Not authentication.** `authorizeStoreAccess()` / `authorizePlatformAdmin()`
-  in `lib/server/admin/common.ts` are called by every Server Action but
-  allow everything until Phase 2 adds login and `StoreMembership` checks.
+* **Signed-in platform owner only.** Every page calls `requireAdminPage()`
+  and every Server Action `requirePlatformOwner()` (lib/server/auth), which
+  validate the Better Auth session and re-read the user. See
+  [authentication.md](authentication.md).
 * Unexpected errors are logged on the server; the browser only receives a
   generic message.
 
@@ -167,9 +168,10 @@ so later migrations leave them in place (verified: a follow-up
   record returns `null`.
 * The `storeId` always comes from the route (e.g.
   `/admin/stores/[storeId]`), never from a request body.
-* **Phase 2** adds `requireStoreAccess(user, storeId, role)` using
-  `StoreMembership` before `storeScope()` is created. Roles:
-  platform owner (`User.isPlatformOwner`), `OWNER`, `MANAGER`, `STAFF`.
+* Access checks: Phase 2a requires the platform owner
+  (`User.isPlatformOwner`, at most one) for the whole admin. Phase 2b adds
+  store owners (`StoreMembership` role `OWNER`). `MANAGER` and `STAFF` stay
+  in the enum but are not used for authorization.
 * Customers belong to one store (`@@unique([storeId, email])`): the same
   person shopping at two stores is two separate customer records.
 
@@ -185,7 +187,7 @@ so later migrations leave them in place (verified: a follow-up
 
 ## Not in Phase 1 (to verify or build later)
 
-* Authentication, sessions and permission checks (Phase 2).
+* Store-owner sign-in and store-level permissions (Phase 2b).
 * Tax calculation and per-country legal requirements (which tax IDs,
   invoices and registrations each country needs) — to be verified per
   country; nothing here claims compliance.
@@ -205,7 +207,8 @@ docker compose up -d     # local PostgreSQL 16 (or use your own)
 cp .env.example .env
 npm install              # also runs `prisma generate`
 npm run db:migrate       # apply migrations to the dev database
-npm run db:seed          # reference data + 3 demo stores
-npm run test:unit        # money and standards (no database needed)
+npm run db:seed          # reference data + 3 demo stores (refuses production)
+npm run platform:create-owner   # your admin login (see authentication.md)
+npm run test:unit        # money, standards, auth pieces (no database needed)
 npm run test:db          # RESETS the test database, then runs DB tests
 ```
