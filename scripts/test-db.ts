@@ -6,6 +6,7 @@
 // DATABASE_URL and has "test" in the database name.
 import "dotenv/config";
 import { execFileSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 
 const testUrl = process.env.TEST_DATABASE_URL;
 if (!testUrl) {
@@ -19,6 +20,10 @@ if (testUrl === process.env.DATABASE_URL || !dbName.includes("test")) {
 }
 
 const env = { ...process.env, DATABASE_URL: testUrl };
+const testFiles = readdirSync("tests/db")
+  .filter((name) => name.endsWith(".test.ts"))
+  .sort()
+  .map((name) => `tests/db/${name}`);
 const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: "inherit", env });
 
 run("npx", ["prisma", "migrate", "reset", "--force"]);
@@ -29,7 +34,5 @@ run("npx", [
   "--test",
   "--test-concurrency=1",
   ...process.argv.slice(2),
-  "tests/db/isolation.test.ts",
-  "tests/db/integrity.test.ts",
-  "tests/db/seed.test.ts",
+  ...testFiles,
 ]);
