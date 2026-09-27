@@ -17,7 +17,7 @@ import {
   updateAdminProduct,
 } from "../../lib/server/admin/products";
 import { createAdminStore } from "../../lib/server/admin/stores";
-import { testDb, uid } from "./helpers";
+import { testActor, testDb, uid } from "./helpers";
 
 const db = testDb();
 after(() => db.$disconnect());
@@ -31,7 +31,7 @@ let productA = "";
 let productB = "";
 
 async function makeStore(country: string, currency: string, timezone: string) {
-  const result = await createAdminStore(db, {
+  const result = await createAdminStore(await testActor(db), db, {
     name: `Iso ${country}`,
     slug: `iso-${country.toLowerCase()}-${uid()}`,
     businessType: "furniture",

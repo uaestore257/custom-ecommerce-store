@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../lib/generated/prisma/client";
+import type { PlatformOwner } from "../../lib/server/auth/guards";
 
 export function testDb() {
   const url = process.env.DATABASE_URL;
@@ -23,3 +24,15 @@ export async function rejects(action: () => Promise<unknown>, reason: RegExp) {
 }
 
 export const FK = /Foreign key constraint|foreign key|_fkey/i;
+
+/**
+ * A PlatformOwner value for calling platform-only data functions directly.
+ * In the app this value only comes from requirePlatformOwner(); the guard
+ * itself is tested in auth-*.test.ts with real sessions. The user row is
+ * real (audit events reference it) but is NOT flagged as platform owner.
+ */
+export async function testActor(db: PrismaClient): Promise<PlatformOwner> {
+  const id = uid();
+  const user = await db.user.create({ data: { email: `actor-${id}@example.com`, name: `Test actor ${id}` } });
+  return { userId: user.id, email: user.email, name: user.name } as PlatformOwner;
+}
