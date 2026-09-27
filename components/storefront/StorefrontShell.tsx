@@ -8,6 +8,7 @@ import { EmptyState, LoadingState } from "@/components/EmptyState";
 import { buttonClass } from "@/components/ui";
 import { labelFor, STORE_STATUSES } from "@/lib/config";
 import { switchStorefrontStore, useStorefront, type StorefrontView } from "@/lib/storefront";
+import { PlatformContactDisclosure } from "@/components/PlatformContactDisclosure";
 import { PublicFooter } from "./PublicFooter";
 import { PublicHeader } from "./PublicHeader";
 
@@ -15,7 +16,7 @@ import { PublicHeader } from "./PublicHeader";
  * Wraps every public storefront page: demo bar, header, footer and the
  * selected store's accent colour.
  */
-export function StorefrontShell({ children }: { children: ReactNode }) {
+export function StorefrontShell({ children, isAdminHost }: { children: ReactNode; isAdminHost: boolean }) {
   const view = useStorefront();
 
   if (view === undefined) {
@@ -50,16 +51,16 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
       className="flex min-h-screen flex-col bg-white text-slate-900"
       style={{ "--brand": view.store.settings.accentColor } as CSSProperties}
     >
-      <DemoBar view={view} />
+      <DemoBar view={view} isAdminHost={isAdminHost} />
       <PublicHeader store={view.store} cartCount={view.cartCount} />
       <div className="flex-1">{children}</div>
-      <PublicFooter store={view.store} />
+      <PublicFooter store={view.store} isAdminHost={isAdminHost} />
     </div>
   );
 }
 
 /** Lets the demo viewer switch which client store the storefront shows. */
-function DemoBar({ view }: { view: StorefrontView }) {
+function DemoBar({ view, isAdminHost }: { view: StorefrontView; isAdminHost: boolean }) {
   const [pendingStoreId, setPendingStoreId] = useState<string | null>(null);
   const pendingStore = view.state.stores.find((s) => s.id === pendingStoreId);
 
@@ -96,10 +97,7 @@ function DemoBar({ view }: { view: StorefrontView }) {
             </span>
           )}
         </div>
-        <Link href="/admin" className="font-medium text-white underline-offset-2 hover:underline">
-          <span className="sm:hidden">Admin →</span>
-          <span className="hidden sm:inline">Agency admin →</span>
-        </Link>
+        <PlatformContactDisclosure label={isAdminHost ? "Agency Admin" : "Contact admin"} />
       </div>
 
       <ConfirmDialog

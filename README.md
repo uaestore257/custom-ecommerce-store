@@ -72,6 +72,11 @@ The storefront shows one client store at a time. It uses
 dark demo bar at the top lets you switch store. A cart only ever holds products
 from one store, so switching store asks before emptying the cart.
 
+The demo bar's admin/contact disclosure uses the configured `ADMIN_HOST` to
+show **Agency Admin** on the admin host and **Contact admin** on the storefront
+host. Set real platform contact details in `PLATFORM_CONTACT` in
+`lib/platform-contact.ts`; leave unused fields empty and they will not be shown.
+
 ### Code layout
 
 | Path | What it contains |
