@@ -5,15 +5,17 @@ TypeScript and Tailwind CSS.
 
 > **Partly connected to a database.** The admin's **stores, products and
 > categories** are stored in PostgreSQL ([Database](#database-phase-1)). The
-> public storefront, orders, customers and agency settings still use sample data
-> saved in the browser's `localStorage`. There is no login, payment provider,
-> email or domain/DNS integration. See [Demo limitations](#demo-limitations).
+> admin requires signing in as the platform owner
+> ([docs/authentication.md](docs/authentication.md)). The public storefront,
+> orders, customers and agency settings still use sample data saved in the
+> browser's `localStorage`. There is no payment provider, email or domain/DNS
+> integration. See [Demo limitations](#demo-limitations).
 
 ## Getting started
 
 ```bash
 npm install
-npm run dev      # http://localhost:3000
+npm run dev      # storefront http://localhost:3000, admin http://admin.localhost:3000/admin
 npm run lint
 npm run build
 ```
@@ -31,6 +33,7 @@ docker compose up -d   # local PostgreSQL 16
 cp .env.example .env
 npm install            # also generates the Prisma client
 npm run db:migrate && npm run db:seed
+npm run platform:create-owner   # admin login; see docs/authentication.md
 npm run test:unit      # no database needed
 npm run test:db        # resets the TEST database, then runs database tests
 ```
@@ -92,10 +95,10 @@ stay the same.
 
 These parts are **not** implemented and need a backend:
 
-- **Authentication and roles.** There is no login, so anyone who can reach
-  `/admin` can use it — including its Server Actions, which are public POST
-  endpoints. Every action calls one access hook
-  (`lib/server/admin/common.ts`) where Phase 2 will add real checks.
+- **Store-owner logins.** Only the platform owner can sign in so far
+  ([docs/authentication.md](docs/authentication.md)). Store owners,
+  invitations and store-level permissions arrive in Phase 2b. The admin is
+  served only on `ADMIN_HOST` (locally <http://admin.localhost:3000>).
 - **Storefront not connected yet.** Store, product and category changes made in
   the admin are saved to PostgreSQL but don't appear on the public storefront,
   which still shows the browser demo data. Orders, customers and agency

@@ -118,8 +118,7 @@ test("reference data includes 0-, 2- and 3-decimal currencies and RTL languages"
   assert.ok((await db.country.count()) > 50);
 });
 
-test("roles: a platform owner, and store owners who only own their store", async () => {
-  assert.equal(await db.user.count({ where: { isPlatformOwner: true } }), 1);
+test("roles: store owners who only own their store, and no seeded platform owner", async () => {
   // Only the seeded stores: other test files create more stores.
   const owners = await db.storeMembership.findMany({
     where: { role: "OWNER", storeId: { in: ["store-a", "store-b", "store-c"] } },
@@ -127,4 +126,21 @@ test("roles: a platform owner, and store owners who only own their store", async
   });
   assert.equal(owners.length, 3);
   assert.ok(owners.every((m) => !m.user.isPlatformOwner));
+  const agency = await db.user.findUniqueOrThrow({ where: { email: createSeedState().agency.contactEmail.toLowerCase() } });
+  assert.equal(agency.isPlatformOwner, false, "the platform owner is only created with the CLI");
+});
+
+test("the seed creates no login: no passwords, accounts or sessions for seeded users", async () => {
+  const seededEmails = [
+    createSeedState().agency.contactEmail.toLowerCase(),
+    ...(await db.storeMembership.findMany({
+      where: { storeId: { in: ["store-a", "store-b", "store-c"] } },
+      include: { user: true },
+    })).map((m) => m.user.email),
+  ];
+  const users = await db.user.findMany({ where: { email: { in: seededEmails } }, select: { id: true } });
+  assert.equal(users.length, seededEmails.length);
+  const ids = users.map((u) => u.id);
+  assert.equal(await db.account.count({ where: { userId: { in: ids } } }), 0);
+  assert.equal(await db.session.count({ where: { userId: { in: ids } } }), 0);
 });

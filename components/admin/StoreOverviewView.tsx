@@ -62,7 +62,7 @@ export function StoreOverviewView({
             ) : (
               <button type="button" disabled={pending} className={buttonClass("primary")} onClick={() => changeStatus("ACTIVE")}>
                 <Play className="h-4 w-4" aria-hidden />
-                {pending ? "Saving…" : "Activate store"}
+                {pending ? "Saving…" : store.status === "SUSPENDED" ? "Reactivate store" : "Activate store"}
               </button>
             )}
           </>

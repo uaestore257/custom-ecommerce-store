@@ -5,23 +5,8 @@ import type { ActionResult } from "@/lib/admin/types";
 
 export type Client = PrismaClient | Prisma.TransactionClient;
 
-// ---------------------------------------------------------------
-// ACCESS CONTROL HOOKS
-// There is NO authentication in this project yet: anyone who can reach
-// /admin can use it. These functions are the single place where Phase 2
-// will check the signed-in user's StoreMembership / platform-owner flag.
-// They are called at the start of every admin Server Action so adding
-// real checks later cannot be forgotten in one of them. They do not
-// pretend to protect anything today.
-// ---------------------------------------------------------------
-
-export async function authorizeStoreAccess(storeId: string): Promise<void> {
-  void storeId; // Phase 2: requireStoreAccess(currentUser, storeId, role)
-}
-
-export async function authorizePlatformAdmin(): Promise<void> {
-  // Phase 2: require currentUser.isPlatformOwner
-}
+// Access control lives in lib/server/auth/guards.ts (sessions) and
+// lib/server/admin/permissions.ts (which action needs which role).
 
 // ---------------------------------------------------------------
 // Results and database error mapping

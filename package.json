@@ -15,12 +15,15 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force && prisma db seed",
     "db:studio": "prisma studio",
-    "test:unit": "tsx --test tests/unit/*.test.ts",
+    "platform:create-owner": "tsx --conditions=react-server scripts/platform-owner.ts create",
+    "platform:reset-password": "tsx --conditions=react-server scripts/platform-owner.ts reset-password",
+    "test:unit": "tsx --conditions=react-server --test tests/unit/*.test.ts",
     "test:db": "tsx scripts/test-db.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "better-auth": "1.7.6",
     "lucide-react": "^1.48.0",
     "next": "16.3.6",
     "react": "19.2.8",

@@ -197,14 +197,19 @@ export function StoreForm({
       <Section title="Store details" description="Basic information about this client store.">
         {text("name", "Store name", { required: true, placeholder: "e.g. Nest & Oak Home" })}
         {select("businessType", "Store category / type", STORE_TYPES, { placeholder: "Choose category…" })}
-        {text("ownerName", "Owner / contact name", { required: true })}
-        {text("ownerEmail", "Owner email", { required: true, type: "email" })}
-        {select(
-          "status",
-          "Status",
-          STORE_STATUSES.map((s) => ({ value: s.value.toUpperCase(), label: s.label })),
-          { hint: "Draft and paused stores are not open for business." },
-        )}
+        {/* Owner and status are set here only when creating a store. Afterwards
+            they have their own platform-only actions (owner card and status
+            controls below / on the overview), so saving settings never
+            changes them. */}
+        {!isEdit && text("ownerName", "Owner / contact name", { required: true })}
+        {!isEdit && text("ownerEmail", "Owner email", { required: true, type: "email" })}
+        {!isEdit &&
+          select(
+            "status",
+            "Status",
+            STORE_STATUSES.map((s) => ({ value: s.value.toUpperCase(), label: s.label })),
+            { hint: "Draft and paused stores are not open for business." },
+          )}
       </Section>
 
       <Section title="Country, currency & time" description="Each store has its own settings; nothing is assumed for you.">

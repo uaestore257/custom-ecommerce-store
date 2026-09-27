@@ -1,6 +1,6 @@
 // Admin store workflows backed by PostgreSQL (lib/server/admin/stores.ts).
 import assert from "node:assert/strict";
-import { after, test } from "node:test";
+import { after, before, test } from "node:test";
 import {
   archiveAdminStore,
   createAdminStore,
@@ -11,9 +11,14 @@ import {
   setAdminStoreStatus,
   updateAdminStore,
 } from "../../lib/server/admin/stores";
-import { testDb, uid } from "./helpers";
+import type { PlatformOwner } from "../../lib/server/auth/guards";
+import { testActor, testDb, uid } from "./helpers";
 
 const db = testDb();
+let actor: PlatformOwner;
+before(async () => {
+  actor = await testActor(db);
+});
 after(() => db.$disconnect());
 
 const newStore = (overrides: Record<string, unknown> = {}) => ({
@@ -73,13 +78,13 @@ test("store detail returns the requested store", async () => {
 test("a missing store returns null", async () => {
   assert.equal(await getAdminStore(db, "no-such-store"), null);
   assert.equal(await getAdminStoreDetail(db, "no-such-store"), null);
-  const result = await updateAdminStore(db, "no-such-store", {});
+  const result = await updateAdminStore(actor, db, "no-such-store", {});
   assert.equal(result.ok, false);
 });
 
 test("creating a store persists valid data (international, no UAE defaults)", async () => {
   const input = newStore();
-  const result = await createAdminStore(db, input);
+  const result = await createAdminStore(actor, db, input);
   assert.ok(result.ok, JSON.stringify(result));
   const store = await db.store.findUniqueOrThrow({
     where: { id: result.data.id },
@@ -100,7 +105,7 @@ test("creating a store persists valid data (international, no UAE defaults)", as
 });
 
 test("store creation rejects invalid input on the server", async () => {
-  const result = await createAdminStore(db, newStore({
+  const result = await createAdminStore(actor, db, newStore({
     name: "",
     slug: "Bad Slug",
     ownerEmail: "not-an-email",
@@ -120,18 +125,19 @@ test("store creation rejects invalid input on the server", async () => {
 });
 
 test("a duplicate slug is rejected", async () => {
-  const result = await createAdminStore(db, newStore({ slug: "nest-and-oak" }));
+  const result = await createAdminStore(actor, db, newStore({ slug: "nest-and-oak" }));
   assert.equal(result.ok, false);
   if (!result.ok) assert.match(result.fieldErrors?.slug ?? "", /already uses this slug/);
 });
 
 test("updating a store persists supported changes", async () => {
-  const created = await createAdminStore(db, newStore());
+  const created = await createAdminStore(actor, db, newStore());
   assert.ok(created.ok);
   const id = created.data.id;
-  const result = await updateAdminStore(db, id, await settingsFor(id, {
+  const result = await updateAdminStore(actor, db, id, await settingsFor(id, {
     name: "Maple & Co Home",
-    status: "ACTIVE",
+    status: "ACTIVE", // ignored: status has its own platform-only action
+    ownerEmail: "someone-else@example.com", // ignored: owner has its own action
     languages: ["en", "ar"],
     contactPhone: "+1 (415) 555-0123",
     tagline: "Furniture for every room",
@@ -142,7 +148,8 @@ test("updating a store persists supported changes", async () => {
   assert.ok(result.ok, JSON.stringify(result));
   const d = (await getAdminStoreDetail(db, id))!;
   assert.equal(d.name, "Maple & Co Home");
-  assert.equal(d.status, "ACTIVE");
+  assert.equal(d.status, "DRAFT", "saving settings never changes the status");
+  assert.notEqual(d.ownerEmail, "someone-else@example.com", "saving settings never changes the owner");
   assert.deepEqual([...d.languages].sort(), ["ar", "en"]);
   assert.equal(d.contactPhone, "+14155550123");
   assert.equal(d.content.tagline, "Furniture for every room");
@@ -154,23 +161,23 @@ test("updating a store persists supported changes", async () => {
 });
 
 test("the currency can't change once prices exist", async () => {
-  const result = await updateAdminStore(db, "store-b", await settingsFor("store-b", { baseCurrency: "USD" }));
+  const result = await updateAdminStore(actor, db, "store-b", await settingsFor("store-b", { baseCurrency: "USD" }));
   assert.equal(result.ok, false);
   if (!result.ok) assert.match(result.fieldErrors?.baseCurrency ?? "", /can't change/);
   assert.equal((await getAdminStoreDetail(db, "store-b"))!.baseCurrency, "AED");
 });
 
 test("status changes, archive and restore", async () => {
-  const created = await createAdminStore(db, newStore());
+  const created = await createAdminStore(actor, db, newStore());
   assert.ok(created.ok);
   const id = created.data.id;
-  assert.ok((await setAdminStoreStatus(db, id, "PAUSED")).ok);
+  assert.ok((await setAdminStoreStatus(actor, db, id, "PAUSED")).ok);
   assert.equal((await getAdminStore(db, id))!.status, "PAUSED");
-  assert.equal((await setAdminStoreStatus(db, id, "DELETED")).ok, false);
+  assert.equal((await setAdminStoreStatus(actor, db, id, "DELETED")).ok, false);
 
-  assert.ok((await archiveAdminStore(db, id)).ok);
+  assert.ok((await archiveAdminStore(actor, db, id)).ok);
   assert.equal(await getAdminStore(db, id), null, "archived stores are hidden");
   assert.ok((await listAdminStores(db, { includeArchived: true })).some((s) => s.id === id));
-  assert.ok((await restoreAdminStore(db, id)).ok);
+  assert.ok((await restoreAdminStore(actor, db, id)).ok);
   assert.ok(await getAdminStore(db, id));
 });

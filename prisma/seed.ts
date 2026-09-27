@@ -16,6 +16,11 @@
 //   demo order "NO-1001"            -> prefix "NO" + number 1001
 // UAE/AED appear here only because the demo stores are in the UAE and
 // Saudi Arabia; nothing becomes a platform default.
+//
+// Safety: refuses to run in production or against a database whose name
+// doesn't mark it as dev/test (prisma/seed-guard.ts). It creates NO login:
+// no passwords, no accounts and no platform owner. The platform owner is
+// created with `npm run platform:create-owner`.
 // ---------------------------------------------------------------
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -25,6 +30,7 @@ import { slugify } from "../lib/format";
 import { legacyNumberToMinorUnits } from "../lib/money";
 import type { Store as DemoStore } from "../lib/types";
 import { countryRows, currencyRows, CURRENCIES, languageRows } from "./reference-data";
+import { assertSafeToSeed } from "./seed-guard";
 
 /** Demo country names -> ISO 3166-1 alpha-2. */
 const DEMO_COUNTRY_CODES: Record<string, string> = {
@@ -107,7 +113,8 @@ async function seedDemoStores(db: PrismaClient) {
       });
 
       await tx.user.create({
-        data: { email: demo.agency.contactEmail.toLowerCase(), name: demo.agency.agencyName, isPlatformOwner: true },
+        // Agency contact only: not a platform owner and cannot sign in.
+        data: { email: demo.agency.contactEmail.toLowerCase(), name: demo.agency.agencyName },
       });
 
       for (const store of demo.stores) {
@@ -314,6 +321,7 @@ async function seedDemoStores(db: PrismaClient) {
 }
 
 async function main() {
+  assertSafeToSeed();
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
   try {
     await seedReferenceData(db);
