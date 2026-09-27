@@ -1,0 +1,87 @@
+// ---------------------------------------------------------------
+// ADMIN VIEW TYPES
+// Plain, serializable shapes that the database-backed admin pages pass
+// from the server to client components. Components never see Prisma
+// records, BigInt values or database details — money is sent as exact
+// decimal strings plus a display string formatted on the server.
+// ---------------------------------------------------------------
+
+export type DbStoreStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "SUSPENDED";
+export type DbProductStatus = "DRAFT" | "ACTIVE" | "ARCHIVED";
+
+export interface ReferenceOptions {
+  countries: { code: string; name: string }[];
+  currencies: { code: string; name: string; minorUnits: number }[];
+  languages: { code: string; name: string; nativeName: string; direction: "LTR" | "RTL" }[];
+  timeZones: string[];
+}
+
+/** One row in store lists, cards and the store selector. */
+export interface AdminStoreSummary {
+  id: string;
+  name: string;
+  slug: string;
+  businessType: string | null;
+  status: DbStoreStatus;
+  countryCode: string;
+  baseCurrency: string;
+  logoUrl: string | null;
+  accentColor: string | null;
+  createdAt: string; // ISO
+  archivedAt: string | null; // ISO
+  productCount: number;
+  /** "Client Store A", "Client Store B", … by creation order. */
+  letterLabel: string;
+}
+
+/** Everything the store settings form edits. */
+export interface AdminStoreDetail extends AdminStoreSummary {
+  timezone: string;
+  defaultLanguage: string;
+  languages: string[]; // enabled languages
+  currencyMinorUnits: number;
+  formatLocale: string;
+  contactEmail: string;
+  contactPhone: string;
+  contactAddress: string;
+  ownerName: string;
+  ownerEmail: string;
+  content: { tagline: string; heroTitle: string; heroText: string; aboutText: string };
+  /** Decimal strings in the store's base currency, "" when not set. */
+  delivery: { fee: string; freeOver: string };
+  paymentMethods: { method: string; enabled: boolean }[];
+  categoryCount: number;
+  hasPrices: boolean; // products or shipping rates exist -> currency is locked
+}
+
+export interface AdminCategory {
+  id: string;
+  name: string;
+  imageUrl: string;
+  position: number;
+  productCount: number;
+}
+
+export interface AdminProduct {
+  id: string;
+  name: string;
+  description: string;
+  sku: string;
+  categoryId: string;
+  categoryName: string;
+  /** Exact decimal strings in the store currency, e.g. "2499.00". */
+  price: string;
+  compareAtPrice: string;
+  priceDisplay: string;
+  compareAtDisplay: string;
+  imageUrl: string;
+  stock: number;
+  status: DbProductStatus;
+  featured: boolean;
+  /** Products with past orders are archived instead of deleted. */
+  hasOrders: boolean;
+}
+
+export type ActionResult<T = undefined> =
+  | { ok: true; data: T; message?: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };

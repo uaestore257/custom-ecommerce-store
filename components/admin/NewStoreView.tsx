@@ -1,17 +1,13 @@
-"use client";
-
-import { LoadingState } from "@/components/EmptyState";
 import { Notice, PageHeader } from "@/components/ui";
-import { useDemoState } from "@/lib/demo-db";
+import type { ReferenceOptions } from "@/lib/admin/types";
 import { StoreForm } from "./StoreForm";
 
-export function NewStoreView() {
-  const state = useDemoState();
+export function NewStoreView({ reference }: { reference: ReferenceOptions }) {
   return (
     <>
       <PageHeader
         title="Create a new client store"
-        description="The new store reuses the Master Ecommerce Template and starts with its own empty product list, orders, customers and settings."
+        description="The new store reuses the Master Ecommerce Template and starts with its own empty product list and settings."
         breadcrumbs={[
           { label: "Agency Admin", href: "/admin" },
           { label: "Client stores", href: "/admin/stores" },
@@ -19,10 +15,9 @@ export function NewStoreView() {
         ]}
       />
       <Notice className="mb-6">
-        Demo only: the store is saved in this browser. No hosting, database or domain is set up.
+        The store is saved in the database. Its public storefront, domain and online payments are not set up yet.
       </Notice>
-      {/* Wait for saved agency defaults (currency, country) before showing the form. */}
-      {state ? <StoreForm mode="create" /> : <LoadingState />}
+      <StoreForm mode="create" reference={reference} />
     </>
   );
 }

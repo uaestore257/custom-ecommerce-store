@@ -5,14 +5,20 @@ import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { buttonClass } from "@/components/ui";
+import { findStore, useDemoState } from "@/lib/demo-db";
 import { switchStorefrontStore, useStorefrontSession } from "@/lib/storefront";
-import type { Store } from "@/lib/types";
 
-/** Opens the public storefront showing this store's branding and products. */
-export function PreviewStorefrontButton({ store }: { store: Store }) {
+/**
+ * Opens the public storefront for this store. The storefront still runs
+ * on browser demo data, so stores that exist only in the database can't
+ * be previewed yet.
+ */
+export function PreviewStorefrontButton({ store }: { store: { id: string; name: string } }) {
   const router = useRouter();
   const session = useStorefrontSession();
+  const demo = useDemoState();
   const [confirming, setConfirming] = useState(false);
+  const inDemo = Boolean(demo && findStore(demo, store.id));
 
   function open() {
     if (!session || session.storeId === store.id) {
@@ -29,9 +35,15 @@ export function PreviewStorefrontButton({ store }: { store: Store }) {
 
   return (
     <>
-      <button type="button" className={buttonClass("secondary")} onClick={open} disabled={!session}>
+      <button
+        type="button"
+        className={buttonClass("secondary")}
+        onClick={open}
+        disabled={!session || !inDemo}
+        title={demo && !inDemo ? "The storefront still uses demo data; this store can't be previewed yet." : undefined}
+      >
         <ExternalLink className="h-4 w-4" aria-hidden />
-        Preview storefront
+        Preview storefront{demo && !inDemo ? " (not available yet)" : ""}
       </button>
       <ConfirmDialog
         open={confirming}

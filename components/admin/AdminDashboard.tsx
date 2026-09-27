@@ -6,37 +6,37 @@ import { ArrowDown, ArrowRight, Building2, LayoutTemplate, Plus, Search, SearchX
 import { EmptyState, LoadingState } from "@/components/EmptyState";
 import { buttonClass, inputClass, LinkButton, PageHeader } from "@/components/ui";
 import { STORE_STATUSES, STORE_TYPES } from "@/lib/config";
-import { getStoreData, useDemoState } from "@/lib/demo-db";
-import { storeLetterLabel } from "@/lib/format";
-import type { StoreStatus } from "@/lib/types";
+import { useDemoState } from "@/lib/demo-db";
+import type { AdminStoreSummary, DbStoreStatus } from "@/lib/admin/types";
 import { ClientStoreCard, MoreStoresCard } from "./ClientStoreCard";
 
 const TEMPLATE_FEATURES = ["Storefront", "Shop & products", "Cart & checkout", "Orders", "Customers", "Settings"];
 
-export function AdminDashboard() {
+/** Stores come from the database; the agency profile is still demo data. */
+export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
   const state = useDemoState();
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StoreStatus | "">("");
+  const [status, setStatus] = useState<DbStoreStatus | "">("");
 
   if (!state) return <LoadingState />;
 
-  const { agency, stores } = state;
+  const { agency } = state;
   const counts = {
     total: stores.length,
-    active: stores.filter((s) => s.status === "active").length,
-    draft: stores.filter((s) => s.status === "draft").length,
-    paused: stores.filter((s) => s.status === "paused").length,
+    active: stores.filter((s) => s.status === "ACTIVE").length,
+    draft: stores.filter((s) => s.status === "DRAFT").length,
+    paused: stores.filter((s) => s.status === "PAUSED").length,
   };
 
   const q = query.trim().toLowerCase();
   const visible = stores
-    .map((store, index) => ({ store, letterLabel: storeLetterLabel(index) }))
-    .filter(({ store }) => agency.showPausedStores || store.status !== "paused")
+    .map((store) => ({ store, letterLabel: store.letterLabel }))
+    .filter(({ store }) => agency.showPausedStores || store.status !== "PAUSED")
     .filter(({ store }) => !status || store.status === status)
     .filter(({ store, letterLabel }) => {
       if (!q) return true;
-      const typeLabel = STORE_TYPES.find((t) => t.value === store.type)?.label ?? "";
-      return [store.name, typeLabel, letterLabel, store.settings.domain].some((v) =>
+      const typeLabel = STORE_TYPES.find((t) => t.value === store.businessType)?.label ?? "";
+      return [store.name, typeLabel, letterLabel, store.slug].some((v) =>
         v.toLowerCase().includes(q),
       );
     });
@@ -139,12 +139,12 @@ export function AdminDashboard() {
             <select
               id="dashboard-status"
               value={status}
-              onChange={(e) => setStatus(e.target.value as StoreStatus | "")}
+              onChange={(e) => setStatus(e.target.value as DbStoreStatus | "")}
               className={`${inputClass()} py-2 sm:w-40`}
             >
               <option value="">All statuses</option>
               {STORE_STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+                <option key={s.value} value={s.value.toUpperCase()}>{s.label}</option>
               ))}
             </select>
           </div>
@@ -175,7 +175,7 @@ export function AdminDashboard() {
             {visible.map(({ store, letterLabel }) => (
               <li key={store.id} className="flex flex-col">
                 <ArrowDown className="mx-auto mb-2 hidden h-4 w-4 text-slate-300 sm:block" aria-hidden />
-                <ClientStoreCard store={store} data={getStoreData(state, store.id)} letterLabel={letterLabel} />
+                <ClientStoreCard store={store} letterLabel={letterLabel} />
               </li>
             ))}
             <li className="flex flex-col">

@@ -1,18 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Tags, Trash2 } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Archive, Tags } from "lucide-react";
+import { archiveStoreAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { buttonClass, Card, LinkButton, PageHeader } from "@/components/ui";
-import { deleteStore } from "@/lib/demo-db";
+import { buttonClass, Card, LinkButton, Notice, PageHeader } from "@/components/ui";
+import type { AdminStoreDetail, ReferenceOptions } from "@/lib/admin/types";
 import { StoreForm } from "./StoreForm";
-import { useSelectedStore } from "./StoreContext";
 
-export function StoreSettingsView() {
+export function StoreSettingsView({ store, reference }: { store: AdminStoreDetail; reference: ReferenceOptions }) {
   const router = useRouter();
-  const { store, data } = useSelectedStore();
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
   return (
     <>
@@ -27,14 +28,18 @@ export function StoreSettingsView() {
       />
 
       <div className="space-y-6">
-        {/* key: reload the form if another tab changes this store */}
-        <StoreForm key={store.id} mode="edit" store={store} />
+        <Notice>
+          Settings are saved in the database. The public storefront still shows demo data until it is connected in a
+          later phase, so changes here don&apos;t appear on it yet.
+        </Notice>
+
+        <StoreForm key={store.id} mode="edit" store={store} reference={reference} />
 
         <Card className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div>
             <h2 className="text-lg font-semibold">Categories</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {data.categories.length} {data.categories.length === 1 ? "category" : "categories"}. Add, rename, reorder or
+              {store.categoryCount} {store.categoryCount === 1 ? "category" : "categories"}. Add, rename, reorder or
               delete them, and set their images.
             </p>
           </div>
@@ -45,31 +50,36 @@ export function StoreSettingsView() {
         </Card>
 
         <Card className="border-red-200 p-5 sm:p-6">
-          <h2 className="text-lg font-semibold text-red-700">Delete store</h2>
+          <h2 className="text-lg font-semibold text-red-700">Archive store</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Permanently removes {store.name} and its {data.products.length} products,{" "}
-            {data.orders.length} orders and {data.customers.length} customers from this demo.
+            Hides {store.name} everywhere in the admin. Nothing is deleted: its {store.productCount} products and all
+            settings are kept, and you can restore it from the client store list.
           </p>
-          <button type="button" className={`${buttonClass("danger")} mt-4`} onClick={() => setConfirmDelete(true)}>
-            <Trash2 className="h-4 w-4" aria-hidden />
-            Delete this store
+          {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
+          <button type="button" className={`${buttonClass("danger")} mt-4`} onClick={() => setConfirmArchive(true)}>
+            <Archive className="h-4 w-4" aria-hidden />
+            Archive this store
           </button>
         </Card>
       </div>
 
       <ConfirmDialog
-        open={confirmDelete}
-        title={`Delete ${store.name}?`}
-        confirmLabel="Delete store"
+        open={confirmArchive}
+        title={`Archive ${store.name}?`}
+        confirmLabel={pending ? "Archiving…" : "Archive store"}
         danger
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          router.push("/admin/stores");
-          deleteStore(store.id);
-        }}
+        onCancel={() => setConfirmArchive(false)}
+        onConfirm={() =>
+          startTransition(async () => {
+            const result = await archiveStoreAction(store.id);
+            setConfirmArchive(false);
+            if (result.ok) router.push("/admin/stores");
+            else setError(result.error);
+          })
+        }
       >
-        All of this store&apos;s products, orders, customers and settings will be removed. This cannot be undone
-        (except by resetting all demo data in Agency settings).
+        The store will be hidden but not deleted. You can restore it at any time from the client store list
+        (&ldquo;Show archived stores&rdquo;).
       </ConfirmDialog>
     </>
   );

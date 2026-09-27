@@ -120,7 +120,11 @@ test("reference data includes 0-, 2- and 3-decimal currencies and RTL languages"
 
 test("roles: a platform owner, and store owners who only own their store", async () => {
   assert.equal(await db.user.count({ where: { isPlatformOwner: true } }), 1);
-  const owners = await db.storeMembership.findMany({ where: { role: "OWNER" }, include: { user: true } });
+  // Only the seeded stores: other test files create more stores.
+  const owners = await db.storeMembership.findMany({
+    where: { role: "OWNER", storeId: { in: ["store-a", "store-b", "store-c"] } },
+    include: { user: true },
+  });
   assert.equal(owners.length, 3);
   assert.ok(owners.every((m) => !m.user.isPlatformOwner));
 });

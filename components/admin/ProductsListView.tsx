@@ -1,27 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Package, Pencil, Plus, Search, SearchX, Trash2 } from "lucide-react";
+import { deleteProductAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { ProductImage } from "@/components/ProductImage";
 import { StatusBadge } from "@/components/StatusBadge";
-import { buttonClass, inputClass, LinkButton, PageHeader } from "@/components/ui";
-import { categoryName, deleteProduct } from "@/lib/demo-db";
-import { formatMoney, isOnSale } from "@/lib/format";
-import type { Product } from "@/lib/types";
-import { useSelectedStore } from "./StoreContext";
+import { buttonClass, inputClass, LinkButton, Notice, PageHeader } from "@/components/ui";
+import type { AdminCategory, AdminProduct } from "@/lib/admin/types";
+import { useAdminStore } from "./StoreContext";
 
-export function ProductsListView() {
-  const { store, data } = useSelectedStore();
+/** Products and categories of the selected store, loaded from the database. */
+export function ProductsListView({ products, categories }: { products: AdminProduct[]; categories: AdminCategory[] }) {
+  const store = useAdminStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
-  const [toDelete, setToDelete] = useState<Product | null>(null);
+  const [toDelete, setToDelete] = useState<AdminProduct | null>(null);
+  const [notice, setNotice] = useState<{ tone: "success" | "warning"; text: string } | null>(null);
+  const [pending, startTransition] = useTransition();
   const base = `/admin/stores/${store.id}`;
 
+  function confirmDelete(product: AdminProduct) {
+    startTransition(async () => {
+      const result = await deleteProductAction(store.id, product.id);
+      setToDelete(null);
+      setNotice(result.ok ? { tone: "success", text: result.message ?? "Done." } : { tone: "warning", text: result.error });
+    });
+  }
+
   const q = query.trim().toLowerCase();
-  const rows = data.products
+  const rows = products
     .filter((p) => !category || p.categoryId === category)
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
 
@@ -45,11 +55,21 @@ export function ProductsListView() {
         actions={addButton}
       />
 
-      {data.products.length === 0 ? (
+      <Notice className="mb-5">
+        Products are saved in the database. The public storefront still shows demo data until it is connected in a
+        later phase.
+      </Notice>
+      {notice && (
+        <Notice tone={notice.tone} className="mb-5">
+          <span role="status">{notice.text}</span>
+        </Notice>
+      )}
+
+      {products.length === 0 ? (
         <EmptyState
           icon={Package}
           title="No products yet"
-          description={`${store.name} has no products. Add the first one to show it on the storefront.`}
+          description={`${store.name} has no products yet. Add the first one.`}
           action={addButton}
         />
       ) : (
@@ -70,7 +90,7 @@ export function ProductsListView() {
             <label htmlFor="products-category" className="sr-only">Category</label>
             <select id="products-category" value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass()}>
               <option value="">All categories</option>
-              {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
 
@@ -94,16 +114,16 @@ export function ProductsListView() {
                       {product.name}
                     </Link>
                     <p className="text-xs text-slate-500">
-                      {product.sku} · {categoryName(data, product.categoryId)}
+                      {product.sku} · {product.categoryName}
                     </p>
                   </div>
                   <div className="flex w-full items-center justify-between gap-4 sm:w-auto sm:justify-end">
                     <div className="text-right text-sm">
                       <p className="font-semibold tabular-nums">
-                        {formatMoney(product.price, store.settings.currency)}
-                        {isOnSale(product) && (
+                        {product.priceDisplay}
+                        {product.compareAtDisplay && (
                           <span className="ml-1.5 text-xs font-normal text-slate-400 line-through">
-                            {formatMoney(product.compareAtPrice!, store.settings.currency)}
+                            {product.compareAtDisplay}
                           </span>
                         )}
                       </p>
@@ -139,17 +159,15 @@ export function ProductsListView() {
 
       <ConfirmDialog
         open={toDelete !== null}
-        title={`Delete "${toDelete?.name ?? ""}"?`}
-        confirmLabel="Delete product"
+        title={toDelete?.hasOrders ? `Archive "${toDelete?.name ?? ""}"?` : `Delete "${toDelete?.name ?? ""}"?`}
+        confirmLabel={pending ? "Working…" : toDelete?.hasOrders ? "Archive product" : "Delete product"}
         danger
         onCancel={() => setToDelete(null)}
-        onConfirm={() => {
-          if (toDelete) deleteProduct(store.id, toDelete.id);
-          setToDelete(null);
-        }}
+        onConfirm={() => toDelete && confirmDelete(toDelete)}
       >
-        This removes the product from {store.name}&apos;s storefront. Existing orders keep their copy of
-        the product details.
+        {toDelete?.hasOrders
+          ? "This product appears in past orders, so it will be archived (hidden) instead of deleted to keep order history."
+          : `This permanently removes the product from ${store.name}.`}
       </ConfirmDialog>
     </>
   );

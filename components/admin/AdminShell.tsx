@@ -19,7 +19,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { LinkButton } from "@/components/ui";
-import { findStore, useDemoState } from "@/lib/demo-db";
+import { useDemoState } from "@/lib/demo-db";
+import type { AdminStoreSummary } from "@/lib/admin/types";
 import { StoreSelector } from "./StoreSelector";
 
 interface NavItem {
@@ -53,7 +54,10 @@ export function isNavActive(pathname: string, item: { href: string; exact?: bool
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-export function AdminShell({ children }: { children: ReactNode }) {
+/** Minimal store info for the sidebar and store selector (from the database). */
+export type ShellStore = Pick<AdminStoreSummary, "id" | "name">;
+
+export function AdminShell({ children, stores }: { children: ReactNode; stores: ShellStore[] }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
 
@@ -75,7 +79,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <SidebarContent />
+        <SidebarContent stores={stores} />
       </aside>
 
       {/* Mobile drawer */}
@@ -96,24 +100,25 @@ export function AdminShell({ children }: { children: ReactNode }) {
             >
               <X className="h-5 w-5" aria-hidden />
             </button>
-            <SidebarContent />
+            <SidebarContent stores={stores} />
           </aside>
         </div>
       )}
 
       <div className="lg:pl-64">
-        <AdminHeader onOpenMenu={() => setDrawerOpen(true)} />
+        <AdminHeader stores={stores} onOpenMenu={() => setDrawerOpen(true)} />
         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
   );
 }
 
-function SidebarContent() {
+function SidebarContent({ stores }: { stores: ShellStore[] }) {
   const pathname = usePathname();
   const params = useParams<{ storeId?: string }>();
+  // The agency name is still demo data (agency settings are not in the database yet).
   const state = useDemoState();
-  const selected = state && params.storeId ? findStore(state, params.storeId) : null;
+  const selected = params.storeId ? (stores.find((s) => s.id === params.storeId) ?? null) : null;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -182,7 +187,7 @@ function NavList({ items, pathname }: { items: NavItem[]; pathname: string }) {
   );
 }
 
-function AdminHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
+function AdminHeader({ stores, onOpenMenu }: { stores: ShellStore[]; onOpenMenu: () => void }) {
   // The dashboard has its own "Create New Store" button.
   const onDashboard = usePathname() === "/admin";
   return (
@@ -196,7 +201,7 @@ function AdminHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
         >
           <Menu className="h-5 w-5" aria-hidden />
         </button>
-        <StoreSelector />
+        <StoreSelector stores={stores} />
         {!onDashboard && (
           <LinkButton href="/admin/stores/new" size="sm" className="ml-auto shrink-0">
             <Plus className="h-4 w-4" aria-hidden />

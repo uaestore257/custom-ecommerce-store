@@ -1,30 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { ArrowRight, Package, Pause, Pencil, Play, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
+import { useState, useTransition } from "react";
+import { ArrowRight, Package, Pause, Pencil, Play, Receipt, Settings, Tags, Users, type LucideIcon } from "lucide-react";
+import { setStoreStatusAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { buttonClass, Card, LinkButton, Notice, PageHeader } from "@/components/ui";
 import { labelFor, paymentMethodLabel, STORE_TYPES } from "@/lib/config";
-import { setStoreStatus } from "@/lib/demo-db";
-import { formatDate, formatMoney, roundMoney } from "@/lib/format";
+import { formatDate } from "@/lib/format";
+import type { AdminStoreDetail, DbStoreStatus } from "@/lib/admin/types";
+import type { PaymentMethodId, StoreType } from "@/lib/types";
 import { PreviewStorefrontButton } from "./PreviewStorefrontButton";
-import { useSelectedStore } from "./StoreContext";
 
-export function StoreOverviewView({ justCreated }: { justCreated: boolean }) {
-  const { store, data } = useSelectedStore();
+export function StoreOverviewView({
+  store,
+  activeProducts,
+  justCreated,
+}: {
+  store: AdminStoreDetail;
+  activeProducts: number;
+  justCreated: boolean;
+}) {
   const [confirmPause, setConfirmPause] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
   const base = `/admin/stores/${store.id}`;
-  const { settings } = store;
+  const enabledPayments = store.paymentMethods
+    .filter((m) => m.enabled)
+    .map((m) => paymentMethodLabel(m.method as PaymentMethodId));
 
-  const activeProducts = data.products.filter((p) => p.status === "active").length;
-  const openOrders = data.orders.filter((o) => ["pending", "processing"].includes(o.status)).length;
-  const demoRevenue = roundMoney(
-    data.orders.filter((o) => o.status !== "cancelled").reduce((sum, o) => sum + o.total, 0),
-  );
-  const recentOrders = [...data.orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
-  const enabledPayments = settings.paymentMethods.filter((m) => m.enabled).map((m) => paymentMethodLabel(m.id));
+  function changeStatus(status: DbStoreStatus) {
+    startTransition(async () => {
+      const result = await setStoreStatusAction(store.id, status);
+      setError(result.ok ? null : result.error);
+      setConfirmPause(false);
+    });
+  }
 
   return (
     <>
@@ -42,15 +54,15 @@ export function StoreOverviewView({ justCreated }: { justCreated: boolean }) {
               <Pencil className="h-4 w-4" aria-hidden />
               Edit store
             </LinkButton>
-            {store.status === "active" ? (
-              <button type="button" className={buttonClass("secondary")} onClick={() => setConfirmPause(true)}>
+            {store.status === "ACTIVE" ? (
+              <button type="button" disabled={pending} className={buttonClass("secondary")} onClick={() => setConfirmPause(true)}>
                 <Pause className="h-4 w-4" aria-hidden />
                 Pause store
               </button>
             ) : (
-              <button type="button" className={buttonClass("primary")} onClick={() => setStoreStatus(store.id, "active")}>
+              <button type="button" disabled={pending} className={buttonClass("primary")} onClick={() => changeStatus("ACTIVE")}>
                 <Play className="h-4 w-4" aria-hidden />
-                Activate store
+                {pending ? "Saving…" : "Activate store"}
               </button>
             )}
           </>
@@ -59,16 +71,16 @@ export function StoreOverviewView({ justCreated }: { justCreated: boolean }) {
 
       {justCreated && (
         <Notice tone="success" className="mb-6">
-          <strong>{store.name}</strong> was created from the Master Ecommerce Template. Next, add
-          products and review the store settings.
+          <strong>{store.name}</strong> was created in the database. Next, add products and review the store settings.
         </Notice>
       )}
+      {error && <Notice tone="warning" className="mb-6">{error}</Notice>}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Metric label="Active products" value={`${activeProducts} / ${data.products.length}`} />
-        <Metric label="Open orders" value={String(openOrders)} />
-        <Metric label="Customers" value={String(data.customers.length)} />
-        <Metric label="Demo order value" value={formatMoney(demoRevenue, settings.currency)} />
+        <Metric label="Active products" value={`${activeProducts} / ${store.productCount}`} />
+        <Metric label="Categories" value={String(store.categoryCount)} />
+        <Metric label="Currency" value={store.baseCurrency} />
+        <Metric label="Languages" value={store.languages.join(", ").toUpperCase()} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -77,85 +89,54 @@ export function StoreOverviewView({ justCreated }: { justCreated: boolean }) {
             <h2 className="text-lg font-semibold">Store information</h2>
             <dl className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
               <Detail label="Store name">{store.name}</Detail>
-              <Detail label="Category">{labelFor(STORE_TYPES, store.type)}</Detail>
+              <Detail label="Category">
+                {store.businessType ? labelFor(STORE_TYPES, store.businessType as StoreType) : "—"}
+              </Detail>
               <Detail label="Status"><StatusBadge status={store.status} /></Detail>
               <Detail label="Slug"><code className="rounded bg-slate-100 px-1.5 py-0.5">{store.slug}</code></Detail>
-              <Detail label="Currency">{settings.currency}</Detail>
-              <Detail label="Country / region">{settings.country}</Detail>
+              <Detail label="Country / region">{store.countryCode}</Detail>
+              <Detail label="Currency">
+                {store.baseCurrency} ({store.currencyMinorUnits} decimal place{store.currencyMinorUnits === 1 ? "" : "s"})
+              </Detail>
+              <Detail label="Timezone">{store.timezone}</Detail>
+              <Detail label="Default language">{store.defaultLanguage}</Detail>
               <Detail label="Owner">{store.ownerName} · {store.ownerEmail}</Detail>
               <Detail label="Created">{formatDate(store.createdAt)}</Detail>
               <Detail label="Payment methods">{enabledPayments.join(", ") || "None enabled"}</Detail>
               <Detail label="Delivery fee">
-                {formatMoney(settings.deliveryFee, settings.currency)}
-                {settings.freeDeliveryThreshold > 0 && ` (free over ${formatMoney(settings.freeDeliveryThreshold, settings.currency)})`}
+                {store.delivery.fee ? `${store.baseCurrency} ${store.delivery.fee}` : "Not set"}
+                {store.delivery.freeOver && ` (free over ${store.baseCurrency} ${store.delivery.freeOver})`}
               </Detail>
             </dl>
           </Card>
 
           <Card className="p-5 sm:p-6">
-            <h2 className="text-lg font-semibold">Domain configuration</h2>
-            <p className="mt-3 text-sm">
-              {settings.domain ? (
-                <>Configured domain: <code className="rounded bg-slate-100 px-1.5 py-0.5">{settings.domain}</code></>
-              ) : (
-                <span className="text-slate-600">No domain configured yet.</span>
-              )}
-            </p>
-            <p className="mt-2 text-sm text-slate-500">
-              Saved as configuration only. This demo does not register domains, change DNS or
-              deploy a live site.
-            </p>
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between px-5 pt-5 sm:px-6">
-              <h2 className="text-lg font-semibold">Recent orders</h2>
-              <Link href={`${base}/orders`} className="text-sm font-semibold text-teal-700 hover:underline">
-                View all
-              </Link>
-            </div>
-            {recentOrders.length === 0 ? (
-              <p className="px-5 pb-6 pt-3 text-sm text-slate-500 sm:px-6">No orders yet.</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-slate-200 border-t border-slate-200">
-                {recentOrders.map((order) => (
-                  <li key={order.id}>
-                    <Link href={`${base}/orders/${order.id}`} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-slate-50 sm:px-6">
-                      <span className="min-w-0">
-                        <span className="font-semibold">{order.orderNumber}</span>
-                        <span className="block truncate text-slate-500">{order.customerName} · {formatDate(order.createdAt)}</span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-3">
-                        <span className="hidden font-medium tabular-nums sm:inline">{formatMoney(order.total, order.currency)}</span>
-                        <StatusBadge status={order.status} />
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <h2 className="text-lg font-semibold">Not connected yet</h2>
+            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-slate-600">
+              <li>Orders and customers still use browser demo data.</li>
+              <li>The public storefront still shows demo data, so changes here don&apos;t appear on it yet.</li>
+              <li>Custom domains are planned for a later phase.</li>
+            </ul>
           </Card>
         </div>
 
         <nav aria-label="Manage this store" className="space-y-3">
-          <QuickLink href={`${base}/products`} icon={Package} title="Products" text={`${data.products.length} products · ${data.categories.length} categories`} />
-          <QuickLink href={`${base}/orders`} icon={Receipt} title="Orders" text={`${data.orders.length} demo orders`} />
-          <QuickLink href={`${base}/customers`} icon={Users} title="Customers" text={`${data.customers.length} customers`} />
-          <QuickLink href={`${base}/settings`} icon={Settings} title="Store settings" text="Branding, domain, delivery, payments" />
+          <QuickLink href={`${base}/products`} icon={Package} title="Products" text={`${store.productCount} products`} />
+          <QuickLink href={`${base}/categories`} icon={Tags} title="Categories" text={`${store.categoryCount} categories`} />
+          <QuickLink href={`${base}/orders`} icon={Receipt} title="Orders" text="Demo data" />
+          <QuickLink href={`${base}/customers`} icon={Users} title="Customers" text="Demo data" />
+          <QuickLink href={`${base}/settings`} icon={Settings} title="Store settings" text="Branding, region, delivery, payments" />
         </nav>
       </div>
 
       <ConfirmDialog
         open={confirmPause}
         title={`Pause ${store.name}?`}
-        confirmLabel="Pause store"
+        confirmLabel={pending ? "Pausing…" : "Pause store"}
         onCancel={() => setConfirmPause(false)}
-        onConfirm={() => {
-          setStoreStatus(store.id, "paused");
-          setConfirmPause(false);
-        }}
+        onConfirm={() => changeStatus("PAUSED")}
       >
-        While paused, the storefront shows a notice and checkout is disabled. You can activate it again at any time.
+        A paused store is marked as not open for business. You can activate it again at any time.
       </ConfirmDialog>
     </>
   );

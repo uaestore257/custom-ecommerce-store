@@ -1,19 +1,12 @@
 import Link from "next/link";
-import { ArrowRight, Globe, Pencil, Plus } from "lucide-react";
+import { ArrowRight, MapPin, Pencil, Plus } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StoreLogo } from "@/components/StoreLogo";
 import { labelFor, STORE_TYPES } from "@/lib/config";
-import type { Store, StoreData } from "@/lib/types";
+import type { AdminStoreSummary } from "@/lib/admin/types";
+import type { StoreType } from "@/lib/types";
 
-export function ClientStoreCard({
-  store,
-  data,
-  letterLabel,
-}: {
-  store: Store;
-  data: StoreData;
-  letterLabel: string;
-}) {
+export function ClientStoreCard({ store, letterLabel }: { store: AdminStoreSummary; letterLabel: string }) {
   const base = `/admin/stores/${store.id}`;
   return (
     <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-teal-300 hover:shadow-md">
@@ -27,20 +20,18 @@ export function ClientStoreCard({
           {store.name}
         </Link>
       </h3>
-      <p className="text-sm text-slate-600">{labelFor(STORE_TYPES, store.type)}</p>
+      <p className="text-sm text-slate-600">
+        {store.businessType ? labelFor(STORE_TYPES, store.businessType as StoreType) : "Store"}
+      </p>
 
       <p className="mt-3 flex items-center gap-1.5 truncate text-xs text-slate-500">
-        <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        {store.settings.domain || "No domain configured"}
+        <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        {store.countryCode} · {store.baseCurrency}
       </p>
       <dl className="mt-3 flex gap-4 text-xs text-slate-500">
         <div>
           <dt className="sr-only">Products</dt>
-          <dd><span className="font-semibold text-slate-800">{data.products.length}</span> products</dd>
-        </div>
-        <div>
-          <dt className="sr-only">Orders</dt>
-          <dd><span className="font-semibold text-slate-800">{data.orders.length}</span> orders</dd>
+          <dd><span className="font-semibold text-slate-800">{store.productCount}</span> products</dd>
         </div>
       </dl>
 

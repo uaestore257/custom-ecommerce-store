@@ -1,33 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { ArrowRight, Pencil, Plus, Search, SearchX, Store as StoreIcon } from "lucide-react";
-import { EmptyState, LoadingState } from "@/components/EmptyState";
+import { useState, useTransition } from "react";
+import { ArchiveRestore, ArrowRight, Pencil, Plus, Search, SearchX, Store as StoreIcon } from "lucide-react";
+import { restoreStoreAction } from "@/app/admin/actions";
+import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StoreLogo } from "@/components/StoreLogo";
-import { buttonClass, inputClass, LinkButton, PageHeader } from "@/components/ui";
+import { buttonClass, inputClass, LinkButton, Notice, PageHeader } from "@/components/ui";
 import { labelFor, STORE_STATUSES, STORE_TYPES } from "@/lib/config";
-import { getStoreData, useDemoState } from "@/lib/demo-db";
-import { formatDate, storeLetterLabel } from "@/lib/format";
-import type { StoreStatus, StoreType } from "@/lib/types";
+import { formatDate } from "@/lib/format";
+import type { AdminStoreSummary, DbStoreStatus } from "@/lib/admin/types";
+import type { StoreType } from "@/lib/types";
 
-export function StoresListView() {
-  const state = useDemoState();
+const typeLabel = (type: string | null) => (type ? labelFor(STORE_TYPES, type as StoreType) : "—");
+
+/** Stores come from the database (archived ones included, shown on request). */
+export function StoresListView({ stores }: { stores: AdminStoreSummary[] }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<StoreType | "">("");
-  const [status, setStatus] = useState<StoreStatus | "">("");
+  const [status, setStatus] = useState<DbStoreStatus | "">("");
+  const [showArchived, setShowArchived] = useState(false);
 
-  if (!state) return <LoadingState />;
-
+  const archivedCount = stores.filter((s) => s.archivedAt).length;
   const q = query.trim().toLowerCase();
-  const rows = state.stores
-    .map((store, index) => ({ store, letterLabel: storeLetterLabel(index), data: getStoreData(state, store.id) }))
-    .filter(({ store }) => !type || store.type === type)
-    .filter(({ store }) => !status || store.status === status)
-    .filter(({ store, letterLabel }) =>
-      !q || [store.name, store.slug, letterLabel, store.ownerName].some((v) => v.toLowerCase().includes(q)),
-    );
+  const rows = stores
+    .filter((store) => (showArchived ? Boolean(store.archivedAt) : !store.archivedAt))
+    .filter((store) => !type || store.businessType === type)
+    .filter((store) => !status || store.status === status)
+    .filter((store) => !q || [store.name, store.slug, store.letterLabel].some((v) => v.toLowerCase().includes(q)));
   const filtering = Boolean(q || type || status);
 
   return (
@@ -51,7 +52,7 @@ export function StoresListView() {
           <input
             id="stores-search"
             type="search"
-            placeholder="Search by name, slug or owner…"
+            placeholder="Search by name or slug…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className={`${inputClass()} pl-9`}
@@ -63,11 +64,19 @@ export function StoresListView() {
           {STORE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
         <label htmlFor="stores-status" className="sr-only">Status</label>
-        <select id="stores-status" value={status} onChange={(e) => setStatus(e.target.value as StoreStatus | "")} className={inputClass()}>
+        <select id="stores-status" value={status} onChange={(e) => setStatus(e.target.value as DbStoreStatus | "")} className={inputClass()}>
           <option value="">All statuses</option>
-          {STORE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          {STORE_STATUSES.map((s) => <option key={s.value} value={s.value.toUpperCase()}>{s.label}</option>)}
         </select>
       </div>
+
+      <label className="mb-4 inline-flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" className="h-4 w-4 accent-teal-700" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+        Show archived stores ({archivedCount})
+      </label>
+      {showArchived && (
+        <Notice className="mb-4">Archived stores are hidden everywhere else. Restoring one brings back all of its data.</Notice>
+      )}
 
       {rows.length === 0 ? (
         filtering ? (
@@ -80,6 +89,8 @@ export function StoresListView() {
               </button>
             }
           />
+        ) : showArchived ? (
+          <EmptyState icon={StoreIcon} title="No archived stores" />
         ) : (
           <EmptyState
             icon={StoreIcon}
@@ -103,33 +114,24 @@ export function StoresListView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {rows.map(({ store, letterLabel, data }) => (
+              {rows.map((store) => (
                 <tr key={store.id} className="hover:bg-slate-50">
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <StoreLogo store={store} size="sm" />
                       <div className="min-w-0">
-                        <Link href={`/admin/stores/${store.id}`} className="font-semibold text-slate-900 hover:text-teal-700 hover:underline">
-                          {store.name}
-                        </Link>
-                        <p className="text-xs text-slate-500">{letterLabel} · {store.settings.domain || store.slug}</p>
+                        <StoreName store={store} />
+                        <p className="text-xs text-slate-500">{store.letterLabel} · {store.slug} · {store.countryCode} · {store.baseCurrency}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-slate-600">{labelFor(STORE_TYPES, store.type)}</td>
-                  <td className="px-5 py-4"><StatusBadge status={store.status} /></td>
-                  <td className="px-5 py-4 text-slate-600">{data.products.length}</td>
+                  <td className="px-5 py-4 text-slate-600">{typeLabel(store.businessType)}</td>
+                  <td className="px-5 py-4"><StatusBadge status={store.archivedAt ? "archived" : store.status} /></td>
+                  <td className="px-5 py-4 text-slate-600">{store.productCount}</td>
                   <td className="px-5 py-4 text-slate-600">{formatDate(store.createdAt)}</td>
                   <td className="px-5 py-4">
                     <div className="flex justify-end gap-2">
-                      <LinkButton href={`/admin/stores/${store.id}/settings`} variant="secondary" size="sm" aria-label={`Edit ${store.name}`}>
-                        <Pencil className="h-3.5 w-3.5" aria-hidden />
-                        Edit
-                      </LinkButton>
-                      <LinkButton href={`/admin/stores/${store.id}`} size="sm">
-                        Manage
-                        <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-                      </LinkButton>
+                      <RowActions store={store} />
                     </div>
                   </td>
                 </tr>
@@ -139,23 +141,20 @@ export function StoresListView() {
 
           {/* List for phones, tablets and small laptops */}
           <ul className="divide-y divide-slate-200 xl:hidden">
-            {rows.map(({ store, letterLabel, data }) => (
+            {rows.map((store) => (
               <li key={store.id} className="p-4">
                 <div className="flex items-start gap-3">
                   <StoreLogo store={store} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <Link href={`/admin/stores/${store.id}`} className="font-semibold text-slate-900 hover:underline">
-                        {store.name}
-                      </Link>
-                      <StatusBadge status={store.status} />
+                      <StoreName store={store} />
+                      <StatusBadge status={store.archivedAt ? "archived" : store.status} />
                     </div>
                     <p className="text-xs text-slate-500">
-                      {letterLabel} · {labelFor(STORE_TYPES, store.type)} · {data.products.length} products
+                      {store.letterLabel} · {typeLabel(store.businessType)} · {store.productCount} products
                     </p>
                     <div className="mt-3 flex gap-2">
-                      <LinkButton href={`/admin/stores/${store.id}`} size="sm" className="flex-1">Manage</LinkButton>
-                      <LinkButton href={`/admin/stores/${store.id}/settings`} variant="secondary" size="sm" className="flex-1">Edit</LinkButton>
+                      <RowActions store={store} stretch />
                     </div>
                   </div>
                 </div>
@@ -164,6 +163,56 @@ export function StoresListView() {
           </ul>
         </div>
       )}
+    </>
+  );
+}
+
+function StoreName({ store }: { store: AdminStoreSummary }) {
+  if (store.archivedAt) return <span className="font-semibold text-slate-900">{store.name}</span>;
+  return (
+    <Link href={`/admin/stores/${store.id}`} className="font-semibold text-slate-900 hover:text-teal-700 hover:underline">
+      {store.name}
+    </Link>
+  );
+}
+
+function RowActions({ store, stretch = false }: { store: AdminStoreSummary; stretch?: boolean }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const grow = stretch ? "flex-1" : "";
+
+  if (store.archivedAt) {
+    return (
+      <div className={grow}>
+        <button
+          type="button"
+          disabled={pending}
+          className={`${buttonClass("secondary", { size: "sm" })} ${stretch ? "w-full" : ""}`}
+          onClick={() =>
+            startTransition(async () => {
+              const result = await restoreStoreAction(store.id);
+              setError(result.ok ? null : result.error);
+            })
+          }
+        >
+          <ArchiveRestore className="h-3.5 w-3.5" aria-hidden />
+          {pending ? "Restoring…" : `Restore`}
+          <span className="sr-only"> {store.name}</span>
+        </button>
+        {error && <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>}
+      </div>
+    );
+  }
+  return (
+    <>
+      <LinkButton href={`/admin/stores/${store.id}/settings`} variant="secondary" size="sm" className={grow} aria-label={`Edit ${store.name}`}>
+        <Pencil className="h-3.5 w-3.5" aria-hidden />
+        Edit
+      </LinkButton>
+      <LinkButton href={`/admin/stores/${store.id}`} size="sm" className={grow}>
+        Manage
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+      </LinkButton>
     </>
   );
 }
