@@ -7,18 +7,26 @@ import type { ActionResult, AdminStoreDetail, AdminStoreSummary, DbStoreStatus }
 import {
   hasErrors,
   PAYMENT_METHOD_IDS,
-  STORE_STATUS_VALUES,
+  PLATFORM_STORE_STATUS_VALUES,
   validateStoreBase,
+  validateStoreOwner,
   validateStoreSettings,
   type CleanStoreBase,
 } from "@/lib/admin/validation";
 import type { StoreType } from "@/lib/types";
+import { recordAudit } from "../audit";
+import type { PlatformOwner } from "../auth/guards";
 import { archiveStore, restoreStore } from "../store-scope";
 import { fail, INVALID, letterLabels, NOT_FOUND, ok, toSlug, uniqueSlug, uniqueViolation, type Client } from "./common";
 import { getStoreReference } from "./reference";
 
 // ---------------------------------------------------------------
 // STORES (platform-level: which stores exist and their settings)
+//
+// Functions that change a store take the PlatformOwner returned by
+// requirePlatformOwner() as their first argument: they can't be called
+// without that check, and the owner is recorded in the audit log in the
+// same transaction as the change.
 // ---------------------------------------------------------------
 
 const summarySelect = {
@@ -140,9 +148,14 @@ function initials(name: string) {
   return letters || null;
 }
 
-/** Makes `userEmail` the store's OWNER (creating the user if needed). */
+/**
+ * Makes `email` the store's OWNER, creating the user if needed. An
+ * existing user is NOT renamed: users are shared between stores, so one
+ * store's settings must never change another store's data. (Phase 2b
+ * replaces this with invitations and multiple owners.)
+ */
 async function setOwner(tx: Prisma.TransactionClient, storeId: string, name: string, email: string) {
-  const user = await tx.user.upsert({ where: { email }, create: { email, name }, update: { name } });
+  const user = await tx.user.upsert({ where: { email }, create: { email, name }, update: {} });
   const current = await tx.storeMembership.findMany({ where: { storeId, role: "OWNER" } });
   // Remove previous owners (ownership moves to the new email).
   await tx.storeMembership.deleteMany({ where: { storeId, role: "OWNER", userId: { not: user.id } } });
@@ -179,14 +192,29 @@ function slugConflict(): ActionResult<never> {
   return fail(INVALID, { slug: "Another store already uses this slug." });
 }
 
-export async function createAdminStore(client: PrismaClient, input: unknown): Promise<ActionResult<{ id: string }>> {
+export async function createAdminStore(
+  actor: PlatformOwner,
+  client: PrismaClient,
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
   const reference = await getStoreReference(client);
   const { values, errors } = validateStoreBase(input, reference);
   if (hasErrors(errors)) return fail(INVALID, errors);
   if (await slugTaken(client, values.slug)) return slugConflict();
 
   try {
-    const store = await client.$transaction((tx) => createStoreRecords(tx, values));
+    const store = await client.$transaction(async (tx) => {
+      const created = await createStoreRecords(tx, values);
+      await recordAudit(tx, {
+        action: "store.create",
+        actorUserId: actor.userId,
+        storeId: created.id,
+        targetType: "store",
+        targetId: created.id,
+        metadata: { status: values.status },
+      });
+      return created;
+    });
     return ok({ id: store.id });
   } catch (error) {
     if (uniqueViolation(error)?.includes("slug")) return slugConflict();
@@ -246,7 +274,9 @@ async function createStoreRecords(tx: Prisma.TransactionClient, v: CleanStoreBas
   return store;
 }
 
+/** Store settings. Never changes status or owners (see setAdminStoreStatus / setAdminStoreOwner). */
 export async function updateAdminStore(
+  actor: PlatformOwner,
   client: PrismaClient,
   storeId: string,
   input: unknown,
@@ -271,7 +301,6 @@ export async function updateAdminStore(
           name: values.name,
           slug: values.slug,
           businessType: values.businessType,
-          status: values.status,
           countryCode: values.countryCode,
           baseCurrency: values.baseCurrency,
           timezone: values.timezone,
@@ -290,8 +319,6 @@ export async function updateAdminStore(
         create: { storeId, locale: values.defaultLanguage, ...values.content },
         update: values.content,
       });
-      await setOwner(tx, storeId, values.ownerName, values.ownerEmail);
-
       // Delivery: one domestic zone (the store's country) with one rate.
       // This only stores the setting; no shipping is calculated here.
       const zone =
@@ -315,6 +342,13 @@ export async function updateAdminStore(
           update: { enabled: values.paymentMethods[method] },
         });
       }
+      await recordAudit(tx, {
+        action: "store.update_settings",
+        actorUserId: actor.userId,
+        storeId,
+        targetType: "store",
+        targetId: storeId,
+      });
     });
   } catch (error) {
     if (uniqueViolation(error)?.includes("slug")) return slugConflict();
@@ -323,28 +357,65 @@ export async function updateAdminStore(
   return ok({ id: storeId }, "Settings saved.");
 }
 
-export async function setAdminStoreStatus(client: Client, storeId: string, status: unknown) {
-  if (typeof status !== "string" || !STORE_STATUS_VALUES.includes(status as DbStoreStatus)) {
+/** Platform-only: replace the store's owner (the settings form no longer does this). */
+export async function setAdminStoreOwner(actor: PlatformOwner, client: PrismaClient, storeId: string, input: unknown) {
+  const store = await client.store.findFirst({ where: { id: storeId, archivedAt: null }, select: { id: true } });
+  if (!store) return fail(NOT_FOUND.store);
+  const { values, errors } = validateStoreOwner(input);
+  if (hasErrors(errors)) return fail(INVALID, errors);
+  await client.$transaction(async (tx) => {
+    await setOwner(tx, storeId, values.ownerName, values.ownerEmail);
+    const owner = await tx.user.findUniqueOrThrow({ where: { email: values.ownerEmail }, select: { id: true } });
+    await recordAudit(tx, {
+      action: "store.owner_change",
+      actorUserId: actor.userId,
+      storeId,
+      targetType: "user",
+      targetId: owner.id,
+    });
+  });
+  return ok({ id: storeId }, "Store owner saved.");
+}
+
+/** Platform-only: draft / active / paused / suspended. Suspension keeps all data. */
+export async function setAdminStoreStatus(actor: PlatformOwner, client: PrismaClient, storeId: string, status: unknown) {
+  if (typeof status !== "string" || !PLATFORM_STORE_STATUS_VALUES.includes(status as DbStoreStatus)) {
     return fail("Choose a valid status.");
   }
-  const result = await client.store.updateMany({
-    where: { id: storeId, archivedAt: null },
-    data: { status: status as DbStoreStatus },
+  const next = status as DbStoreStatus;
+  return client.$transaction(async (tx) => {
+    const store = await tx.store.findFirst({ where: { id: storeId, archivedAt: null }, select: { status: true } });
+    if (!store) return fail(NOT_FOUND.store);
+    await tx.store.update({ where: { id: storeId }, data: { status: next } });
+    await recordAudit(tx, {
+      action: "store.status_change",
+      actorUserId: actor.userId,
+      storeId,
+      targetType: "store",
+      targetId: storeId,
+      metadata: { from: store.status, to: next },
+    });
+    return ok({ id: storeId });
   });
-  return result.count === 1 ? ok({ id: storeId }) : fail(NOT_FOUND.store);
 }
 
 /** Soft delete. The store and all its data stay in the database. */
-export async function archiveAdminStore(client: Client, storeId: string) {
+export async function archiveAdminStore(actor: PlatformOwner, client: PrismaClient, storeId: string) {
   const store = await client.store.findFirst({ where: { id: storeId, archivedAt: null }, select: { id: true } });
   if (!store) return fail(NOT_FOUND.store);
-  await archiveStore(client, storeId);
+  await client.$transaction(async (tx) => {
+    await archiveStore(tx, storeId);
+    await recordAudit(tx, { action: "store.archive", actorUserId: actor.userId, storeId, targetType: "store", targetId: storeId });
+  });
   return ok({ id: storeId }, "Store archived. You can restore it from the store list.");
 }
 
-export async function restoreAdminStore(client: Client, storeId: string) {
+export async function restoreAdminStore(actor: PlatformOwner, client: PrismaClient, storeId: string) {
   const store = await client.store.findFirst({ where: { id: storeId, archivedAt: { not: null } }, select: { id: true } });
   if (!store) return fail("This store is not archived.");
-  await restoreStore(client, storeId);
+  await client.$transaction(async (tx) => {
+    await restoreStore(tx, storeId);
+    await recordAudit(tx, { action: "store.restore", actorUserId: actor.userId, storeId, targetType: "store", targetId: storeId });
+  });
   return ok({ id: storeId }, "Store restored.");
 }

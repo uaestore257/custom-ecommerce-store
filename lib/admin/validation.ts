@@ -12,7 +12,10 @@ import type { DbProductStatus, DbStoreStatus } from "./types";
 
 export type Errors = Record<string, string>;
 
+/** Statuses a new store can start with. */
 export const STORE_STATUS_VALUES: DbStoreStatus[] = ["DRAFT", "ACTIVE", "PAUSED"];
+/** Statuses the platform owner can set later (suspension is platform-only). */
+export const PLATFORM_STORE_STATUS_VALUES: DbStoreStatus[] = ["DRAFT", "ACTIVE", "PAUSED", "SUSPENDED"];
 export const PRODUCT_STATUS_VALUES: DbProductStatus[] = ["DRAFT", "ACTIVE", "ARCHIVED"];
 export const PAYMENT_METHOD_IDS = ["cash_on_delivery", "card_on_delivery", "bank_transfer", "online_card"] as const;
 
@@ -86,13 +89,11 @@ export interface StoreReference {
   languages: Set<string>;
 }
 
-export interface CleanStoreBase {
+/** Store fields edited in store settings. No status and no owner: those have their own platform-only actions. */
+export interface CleanStoreProfile {
   name: string;
   slug: string;
   businessType: string | null;
-  status: DbStoreStatus;
-  ownerName: string;
-  ownerEmail: string;
   countryCode: string;
   baseCurrency: string;
   timezone: string;
@@ -101,7 +102,17 @@ export interface CleanStoreBase {
   accentColor: string;
 }
 
-export interface CleanStoreSettings extends CleanStoreBase {
+export interface CleanStoreOwner {
+  ownerName: string;
+  ownerEmail: string;
+}
+
+/** Everything needed to create a store. */
+export interface CleanStoreBase extends CleanStoreProfile, CleanStoreOwner {
+  status: DbStoreStatus;
+}
+
+export interface CleanStoreSettings extends CleanStoreProfile {
   logoUrl: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
@@ -112,16 +123,35 @@ export interface CleanStoreSettings extends CleanStoreBase {
   paymentMethods: Record<(typeof PAYMENT_METHOD_IDS)[number], boolean>;
 }
 
+export function validateStoreOwner(input: unknown) {
+  const raw = record(input);
+  const errors: Errors = {};
+  const v: CleanStoreOwner = { ownerName: str(raw, "ownerName"), ownerEmail: str(raw, "ownerEmail").toLowerCase() };
+  if (v.ownerName.length < 2) errors.ownerName = "Enter the owner or contact name.";
+  else errors.ownerName = tooLong(v.ownerName, LIMITS.personName) as string;
+  if (!isEmail(v.ownerEmail) || v.ownerEmail.length > LIMITS.email) errors.ownerEmail = "Enter a valid email address.";
+  return { values: v, errors: clean(errors) };
+}
+
+/** For creating a store: profile + starting status + owner. */
 export function validateStoreBase(input: unknown, ref: StoreReference) {
+  const raw = record(input);
+  const profile = validateStoreProfile(input, ref);
+  const owner = validateStoreOwner(input);
+  const status = str(raw, "status") as DbStoreStatus;
+  const errors: Errors = { ...profile.errors, ...owner.errors };
+  if (!STORE_STATUS_VALUES.includes(status)) errors.status = "Choose a valid status.";
+  const values: CleanStoreBase = { ...profile.values, ...owner.values, status };
+  return { values, errors: clean(errors) };
+}
+
+export function validateStoreProfile(input: unknown, ref: StoreReference) {
   const raw = record(input);
   const errors: Errors = {};
   const v = {
     name: str(raw, "name"),
     slug: str(raw, "slug").toLowerCase(),
     businessType: str(raw, "businessType") || null,
-    status: str(raw, "status") as DbStoreStatus,
-    ownerName: str(raw, "ownerName"),
-    ownerEmail: str(raw, "ownerEmail").toLowerCase(),
     countryCode: str(raw, "countryCode"),
     baseCurrency: str(raw, "baseCurrency"),
     timezone: str(raw, "timezone"),
@@ -137,10 +167,6 @@ export function validateStoreBase(input: unknown, ref: StoreReference) {
   if (!isSlug(v.slug)) errors.slug = "Use lowercase letters, numbers and single hyphens, e.g. my-store.";
   else errors.slug = tooLong(v.slug, LIMITS.slug) as string;
   if (v.businessType) errors.businessType = tooLong(v.businessType, 40) as string;
-  if (!STORE_STATUS_VALUES.includes(v.status)) errors.status = "Choose a valid status.";
-  if (v.ownerName.length < 2) errors.ownerName = "Enter the owner or contact name.";
-  else errors.ownerName = tooLong(v.ownerName, LIMITS.personName) as string;
-  if (!isEmail(v.ownerEmail) || v.ownerEmail.length > LIMITS.email) errors.ownerEmail = "Enter a valid email address.";
   if (!isCountryCode(v.countryCode) || !ref.countries.has(v.countryCode)) errors.countryCode = "Choose a country.";
   if (!isCurrencyCode(v.baseCurrency) || !ref.currencies.has(v.baseCurrency)) errors.baseCurrency = "Choose a currency.";
   if (!isTimeZone(v.timezone)) errors.timezone = "Choose a timezone.";
@@ -151,12 +177,13 @@ export function validateStoreBase(input: unknown, ref: StoreReference) {
   else if (!v.languages.includes(v.defaultLanguage)) errors.defaultLanguage = "The default language must be one of the store's languages.";
   if (!isHexColor(v.accentColor)) errors.accentColor = "Use a hex colour such as #0f766e.";
 
-  return { values: v as CleanStoreBase, errors: clean(errors) };
+  return { values: v as CleanStoreProfile, errors: clean(errors) };
 }
 
+/** Store settings. Status and owner fields are ignored even if sent. */
 export function validateStoreSettings(input: unknown, ref: StoreReference) {
   const raw = record(input);
-  const base = validateStoreBase(input, ref);
+  const base = validateStoreProfile(input, ref);
   const errors: Errors = { ...base.errors };
   const minorUnits = ref.currencies.get(base.values.baseCurrency) ?? 2;
 

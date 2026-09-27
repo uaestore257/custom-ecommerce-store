@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { buttonClass, Card, LinkButton, Notice, PageHeader } from "@/components/ui";
 import type { AdminStoreDetail, ReferenceOptions } from "@/lib/admin/types";
 import { StoreForm } from "./StoreForm";
+import { StoreOwnerCard, StoreSuspensionCard } from "./StorePlatformControls";
 
 export function StoreSettingsView({ store, reference }: { store: AdminStoreDetail; reference: ReferenceOptions }) {
   const router = useRouter();
@@ -48,6 +49,10 @@ export function StoreSettingsView({ store, reference }: { store: AdminStoreDetai
             Manage categories
           </LinkButton>
         </Card>
+
+        <StoreOwnerCard key={`owner-${store.ownerEmail}`} store={store} />
+
+        <StoreSuspensionCard store={store} />
 
         <Card className="border-red-200 p-5 sm:p-6">
           <h2 className="text-lg font-semibold text-red-700">Archive store</h2>

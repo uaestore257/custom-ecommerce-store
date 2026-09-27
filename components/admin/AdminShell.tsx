@@ -21,6 +21,7 @@ import {
 import { LinkButton } from "@/components/ui";
 import { useDemoState } from "@/lib/demo-db";
 import type { AdminStoreSummary } from "@/lib/admin/types";
+import { SignOutButton } from "./SignOutButton";
 import { StoreSelector } from "./StoreSelector";
 
 interface NavItem {
@@ -57,7 +58,13 @@ export function isNavActive(pathname: string, item: { href: string; exact?: bool
 /** Minimal store info for the sidebar and store selector (from the database). */
 export type ShellStore = Pick<AdminStoreSummary, "id" | "name">;
 
-export function AdminShell({ children, stores }: { children: ReactNode; stores: ShellStore[] }) {
+/** The signed-in admin user (name and email only). */
+export interface ShellUser {
+  name: string;
+  email: string;
+}
+
+export function AdminShell({ children, stores, user }: { children: ReactNode; stores: ShellStore[]; user: ShellUser }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
 
@@ -106,7 +113,7 @@ export function AdminShell({ children, stores }: { children: ReactNode; stores: 
       )}
 
       <div className="lg:pl-64">
-        <AdminHeader stores={stores} onOpenMenu={() => setDrawerOpen(true)} />
+        <AdminHeader stores={stores} user={user} onOpenMenu={() => setDrawerOpen(true)} />
         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
@@ -187,7 +194,7 @@ function NavList({ items, pathname }: { items: NavItem[]; pathname: string }) {
   );
 }
 
-function AdminHeader({ stores, onOpenMenu }: { stores: ShellStore[]; onOpenMenu: () => void }) {
+function AdminHeader({ stores, user, onOpenMenu }: { stores: ShellStore[]; user: ShellUser; onOpenMenu: () => void }) {
   // The dashboard has its own "Create New Store" button.
   const onDashboard = usePathname() === "/admin";
   return (
@@ -209,6 +216,9 @@ function AdminHeader({ stores, onOpenMenu }: { stores: ShellStore[]; onOpenMenu:
             <span className="sm:hidden">New</span>
           </LinkButton>
         )}
+        <div className={onDashboard ? "ml-auto" : undefined}>
+          <SignOutButton email={user.email} />
+        </div>
       </div>
     </header>
   );
