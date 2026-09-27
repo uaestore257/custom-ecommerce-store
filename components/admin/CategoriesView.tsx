@@ -1,47 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { ArrowDown, ArrowUp, Pencil, Plus, Tags, Trash2 } from "lucide-react";
+import {
+  createCategoryAction,
+  deleteCategoryAction,
+  moveCategoryAction,
+  updateCategoryAction,
+} from "@/app/admin/actions";
 import { CategoryImage } from "@/components/CategoryImage";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
-import { buttonClass, Card, errorProps, Field, inputClass, PageHeader } from "@/components/ui";
-import {
-  addCategory,
-  deleteCategory,
-  isCategoryNameTaken,
-  moveCategory,
-  updateCategory,
-} from "@/lib/demo-db";
-import type { Category, StoreData } from "@/lib/types";
+import { buttonClass, Card, errorProps, Field, inputClass, Notice, PageHeader } from "@/components/ui";
+import type { ActionResult, AdminCategory } from "@/lib/admin/types";
+import { hasErrors, validateCategory } from "@/lib/admin/validation";
 import { isHttpUrl } from "@/lib/validation";
-import { useSelectedStore } from "./StoreContext";
+import { useAdminStore } from "./StoreContext";
 
 interface CategoryValues {
   name: string;
   imageUrl: string;
 }
 
-/** Shared validation for adding and editing a category. */
-function validateCategory(data: StoreData, v: CategoryValues, exceptId?: string) {
-  const errors: Partial<Record<keyof CategoryValues, string>> = {};
-  const name = v.name.trim();
-  if (name.length < 2) errors.name = "Enter a category name (at least 2 characters).";
-  else if (name.length > 40) errors.name = "Keep the name under 40 characters.";
-  else if (isCategoryNameTaken(data, name, exceptId)) errors.name = "This store already has a category with this name.";
-  if (v.imageUrl.trim() && !isHttpUrl(v.imageUrl.trim())) errors.imageUrl = "Enter a full image URL starting with https://";
-  return errors;
-}
-
-export function CategoriesView() {
-  const { store, data } = useSelectedStore();
+/** Categories of the selected store, loaded from and saved to the database. */
+export function CategoriesView({ categories }: { categories: AdminCategory[] }) {
+  const store = useAdminStore();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [toDelete, setToDelete] = useState<Category | null>(null);
+  const [toDelete, setToDelete] = useState<AdminCategory | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
   const base = `/admin/stores/${store.id}`;
 
-  const productCount = (categoryId: string) =>
-    data.products.filter((p) => p.categoryId === categoryId).length;
+  function move(categoryId: string, direction: -1 | 1) {
+    startTransition(async () => {
+      const result = await moveCategoryAction(store.id, categoryId, direction);
+      setError(result.ok ? null : result.error);
+    });
+  }
 
   return (
     <>
@@ -54,10 +50,14 @@ export function CategoriesView() {
           { label: "Categories" },
         ]}
       />
+      <Notice className="mb-5">
+        Categories are saved in the database. The public storefront still shows demo categories until it is connected.
+      </Notice>
+      {error && <Notice tone="warning" className="mb-5">{error}</Notice>}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section aria-label="Category list">
-          {data.categories.length === 0 ? (
+          {categories.length === 0 ? (
             <EmptyState
               icon={Tags}
               title="No categories yet"
@@ -65,8 +65,8 @@ export function CategoriesView() {
             />
           ) : (
             <ol className="space-y-3">
-              {data.categories.map((category, index) => {
-                const count = productCount(category.id);
+              {categories.map((category, index) => {
+                const count = category.productCount;
                 return (
                   <li key={category.id}>
                     <Card className="overflow-hidden">
@@ -86,10 +86,10 @@ export function CategoriesView() {
                           </p>
                         </div>
                         <div className="flex w-full shrink-0 items-center justify-end gap-0.5 border-t border-slate-100 pt-2 sm:w-auto sm:border-0 sm:pt-0">
-                          <IconButton label={`Move ${category.name} up`} disabled={index === 0} onClick={() => moveCategory(store.id, category.id, -1)}>
+                          <IconButton label={`Move ${category.name} up`} disabled={pending || index === 0} onClick={() => move(category.id, -1)}>
                             <ArrowUp className="h-4 w-4" aria-hidden />
                           </IconButton>
-                          <IconButton label={`Move ${category.name} down`} disabled={index === data.categories.length - 1} onClick={() => moveCategory(store.id, category.id, 1)}>
+                          <IconButton label={`Move ${category.name} down`} disabled={pending || index === categories.length - 1} onClick={() => move(category.id, 1)}>
                             <ArrowDown className="h-4 w-4" aria-hidden />
                           </IconButton>
                           <IconButton
@@ -108,12 +108,12 @@ export function CategoriesView() {
                         <div className="border-t border-slate-200 bg-slate-50 p-4">
                           <CategoryForm
                             key={category.id}
-                            data={data}
                             category={category}
                             submitLabel="Save changes"
-                            onSubmit={(values) => {
-                              updateCategory(store.id, category.id, values);
-                              setEditingId(null);
+                            onSubmit={async (values) => {
+                              const result = await updateCategoryAction(store.id, category.id, values);
+                              if (result.ok) setEditingId(null);
+                              return result;
                             }}
                             onCancel={() => setEditingId(null)}
                           />
@@ -133,10 +133,9 @@ export function CategoriesView() {
             <p className="mt-1 text-sm text-slate-600">New categories appear at the end of the list.</p>
             <div className="mt-4">
               <CategoryForm
-                data={data}
                 submitLabel="Add category"
                 resetAfterSubmit
-                onSubmit={(values) => addCategory(store.id, values)}
+                onSubmit={(values) => createCategoryAction(store.id, values)}
               />
             </div>
           </Card>
@@ -147,13 +146,15 @@ export function CategoriesView() {
         <DeleteCategoryDialog
           key={toDelete.id}
           category={toDelete}
-          data={data}
-          productCount={productCount(toDelete.id)}
+          categories={categories}
           onCancel={() => setToDelete(null)}
-          onConfirm={(moveTo) => {
-            deleteCategory(store.id, toDelete.id, moveTo);
-            if (editingId === toDelete.id) setEditingId(null);
+          onConfirm={async (moveTo) => {
+            const result = await deleteCategoryAction(store.id, toDelete.id, moveTo ?? null);
             setToDelete(null);
+            if (result.ok) {
+              if (editingId === toDelete.id) setEditingId(null);
+              setError(null);
+            } else setError(result.error);
           }}
         />
       )}
@@ -162,45 +163,49 @@ export function CategoriesView() {
 }
 
 function CategoryForm({
-  data,
   category,
   submitLabel,
   resetAfterSubmit = false,
   onSubmit,
   onCancel,
 }: {
-  data: StoreData;
-  category?: Category;
+  category?: AdminCategory;
   submitLabel: string;
   resetAfterSubmit?: boolean;
-  onSubmit: (values: CategoryValues) => void;
+  onSubmit: (values: CategoryValues) => Promise<ActionResult<{ id: string }>>;
   onCancel?: () => void;
 }) {
   const idPrefix = category ? `category-${category.id}` : "new-category";
-  const empty = { name: category?.name ?? "", imageUrl: category?.imageUrl ?? "" };
-  const [values, setValues] = useState<CategoryValues>(empty);
-  const [errors, setErrors] = useState<Partial<Record<keyof CategoryValues, string>>>({});
+  const [values, setValues] = useState<CategoryValues>({ name: category?.name ?? "", imageUrl: category?.imageUrl ?? "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [added, setAdded] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
   function set(key: keyof CategoryValues, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
     setAdded(null);
-    if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
+    if (errors[key]) setErrors((e) => ({ ...e, [key]: "" }));
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const found = validateCategory(data, values, category?.id);
+    const found = validateCategory(values).errors;
     setErrors(found);
-    if (found.name || found.imageUrl) {
+    if (hasErrors(found)) {
       document.getElementById(`${idPrefix}-${found.name ? "name" : "imageUrl"}`)?.focus();
       return;
     }
-    onSubmit({ name: values.name.trim(), imageUrl: values.imageUrl.trim() });
-    if (resetAfterSubmit) {
-      setAdded(values.name.trim());
-      setValues({ name: "", imageUrl: "" });
-    }
+    startTransition(async () => {
+      const result = await onSubmit({ name: values.name.trim(), imageUrl: values.imageUrl.trim() });
+      if (!result.ok) {
+        setErrors(result.fieldErrors ?? { name: result.error });
+        return;
+      }
+      if (resetAfterSubmit) {
+        setAdded(values.name.trim());
+        setValues({ name: "", imageUrl: "" });
+      }
+    });
   }
 
   return (
@@ -233,9 +238,9 @@ function CategoryForm({
         <CategoryImage src={values.imageUrl.trim()} alt={values.name || "Preview"} className="aspect-[16/10] w-full rounded-lg" />
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="submit" className={buttonClass("primary")}>
+        <button type="submit" disabled={pending} className={buttonClass("primary")}>
           {!category && <Plus className="h-4 w-4" aria-hidden />}
-          {submitLabel}
+          {pending ? "Saving…" : submitLabel}
         </button>
         {onCancel && (
           <button type="button" className={buttonClass("secondary")} onClick={onCancel}>
@@ -254,32 +259,34 @@ function CategoryForm({
 
 function DeleteCategoryDialog({
   category,
-  data,
-  productCount,
+  categories,
   onCancel,
   onConfirm,
 }: {
-  category: Category;
-  data: StoreData;
-  productCount: number;
+  category: AdminCategory;
+  categories: AdminCategory[];
   onCancel: () => void;
-  onConfirm: (moveProductsTo?: string) => void;
+  onConfirm: (moveProductsTo?: string) => Promise<void>;
 }) {
-  const others = data.categories.filter((c) => c.id !== category.id);
+  const others = categories.filter((c) => c.id !== category.id);
   const [moveTo, setMoveTo] = useState(others[0]?.id ?? "");
+  const [pending, startTransition] = useTransition();
+  const productCount = category.productCount;
   const blocked = productCount > 0 && others.length === 0;
 
   return (
     <ConfirmDialog
       open
       title={`Delete "${category.name}"?`}
-      confirmLabel={blocked ? "OK" : productCount > 0 ? "Move products and delete" : "Delete category"}
+      confirmLabel={pending ? "Deleting…" : blocked ? "OK" : productCount > 0 ? "Move products and delete" : "Delete category"}
       danger={!blocked}
       onCancel={onCancel}
-      onConfirm={() => (blocked ? onCancel() : onConfirm(productCount > 0 ? moveTo : undefined))}
+      onConfirm={() =>
+        blocked ? onCancel() : startTransition(() => onConfirm(productCount > 0 ? moveTo : undefined))
+      }
     >
       {productCount === 0 ? (
-        <p>This category has no products. It will be removed from the storefront.</p>
+        <p>This category has no products. It will be removed.</p>
       ) : blocked ? (
         <p>
           This is the only category and it has {productCount} {productCount === 1 ? "product" : "products"}. Add

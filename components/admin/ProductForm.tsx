@@ -2,17 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
-import { PackageX, Trash2 } from "lucide-react";
+import { useState, useTransition, type FormEvent } from "react";
+import { Trash2 } from "lucide-react";
+import { createProductAction, deleteProductAction, updateProductAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { EmptyState } from "@/components/EmptyState";
 import { ProductImage } from "@/components/ProductImage";
 import { buttonClass, Card, errorProps, Field, inputClass, LinkButton, Notice, PageHeader } from "@/components/ui";
-import { PRODUCT_STATUSES } from "@/lib/config";
-import { createProduct, deleteProduct, isSkuTaken, updateProduct } from "@/lib/demo-db";
-import type { Product, ProductStatus } from "@/lib/types";
-import { hasErrors, isHttpUrl, type FieldErrors } from "@/lib/validation";
-import { useSelectedStore } from "./StoreContext";
+import type { AdminCategory, AdminProduct, DbProductStatus } from "@/lib/admin/types";
+import { hasErrors, validateProduct } from "@/lib/admin/validation";
+import { useAdminStore } from "./StoreContext";
 
 interface ProductFormValues {
   name: string;
@@ -23,109 +21,95 @@ interface ProductFormValues {
   compareAtPrice: string;
   imageUrl: string;
   stock: string;
-  status: ProductStatus;
+  status: DbProductStatus;
   featured: boolean;
 }
 
-function toValues(product?: Product): ProductFormValues {
+const STATUS_OPTIONS: { value: DbProductStatus; label: string; hint: string }[] = [
+  { value: "ACTIVE", label: "Active", hint: "Visible to customers once the storefront uses the database." },
+  { value: "DRAFT", label: "Draft", hint: "Hidden from customers." },
+  { value: "ARCHIVED", label: "Archived", hint: "Hidden; kept for order history." },
+];
+
+function toValues(product?: AdminProduct): ProductFormValues {
   return {
     name: product?.name ?? "",
     sku: product?.sku ?? "",
     categoryId: product?.categoryId ?? "",
     description: product?.description ?? "",
-    price: product ? String(product.price) : "",
-    compareAtPrice: product?.compareAtPrice ? String(product.compareAtPrice) : "",
+    price: product?.price ?? "",
+    compareAtPrice: product?.compareAtPrice ?? "",
     imageUrl: product?.imageUrl ?? "",
     stock: product ? String(product.stock) : "0",
-    status: product?.status ?? "active",
+    status: product?.status ?? "ACTIVE",
     featured: product?.featured ?? false,
   };
 }
 
-/** Add (no productId) or edit a product of the selected store. */
-export function ProductForm({ productId }: { productId?: string }) {
-  const { store, data } = useSelectedStore();
-  // Look the product up ONLY inside the selected store's data.
-  const product = productId ? data.products.find((p) => p.id === productId) : undefined;
-  const base = `/admin/stores/${store.id}`;
-
-  if (productId && !product) {
-    return (
-      <EmptyState
-        icon={PackageX}
-        title="Product not found"
-        description={`This product does not exist in ${store.name}.`}
-        action={<LinkButton href={`${base}/products`}>Back to products</LinkButton>}
-      />
-    );
-  }
-  // key resets the form state if the product changes.
-  return <ProductFormInner key={product?.id ?? "new"} product={product} />;
-}
-
-function ProductFormInner({ product }: { product?: Product }) {
+/**
+ * Add (no product) or edit a product of the selected store. Saves through
+ * Server Actions with the store id from the URL; the server validates
+ * everything again and only touches products of this store.
+ */
+export function ProductForm({
+  product,
+  categories,
+  minorUnits,
+}: {
+  product?: AdminProduct;
+  categories: AdminCategory[];
+  /** Decimal places of the store's currency (ISO 4217). */
+  minorUnits: number;
+}) {
   const router = useRouter();
-  const { store, data } = useSelectedStore();
+  const store = useAdminStore();
   const [values, setValues] = useState(() => toValues(product));
-  const [errors, setErrors] = useState<FieldErrors<ProductFormValues>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [pending, startTransition] = useTransition();
   const base = `/admin/stores/${store.id}`;
   const isEdit = Boolean(product);
+  const step = minorUnits === 0 ? "1" : `0.${"0".repeat(minorUnits - 1)}1`;
 
   function set<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
     setSaved(false);
     setValues((v) => ({ ...v, [key]: value }));
-    if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
-  }
-
-  function validate(v: ProductFormValues) {
-    const e: FieldErrors<ProductFormValues> = {};
-    if (v.name.trim().length < 2) e.name = "Enter a product name.";
-    if (!/^[A-Za-z0-9-_]{2,30}$/.test(v.sku.trim())) e.sku = "Use 2–30 letters, numbers, hyphens or underscores.";
-    else if (isSkuTaken(data, v.sku, product?.id)) e.sku = "Another product in this store uses this SKU.";
-    if (!data.categories.some((c) => c.id === v.categoryId)) e.categoryId = "Choose a category.";
-    if (v.description.trim().length < 10) e.description = "Write at least 10 characters.";
-    const price = Number(v.price);
-    if (v.price.trim() === "" || !Number.isFinite(price) || price <= 0) e.price = "Enter a price greater than 0.";
-    else if (!/^\d+(\.\d{1,2})?$/.test(v.price.trim())) e.price = "Use at most 2 decimal places.";
-    const compareAt = v.compareAtPrice.trim();
-    if (compareAt) {
-      if (!/^\d+(\.\d{1,2})?$/.test(compareAt)) e.compareAtPrice = "Enter an amount with at most 2 decimal places.";
-      else if (Number(compareAt) <= price) e.compareAtPrice = "Must be higher than the price, or leave empty.";
-    }
-    if (!/^\d+$/.test(v.stock.trim())) e.stock = "Enter a whole number (0 or more).";
-    if (v.imageUrl.trim() && !isHttpUrl(v.imageUrl.trim())) e.imageUrl = "Enter a full URL starting with https://";
-    return e;
+    if (errors[key]) setErrors((e) => ({ ...e, [key]: "" }));
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const found = validate(values);
+    setFormError(null);
+    const found = validateProduct(values, minorUnits).errors;
     setErrors(found);
     if (hasErrors(found)) {
       document.getElementById(`product-${Object.keys(found)[0]}`)?.focus();
       return;
     }
-    const input = {
-      name: values.name.trim(),
-      sku: values.sku.trim().toUpperCase(),
-      categoryId: values.categoryId,
-      description: values.description.trim(),
-      price: Number(values.price),
-      compareAtPrice: values.compareAtPrice.trim() ? Number(values.compareAtPrice) : 0,
-      imageUrl: values.imageUrl.trim(),
-      stock: Number(values.stock),
-      status: values.status,
-      featured: values.featured,
-    };
-    if (product) {
-      updateProduct(store.id, product.id, input);
-      setSaved(true);
-    } else {
-      createProduct(store.id, input);
-      router.push(`${base}/products`);
-    }
+    startTransition(async () => {
+      const result = product
+        ? await updateProductAction(store.id, product.id, values)
+        : await createProductAction(store.id, values);
+      if (!result.ok) {
+        setErrors(result.fieldErrors ?? {});
+        setFormError(result.error);
+        return;
+      }
+      if (product) setSaved(true);
+      else router.push(`${base}/products`);
+    });
+  }
+
+  function handleDelete() {
+    if (!product) return;
+    startTransition(async () => {
+      const result = await deleteProductAction(store.id, product.id);
+      setConfirmDelete(false);
+      if (!result.ok) setFormError(result.error);
+      else router.push(`${base}/products`);
+    });
   }
 
   const title = isEdit ? `Edit ${product?.name}` : "Add product";
@@ -134,7 +118,7 @@ function ProductFormInner({ product }: { product?: Product }) {
     <>
       <PageHeader
         title={title}
-        description={`This product belongs to ${store.name} and is only shown in its storefront.`}
+        description={`This product belongs to ${store.name}. Prices are in ${store.baseCurrency}.`}
         breadcrumbs={[
           { label: store.name, href: base },
           { label: "Products", href: `${base}/products` },
@@ -142,12 +126,13 @@ function ProductFormInner({ product }: { product?: Product }) {
         ]}
       />
 
-      {data.categories.length === 0 && (
+      {categories.length === 0 && (
         <Notice tone="warning" className="mb-6">
           This store has no categories yet.{" "}
           <Link href={`${base}/categories`} className="font-semibold underline">Add a category</Link> first.
         </Notice>
       )}
+      {formError && <Notice tone="warning" className="mb-6">{formError}</Notice>}
 
       <form onSubmit={handleSubmit} noValidate className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <Card className="p-5 sm:p-6">
@@ -161,22 +146,22 @@ function ProductFormInner({ product }: { product?: Product }) {
             <Field label="Category" htmlFor="product-categoryId" required error={errors.categoryId}>
               <select {...errorProps("product-categoryId", errors.categoryId)} value={values.categoryId} onChange={(e) => set("categoryId", e.target.value)} className={inputClass(!!errors.categoryId)}>
                 <option value="">Choose category…</option>
-                {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </Field>
             <Field label="Description" htmlFor="product-description" required error={errors.description} className="sm:col-span-2">
               <textarea {...errorProps("product-description", errors.description)} rows={4} value={values.description} onChange={(e) => set("description", e.target.value)} className={inputClass(!!errors.description)} />
             </Field>
-            <Field label={`Price (${store.settings.currency})`} htmlFor="product-price" required error={errors.price}>
-              <input {...errorProps("product-price", errors.price)} type="number" min="0" step="0.01" inputMode="decimal" value={values.price} onChange={(e) => set("price", e.target.value)} className={inputClass(!!errors.price)} />
+            <Field label={`Price (${store.baseCurrency})`} htmlFor="product-price" required error={errors.price}>
+              <input {...errorProps("product-price", errors.price)} type="number" min="0" step={step} inputMode="decimal" value={values.price} onChange={(e) => set("price", e.target.value)} className={inputClass(!!errors.price)} />
             </Field>
             <Field
-              label={`Original price (${store.settings.currency})`}
+              label={`Original price (${store.baseCurrency})`}
               htmlFor="product-compareAtPrice"
               error={errors.compareAtPrice}
               hint="Optional. Set higher than the price to show a SALE badge and the old price crossed out."
             >
-              <input {...errorProps("product-compareAtPrice", errors.compareAtPrice)} type="number" min="0" step="0.01" inputMode="decimal" value={values.compareAtPrice} onChange={(e) => set("compareAtPrice", e.target.value)} className={inputClass(!!errors.compareAtPrice)} />
+              <input {...errorProps("product-compareAtPrice", errors.compareAtPrice)} type="number" min="0" step={step} inputMode="decimal" value={values.compareAtPrice} onChange={(e) => set("compareAtPrice", e.target.value)} className={inputClass(!!errors.compareAtPrice)} />
             </Field>
             <Field label="Stock quantity" htmlFor="product-stock" required error={errors.stock}>
               <input {...errorProps("product-stock", errors.stock)} type="number" min="0" step="1" inputMode="numeric" value={values.stock} onChange={(e) => set("stock", e.target.value)} className={inputClass(!!errors.stock)} />
@@ -189,9 +174,14 @@ function ProductFormInner({ product }: { product?: Product }) {
 
         <div className="space-y-6">
           <Card className="p-5">
-            <Field label="Status" htmlFor="product-status" hint="Draft products are hidden from the storefront.">
-              <select id="product-status" value={values.status} onChange={(e) => set("status", e.target.value as ProductStatus)} className={inputClass()}>
-                {PRODUCT_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            <Field
+              label="Status"
+              htmlFor="product-status"
+              error={errors.status}
+              hint={STATUS_OPTIONS.find((s) => s.value === values.status)?.hint}
+            >
+              <select id="product-status" value={values.status} onChange={(e) => set("status", e.target.value as DbProductStatus)} className={inputClass(!!errors.status)}>
+                {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </Field>
             <label className="mt-4 flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -209,7 +199,7 @@ function ProductFormInner({ product }: { product?: Product }) {
           {isEdit && (
             <button type="button" className={`${buttonClass("ghost")} text-red-600 hover:bg-red-50 sm:mr-auto`} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="h-4 w-4" aria-hidden />
-              Delete product
+              {product?.hasOrders ? "Archive product" : "Delete product"}
             </button>
           )}
           <div className="flex flex-col-reverse gap-3 sm:ml-auto sm:flex-row sm:items-center">
@@ -217,8 +207,8 @@ function ProductFormInner({ product }: { product?: Product }) {
             <LinkButton href={`${base}/products`} variant="secondary">
               {saved ? "Back to products" : "Cancel"}
             </LinkButton>
-            <button type="submit" className={buttonClass("primary")}>
-              {isEdit ? "Save changes" : "Add product"}
+            <button type="submit" disabled={pending} className={buttonClass("primary")}>
+              {pending ? "Saving…" : isEdit ? "Save changes" : "Add product"}
             </button>
           </div>
         </div>
@@ -227,17 +217,15 @@ function ProductFormInner({ product }: { product?: Product }) {
       {product && (
         <ConfirmDialog
           open={confirmDelete}
-          title={`Delete "${product.name}"?`}
-          confirmLabel="Delete product"
+          title={product.hasOrders ? `Archive "${product.name}"?` : `Delete "${product.name}"?`}
+          confirmLabel={pending ? "Working…" : product.hasOrders ? "Archive product" : "Delete product"}
           danger
           onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            // Go back to the product list, then remove the product.
-            router.push(`${base}/products`);
-            deleteProduct(store.id, product.id);
-          }}
+          onConfirm={handleDelete}
         >
-          This removes the product from {store.name}. This cannot be undone.
+          {product.hasOrders
+            ? "This product appears in past orders, so it will be archived (hidden) instead of deleted to keep order history."
+            : `This permanently removes the product from ${store.name}. This cannot be undone.`}
         </ConfirmDialog>
       )}
     </>
