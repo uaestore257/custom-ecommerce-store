@@ -1,0 +1,47 @@
+# Checks every pull request and every push to main.
+# No database is used: the Prisma client is generated without one, the
+# build does not connect, and the database tests (`npm run test:db`,
+# which resets a database) are deliberately not run here yet.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Meets Next.js (>=20.9) and Prisma 7 (^20.19 || ^22.12 || >=24).
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci # also runs `prisma generate` (postinstall)
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Production build
+        run: npm run build
