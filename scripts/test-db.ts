@@ -24,11 +24,15 @@ const testFiles = readdirSync("tests/db")
   .filter((name) => name.endsWith(".test.ts"))
   .sort()
   .map((name) => `tests/db/${name}`);
-const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: "inherit", env });
+// On Windows npx is a batch file (npx.cmd), and Node only runs batch
+// files through a shell (CVE-2024-27980), so the shell is used there only.
+const isWindows = process.platform === "win32";
+const npx = isWindows ? "npx.cmd" : "npx";
+const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: "inherit", env, shell: isWindows });
 
-run("npx", ["prisma", "migrate", "reset", "--force"]);
-run("npx", ["prisma", "db", "seed"]);
-run("npx", [
+run(npx, ["prisma", "migrate", "reset", "--force"]);
+run(npx, ["prisma", "db", "seed"]);
+run(npx, [
   "tsx",
   "--conditions=react-server", // lets tests import server-only modules
   "--test",
