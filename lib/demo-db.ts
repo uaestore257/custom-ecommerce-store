@@ -2,17 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 import { createSeedState, defaultCategories, defaultStoreSettings } from "./demo-data";
-import { roundMoney } from "./format";
 import { readJson, removeKeys, STORAGE_PREFIX, writeJson } from "./storage";
 import type {
   AgencySettings,
   Category,
   Customer,
   DemoState,
-  Order,
-  OrderItem,
   OrderStatus,
-  PaymentMethodId,
   Product,
   Store,
   StoreData,
@@ -358,103 +354,4 @@ export function updateOrderStatus(storeId: string, orderId: string, status: Orde
 
 export function customerOrderCount(data: StoreData, customer: Customer) {
   return data.orders.filter((o) => o.customerId === customer.id).length;
-}
-
-function orderPrefix(store: Store, orders: Order[]) {
-  // Keep using the prefix of the store's existing orders, if any.
-  const existing = orders.at(-1)?.orderNumber.split("-").slice(0, -1).join("-");
-  if (existing) return existing;
-  const letters = store.name
-    .split(/\s+/)
-    .map((word) => word.replace(/[^a-z0-9]/gi, "")[0])
-    .filter(Boolean)
-    .join("")
-    .toUpperCase()
-    .slice(0, 3);
-  return letters || "ORD";
-}
-
-export interface DemoOrderInput {
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  address: string;
-  city: string;
-  paymentMethod: PaymentMethodId;
-  items: OrderItem[];
-  deliveryFee: number;
-}
-
-/**
- * Saves a DEMO order in this browser only. Nothing is sent to the store,
- * no payment is taken and no email is delivered.
- */
-export function placeDemoOrder(storeId: string, input: DemoOrderInput): Order {
-  const current = getSnapshot();
-  const store = findStore(current, storeId);
-  if (!store) throw new Error(`Unknown store: ${storeId}`);
-  const data = getStoreData(current, storeId);
-
-  const email = input.customerEmail.trim().toLowerCase();
-  let customer = data.customers.find((c) => c.email.toLowerCase() === email);
-  const now = new Date().toISOString();
-  const customers = [...data.customers];
-  if (!customer) {
-    customer = {
-      id: makeId(`${storeId}-cus`),
-      storeId,
-      name: input.customerName.trim(),
-      email,
-      phone: input.customerPhone.trim(),
-      createdAt: now,
-    };
-    customers.push(customer);
-  }
-
-  const lastNumber = data.orders.reduce((max, o) => {
-    const n = Number(o.orderNumber.split("-").pop());
-    return Number.isFinite(n) ? Math.max(max, n) : max;
-  }, 1000);
-
-  const subtotal = roundMoney(
-    input.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
-  );
-  const order: Order = {
-    id: makeId(`${storeId}-ord`),
-    storeId,
-    orderNumber: `${orderPrefix(store, data.orders)}-${lastNumber + 1}`,
-    customerId: customer.id,
-    customerName: input.customerName.trim(),
-    customerEmail: email,
-    customerPhone: input.customerPhone.trim(),
-    address: input.address.trim(),
-    city: input.city.trim(),
-    items: input.items,
-    subtotal,
-    deliveryFee: input.deliveryFee,
-    total: roundMoney(subtotal + input.deliveryFee),
-    currency: store.settings.currency,
-    paymentMethod: input.paymentMethod,
-    status: "pending",
-    createdAt: now,
-    isDemo: true,
-  };
-
-  // Reduce stock for the ordered products.
-  const products = data.products.map((p) => {
-    const line = input.items.find((item) => item.productId === p.id);
-    return line ? { ...p, stock: Math.max(0, p.stock - line.quantity) } : p;
-  });
-
-  commit(
-    {
-      ...current,
-      storeData: {
-        ...current.storeData,
-        [storeId]: { ...data, products, customers, orders: [...data.orders, order] },
-      },
-    },
-    { storeIds: [storeId] },
-  );
-  return order;
 }

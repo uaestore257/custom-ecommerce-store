@@ -4,10 +4,13 @@ A reusable ecommerce template run by an agency. Built with Next.js (App Router),
 TypeScript and Tailwind CSS.
 
 > **Partly connected to a database.** The admin's **stores, products and
-> categories** are stored in PostgreSQL ([Database](#database-phase-1)). The
-> admin requires signing in as the platform owner
-> ([docs/authentication.md](docs/authentication.md)). The public storefront,
-> orders, customers and agency settings still use sample data saved in the
+> categories** are stored in PostgreSQL ([Database](#database-phase-1)), and
+> the public storefront reads them from there (active stores and products
+> only). Checkout places real orders in the database (cash on delivery or
+> bank transfer, always unpaid until the store handles payment), and the
+> admin lists each store's orders read-only. The admin requires signing in as
+> the platform owner ([docs/authentication.md](docs/authentication.md)).
+> Admin customers and agency settings still use sample data saved in the
 > browser's `localStorage`. There is no payment provider, email or domain/DNS
 > integration. See [Demo limitations](#demo-limitations).
 
@@ -67,10 +70,24 @@ Level 3  Client stores (store-a, store-b…)  own branding, settings and data
 | `/cart`, `/checkout` | `/admin/template` | `…/customers` |
 | `/about`, `/contact` | `/admin/settings` | `…/settings` |
 
-The storefront shows one client store at a time. It uses
-`DEFAULT_STOREFRONT_STORE_ID` in `lib/config.ts` (the furniture store), and the
-dark demo bar at the top lets you switch store. A cart only ever holds products
-from one store, so switching store asks before emptying the cart.
+The storefront shows one client store at a time, read from the database:
+its branding, content, categories and **active** products, with prices in the
+store's own currency. Draft, paused, suspended and archived stores are never
+shown, and draft or archived products return a 404.
+
+Which store is shown is a **temporary** choice until domain-based store
+resolution exists: the dark demo bar lists the active stores and remembers
+your pick in a `storefront_store` cookie. The server only honours that cookie
+if it names an active store; otherwise it falls back to
+`DEFAULT_STOREFRONT_STORE_ID` in `lib/config.ts` (if that store is active too),
+and otherwise shows a "not available" page. The cookie is a preference, not
+access control — it can only ever show a store that is already public.
+
+A cart only ever holds products from one store, so switching store asks
+before emptying the cart. The browser keeps only which products and how many;
+prices, stock and availability are always taken from the database, and the
+cart and checkout re-check them when opened and point out anything that
+changed. Nothing is reserved while it sits in a cart.
 
 The demo bar's admin/contact disclosure uses the configured `ADMIN_HOST` to
 show **Agency Admin** on the admin host and **Contact admin** on the storefront
@@ -81,20 +98,26 @@ host. Set real platform contact details in `PLATFORM_CONTACT` in
 
 | Path | What it contains |
 | --- | --- |
-| `lib/types.ts` | Data model: `Store`, `StoreSettings`, `Product`, `Category`, `CartItem`, `Order`, `Customer` |
-| `lib/demo-data.ts` | Sample data for the three demo stores |
-| `lib/demo-db.ts` | Demo data layer: reads and writes, each keyed by `storeId` |
-| `lib/storefront.ts` | Selected storefront store, cart and checkout totals |
+| `lib/types.ts` | Demo data model: `Store`, `StoreSettings`, `Product`, `Category`, `Order`, `Customer` |
+| `lib/demo-data.ts` | Sample data for the three demo stores (also the database seed) |
+| `lib/demo-db.ts` | Browser demo data: admin customers, agency settings and legacy demo order details |
+| `lib/checkout.ts` | Checkout input validation (shared by the form and the server) and the order result shape |
+| `lib/server/orders.ts` | Server-side order placement: re-validation, atomic stock, idempotency |
+| `lib/server/admin/orders.ts` | The admin's read-only orders list (one store at a time) |
+| `lib/server/storefront/catalog.ts` | Public storefront reads from the database (active stores/products only) and the store choice |
+| `lib/storefront-types.ts` | Plain data shapes the storefront receives (money as exact minor units) |
+| `lib/storefront-cart.ts` | Cart maths: current prices, stock caps, change detection, totals (pure, tested) |
+| `lib/storefront-cookie.ts` | The temporary store-choice cookie |
+| `lib/storefront.ts` | Storefront hook and the browser-side cart item list |
 | `lib/storage.ts` | Safe `localStorage` wrapper (works when storage is blocked) |
 | `lib/config.ts` | Options: store types, currencies, emirates, payment methods |
 | `components/` | Shared UI, storefront and admin components |
 
-Each store's data is saved under its own key (`ecom-demo:v1:store:<storeId>`),
-and every product, order and customer also carries a `storeId`. Every store
-admin page reads the store from the URL through `StoreContextLayout`, so those
-pages only ever read or change that one store's data. To add a real backend,
-replace the functions in `lib/demo-db.ts` with API calls. The components can
-stay the same.
+The remaining browser demo data (orders, customers) is saved per store under
+its own key (`ecom-demo:v1:store:<storeId>`), and every record carries a
+`storeId`. Every store admin page reads the store from the URL through
+`StoreContextLayout`, so those pages only ever read or change that one
+store's data.
 
 ## Demo limitations
 
@@ -104,14 +127,24 @@ These parts are **not** implemented and need a backend:
   ([docs/authentication.md](docs/authentication.md)). Store owners,
   invitations and store-level permissions arrive in Phase 2b. The admin is
   served only on `ADMIN_HOST` (locally <http://admin.localhost:3000>).
-- **Storefront not connected yet.** Store, product and category changes made in
-  the admin are saved to PostgreSQL but don't appear on the public storefront,
-  which still shows the browser demo data. Orders, customers and agency
-  settings are also still demo data.
-- **Payments.** Nothing is paid and no card details are collected. "Online card
-  payment" can't be switched on because no payment provider is connected.
-- **Orders.** Demo orders are saved in this browser only. They are not sent to
-  a store, courier or email inbox, and payment is never confirmed.
+- **Orders are placed, but not yet managed.** Checkout creates a real order in
+  the database: the server re-checks the store, products, prices, delivery
+  and stock, reduces stock atomically (no overselling) and ignores repeated
+  submissions of the same checkout. Only **cash on delivery** and **bank
+  transfer** are offered; both orders start **unpaid** and nothing ever marks
+  them paid yet. The store shares bank transfer details itself — none are
+  shown. The admin can list a store's orders but can't change status, cancel
+  or refund yet (so stock is never restored), and no emails are sent. Admin
+  customers and agency settings are still browser demo data. A store without
+  a delivery rate can't take orders.
+- **Store choice is temporary.** The storefront picks a store from a browser
+  cookie or the configured default, not yet from the domain name. Draft
+  stores can't be previewed on the storefront yet.
+- **Payments.** Nothing is paid online and no card details are collected.
+  "Online card payment" can't be switched on because no payment provider is
+  connected, and "card on delivery" isn't offered at checkout yet.
+- **Tax.** No tax is calculated; orders record the store's "prices include
+  tax" setting and a tax amount of zero.
 - **Contact form.** Messages are validated and rate-limited on the server and
   saved to the database for that store, but there is no admin page to read
   them yet and no email is sent. The store is chosen by the visitor's browser,
@@ -120,5 +153,6 @@ These parts are **not** implemented and need a backend:
   DNS is changed and nothing is deployed.
 - **Template versioning.** There is none. Every store uses the current code.
 
-Use made-up details at checkout. To go back to the original sample data, use
-**Agency settings → Reset demo data**.
+Use made-up details when testing checkout locally. To go back to the original
+browser sample data, use **Agency settings → Reset demo data** (this does not
+touch the database).

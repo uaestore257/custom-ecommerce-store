@@ -1,102 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { Receipt, SearchX } from "lucide-react";
+import { Receipt } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
-import { buttonClass, Card, inputClass, LinkButton, Notice, PageHeader } from "@/components/ui";
+import { Card, inputClass, LinkButton, PageHeader } from "@/components/ui";
 import { OrderTotals } from "@/components/storefront/OrderSummary";
 import { ORDER_STATUSES, paymentMethodLabel } from "@/lib/config";
 import { updateOrderStatus } from "@/lib/demo-db";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { OrderStatus } from "@/lib/types";
 import { useSelectedStore } from "./StoreContext";
-
-export function OrdersListView() {
-  const { store, data } = useSelectedStore();
-  const [status, setStatus] = useState<OrderStatus | "">("");
-  const base = `/admin/stores/${store.id}`;
-  const orders = [...data.orders]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .filter((o) => !status || o.status === status);
-
-  return (
-    <>
-      <PageHeader
-        title="Orders"
-        description={`Demo orders placed in ${store.name}'s storefront.`}
-        breadcrumbs={[
-          { label: "Client stores", href: "/admin/stores" },
-          { label: store.name, href: base },
-          { label: "Orders" },
-        ]}
-      />
-      <Notice className="mb-5">
-        All orders here are demo data saved in this browser. No payments were taken and nothing is
-        sent to a real business or courier.
-      </Notice>
-
-      {data.orders.length === 0 ? (
-        <EmptyState
-          icon={Receipt}
-          title="No orders yet"
-          description={
-            store.status === "active"
-              ? "Orders appear here after a customer completes a demo checkout on this store's storefront."
-              : "This store isn't active yet, so its storefront can't take orders."
-          }
-        />
-      ) : (
-        <>
-          <div className="mb-4 flex justify-end">
-            <label htmlFor="orders-status" className="sr-only">Filter by status</label>
-            <select id="orders-status" value={status} onChange={(e) => setStatus(e.target.value as OrderStatus | "")} className={`${inputClass()} sm:w-48`}>
-              <option value="">All statuses</option>
-              {ORDER_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </div>
-          {orders.length === 0 ? (
-            <EmptyState
-              icon={SearchX}
-              title="No orders with this status"
-              action={<button type="button" className={buttonClass("secondary")} onClick={() => setStatus("")}>Show all orders</button>}
-            />
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <table className="w-full min-w-[40rem] text-left text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th scope="col" className="px-5 py-3 font-semibold">Order</th>
-                    <th scope="col" className="px-5 py-3 font-semibold">Customer</th>
-                    <th scope="col" className="px-5 py-3 font-semibold">Date</th>
-                    <th scope="col" className="px-5 py-3 text-right font-semibold">Total</th>
-                    <th scope="col" className="px-5 py-3 font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-slate-50">
-                      <td className="px-5 py-3.5">
-                        <Link href={`${base}/orders/${order.id}`} className="font-semibold text-teal-700 hover:underline">
-                          {order.orderNumber}
-                        </Link>
-                      </td>
-                      <td className="px-5 py-3.5">{order.customerName}</td>
-                      <td className="px-5 py-3.5 text-slate-600">{formatDate(order.createdAt)}</td>
-                      <td className="px-5 py-3.5 text-right font-medium tabular-nums">{formatMoney(order.total, order.currency)}</td>
-                      <td className="px-5 py-3.5"><StatusBadge status={order.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
-}
 
 export function OrderDetailView({ orderId }: { orderId: string }) {
   const { store, data } = useSelectedStore();

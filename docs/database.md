@@ -4,11 +4,47 @@ PostgreSQL + Prisma 7.
 
 **What uses the database:** the admin's store list, create store, store
 overview and settings (including archive/restore), products (list, add,
-edit, delete/archive) and categories (add, rename, reorder, delete).
+edit, delete/archive) and categories (add, rename, reorder, delete); and the
+public storefront's reads — store branding and content, categories, active
+products, prices and stock (`lib/server/storefront/catalog.ts`, which only
+ever returns ACTIVE, non-archived stores and ACTIVE products, through
+`storeScope()`); checkout's orders (`lib/server/orders.ts`, see
+[Orders](#orders)); and the admin's read-only orders list.
 
-**Still browser demo data** (`lib/demo-db.ts`, localStorage): the public
-storefront, cart and checkout, admin orders and customers, and agency
-settings. These are connected in later phases.
+**Still browser demo data** (`lib/demo-db.ts`, localStorage): the cart's item
+list (product ids and quantities only — never prices), admin customers,
+agency settings and old demo order details. These are connected in later
+phases.
+
+## Orders
+
+Checkout calls `placeOrderAction` (`app/(storefront)/actions.ts`), which
+resolves the store on the server (store cookie or configured default, ACTIVE
+only) and calls `placeOrder()`:
+
+* **Nothing about money, stock or ownership is trusted from the browser.**
+  Prices, delivery and totals are recalculated from the database in the
+  store's currency (minor units). The browser sends the total it showed only
+  so the server can refuse the order if it differs; the cart's storeId is
+  only compared with the resolved store.
+* **One transaction** holds every write: stock decrements, customer, order
+  number, order and items. Any failure rolls all of it back.
+* **No overselling.** The transaction locks the store row first
+  (`SELECT … FOR UPDATE`), so orders for one store are placed one at a
+  time; stock is reduced with a conditional update (`stock >= quantity`),
+  and the database's `stock >= 0` CHECK is a second safety net.
+* **Idempotency.** Each checkout attempt sends a random key. A repeat with
+  the same key returns the first order (only if the request is identical,
+  compared by a SHA-256 fingerprint); `@@unique([storeId, idempotencyKey])`
+  is the final backstop.
+* **Payment.** Only `cash_on_delivery` and `bank_transfer`, and only if the
+  store enabled them; every order starts `status PENDING` and
+  `paymentStatus UNPAID`.
+* **Rate limit** before any lookup: 10 per 10 minutes per store and IP,
+  40 per 10 minutes per store for visitors without a trusted IP.
+* Customers are created once per store and email and never overwritten from
+  the public form; each order keeps its own copy of the submitted details.
+* Adding to the cart never reserves stock.
 
 ## Admin data flow
 
@@ -195,8 +231,11 @@ so later migrations leave them in place (verified: a follow-up
   **secrets are never stored in the database**: `secretRef` points to a
   secret manager or environment variable.
 * Language switcher UI and right-to-left layout.
-* Domain routing; moving the admin and storefront from localStorage to
-  the database; importing any data saved in browsers.
+* Domain routing (the storefront's store choice is a temporary cookie plus a
+  configured default); order management (status changes, cancellation and
+  refunds with stock restored, payment confirmation, emails); moving admin
+  customers from localStorage to the database; importing any data saved in
+  browsers.
 * Data-residency rules differ by country (e.g. GDPR, Saudi PDPL); this
   phase uses a single database.
 

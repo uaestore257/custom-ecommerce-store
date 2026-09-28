@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
-import { OrdersListView } from "@/components/admin/OrdersViews";
-import { DemoStoreData } from "@/components/admin/StoreContext";
+import { notFound } from "next/navigation";
+import { DbOrdersList } from "@/components/admin/DbOrdersList";
+import { listAdminOrders } from "@/lib/server/admin/orders";
 import { requireAdminPage } from "@/lib/server/admin/request";
+import { getAdminStore } from "@/lib/server/admin/stores";
 
 export const metadata: Metadata = { title: "Orders" };
 
-// Orders still use browser demo data (not connected to the database yet).
-export default async function OrdersPage() {
-  await requireAdminPage();
-  return (
-    <DemoStoreData area="orders">
-      <OrdersListView />
-    </DemoStoreData>
-  );
+// Read-only list of this store's orders from the database. Only the
+// signed-in platform owner reaches it (requireAdminPage), and only the
+// store in the URL is read.
+export default async function OrdersPage({ params }: PageProps<"/admin/stores/[storeId]/orders">) {
+  const { storeId } = await params;
+  const { db: client } = await requireAdminPage();
+  const [store, orders] = await Promise.all([getAdminStore(client, storeId), listAdminOrders(client, storeId)]);
+  if (!store || !orders) notFound();
+  return <DbOrdersList orders={orders} storeName={store.name} />;
 }

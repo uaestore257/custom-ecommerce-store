@@ -38,8 +38,11 @@ export function isAdminPath(pathname: string) {
 // matcher, which excludes _next/static from these checks entirely).
 // ---------------------------------------------------------------
 
-/** Pages whose Server Actions are intentionally public (no session needed). */
-const PUBLIC_ACTION_PATHS = ["/contact"];
+/**
+ * Pages whose Server Actions are intentionally public (no session needed):
+ * the contact form and checkout (app/(storefront)/actions.ts).
+ */
+const PUBLIC_ACTION_PATHS = ["/contact", "/checkout"];
 
 /** Whether pathname may carry a Server Action off ADMIN_HOST. */
 export function isPublicActionPath(pathname: string) {

@@ -1,42 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { PackageX } from "lucide-react";
-import { EmptyState } from "@/components/EmptyState";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { ProductImage } from "@/components/ProductImage";
-import { Breadcrumbs, LinkButton } from "@/components/ui";
-import { categoryName } from "@/lib/demo-db";
-import { formatMoney, isOnSale } from "@/lib/format";
+import { Breadcrumbs } from "@/components/ui";
 import { useStorefront } from "@/lib/storefront";
+import { categoryNameOf, formatStoreMoney, isProductOnSale } from "@/lib/storefront-cart";
+import type { StorefrontProduct } from "@/lib/storefront-types";
 import { AddToCartButton, QuantitySelector } from "./CartControls";
 import { PRODUCT_GRID, ProductCard } from "./ProductCard";
 
-export function ProductView({ productId }: { productId: string }) {
+/**
+ * @param product a fresh read of this product from the server page (the
+ * page returns a real 404 for missing, draft or other-store products).
+ */
+export function ProductView({ product }: { product: StorefrontProduct }) {
   const view = useStorefront();
+  const router = useRouter();
   const [quantity, setQuantity] = useState(1);
+
+  // The shared layout's catalog (used by the cart) is not re-fetched on
+  // every navigation. If it is older than this fresh product read, refresh
+  // it so the page and the cart can never show different prices or stock.
+  const catalogCopy = view?.products.find((p) => p.id === product.id);
+  const catalogIsStale =
+    !catalogCopy || catalogCopy.priceMinor !== product.priceMinor || catalogCopy.stock !== product.stock;
+  useEffect(() => {
+    if (catalogIsStale) router.refresh();
+  }, [catalogIsStale, router]);
+
   if (!view) return null;
-  const { store, data, products, cartLines } = view;
+  const { store, categories, products, cart } = view;
 
-  // Only products of the store being shown can be found here.
-  const product = products.find((p) => p.id === productId);
-
-  if (!product) {
-    return (
-      <main className="mx-auto max-w-xl px-4 py-20 sm:px-6">
-        <EmptyState
-          icon={PackageX}
-          title="Product not found"
-          description={`We couldn't find this product in ${store.name}. It may have been removed or the link may be wrong.`}
-          action={<LinkButton href="/shop" tone="brand">Back to shop</LinkButton>}
-        />
-      </main>
-    );
-  }
-
-  const category = categoryName(data, product.categoryId);
-  const onSale = isOnSale(product);
-  const inCart = cartLines.find((l) => l.product.id === product.id)?.quantity ?? 0;
+  const category = categoryNameOf(categories, product.categoryId);
+  const onSale = isProductOnSale(product);
+  const inCart = cart.lines.find((l) => l.product.id === product.id)?.quantity ?? 0;
   const available = Math.max(0, product.stock - inCart);
   const safeQuantity = Math.min(quantity, Math.max(1, available));
   const related = products
@@ -49,7 +48,9 @@ export function ProductView({ productId }: { productId: string }) {
         items={[
           { label: "Home", href: "/" },
           { label: "Shop", href: "/shop" },
-          { label: category, href: `/shop?category=${encodeURIComponent(product.categoryId)}` },
+          ...(product.categoryId
+            ? [{ label: category, href: `/shop?category=${encodeURIComponent(product.categoryId)}` }]
+            : []),
           { label: product.name },
         ]}
       />
@@ -76,21 +77,23 @@ export function ProductView({ productId }: { productId: string }) {
           <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:mt-3">
             <p className="text-2xl font-semibold text-brand">
               {onSale && <span className="sr-only">Sale price </span>}
-              {formatMoney(product.price, store.settings.currency)}
+              {formatStoreMoney(store, product.priceMinor)}
             </p>
-            {onSale && (
+            {onSale && product.compareAtMinor && (
               <>
                 <p className="text-base text-slate-400 line-through">
                   <span className="sr-only">Original price </span>
-                  {formatMoney(product.compareAtPrice!, store.settings.currency)}
+                  {formatStoreMoney(store, product.compareAtMinor)}
                 </p>
                 <p className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
-                  Save {formatMoney(product.compareAtPrice! - product.price, store.settings.currency)}
+                  Save {formatStoreMoney(store, BigInt(product.compareAtMinor) - BigInt(product.priceMinor))}
                 </p>
               </>
             )}
           </div>
-          <p className="mt-4 leading-relaxed text-slate-600 sm:mt-6">{product.description}</p>
+          {product.description && (
+            <p className="mt-4 whitespace-pre-line leading-relaxed text-slate-600 sm:mt-6">{product.description}</p>
+          )}
 
           <dl className="mt-5 grid grid-cols-2 gap-4 sm:mt-6 border-y border-slate-200 py-4 text-sm">
             <div>
@@ -104,6 +107,11 @@ export function ProductView({ productId }: { productId: string }) {
               </dd>
             </div>
           </dl>
+          {product.stock > 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              Stock is not reserved while items are in your cart.
+            </p>
+          )}
 
           {product.stock > 0 && (
             <div className="mt-5 flex items-center gap-3 sm:mt-6">
@@ -137,10 +145,9 @@ export function ProductView({ productId }: { productId: string }) {
               <ProductCard
                 key={p.id}
                 product={p}
-                shownStoreId={store.id}
+                store={store}
                 categoryName={category}
-                currency={store.settings.currency}
-                inCart={cartLines.find((l) => l.product.id === p.id)?.quantity ?? 0}
+                inCart={cart.lines.find((l) => l.product.id === p.id)?.quantity ?? 0}
               />
             ))}
           </div>
