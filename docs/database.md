@@ -4,11 +4,16 @@ PostgreSQL + Prisma 7.
 
 **What uses the database:** the admin's store list, create store, store
 overview and settings (including archive/restore), products (list, add,
-edit, delete/archive) and categories (add, rename, reorder, delete).
+edit, delete/archive) and categories (add, rename, reorder, delete); and the
+public storefront's reads — store branding and content, categories, active
+products, prices and stock (`lib/server/storefront/catalog.ts`, which only
+ever returns ACTIVE, non-archived stores and ACTIVE products, through
+`storeScope()`).
 
-**Still browser demo data** (`lib/demo-db.ts`, localStorage): the public
-storefront, cart and checkout, admin orders and customers, and agency
-settings. These are connected in later phases.
+**Still browser demo data** (`lib/demo-db.ts`, localStorage): the cart's item
+list (product ids and quantities only — never prices), demo checkout orders,
+admin orders and customers, and agency settings. These are connected in later
+phases.
 
 ## Admin data flow
 
@@ -195,8 +200,10 @@ so later migrations leave them in place (verified: a follow-up
   **secrets are never stored in the database**: `secretRef` points to a
   secret manager or environment variable.
 * Language switcher UI and right-to-left layout.
-* Domain routing; moving the admin and storefront from localStorage to
-  the database; importing any data saved in browsers.
+* Domain routing (the storefront's store choice is a temporary cookie plus a
+  configured default); real, server-checked orders and stock reservation;
+  moving admin orders and customers from localStorage to the database;
+  importing any data saved in browsers.
 * Data-residency rules differ by country (e.g. GDPR, Saudi PDPL); this
   phase uses a single database.
 

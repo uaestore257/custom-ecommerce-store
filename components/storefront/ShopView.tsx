@@ -4,17 +4,24 @@ import { useState } from "react";
 import { Search, SearchX } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { buttonClass, inputClass } from "@/components/ui";
-import { categoryName } from "@/lib/demo-db";
 import { useStorefront } from "@/lib/storefront";
-import type { Product } from "@/lib/types";
+import { categoryNameOf } from "@/lib/storefront-cart";
+import type { StorefrontProduct } from "@/lib/storefront-types";
 import { PRODUCT_GRID, ProductCard } from "./ProductCard";
 
 type Sort = "featured" | "price-asc" | "price-desc" | "name-asc" | "name-desc";
 
-const sorters: Record<Sort, (a: Product, b: Product) => number> = {
+// Prices are exact minor-unit strings: compare them as BigInt, never as floats.
+function comparePrice(a: StorefrontProduct, b: StorefrontProduct) {
+  const x = BigInt(a.priceMinor);
+  const y = BigInt(b.priceMinor);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+const sorters: Record<Sort, (a: StorefrontProduct, b: StorefrontProduct) => number> = {
   featured: (a, b) => Number(b.featured) - Number(a.featured),
-  "price-asc": (a, b) => a.price - b.price,
-  "price-desc": (a, b) => b.price - a.price,
+  "price-asc": comparePrice,
+  "price-desc": (a, b) => comparePrice(b, a),
   "name-asc": (a, b) => a.name.localeCompare(b.name),
   "name-desc": (a, b) => b.name.localeCompare(a.name),
 };
@@ -26,10 +33,10 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
   const [sort, setSort] = useState<Sort>("featured");
 
   if (!view) return null;
-  const { store, data, products, cartLines } = view;
+  const { store, categories, products, cart } = view;
 
   // Ignore a category from the URL that does not exist in this store.
-  const activeCategory = data.categories.some((c) => c.id === category) ? category : "";
+  const activeCategory = categories.some((c) => c.id === category) ? category : "";
   const q = query.trim().toLowerCase();
   const results = products
     .filter((p) => !activeCategory || p.categoryId === activeCategory)
@@ -84,7 +91,7 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
         aria-label="Filter by category"
         className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
       >
-        {[{ id: "", name: "All" }, ...data.categories].map((c) => {
+        {[{ id: "", name: "All" }, ...categories].map((c) => {
           const active = activeCategory === c.id;
           return (
             <button
@@ -134,10 +141,9 @@ export function ShopView({ initialCategory = "" }: { initialCategory?: string })
             <li key={product.id} className="min-w-0">
               <ProductCard
                 product={product}
-                shownStoreId={store.id}
-                categoryName={categoryName(data, product.categoryId)}
-                currency={store.settings.currency}
-                inCart={cartLines.find((l) => l.product.id === product.id)?.quantity ?? 0}
+                store={store}
+                categoryName={categoryNameOf(categories, product.categoryId)}
+                inCart={cart.lines.find((l) => l.product.id === product.id)?.quantity ?? 0}
               />
             </li>
           ))}

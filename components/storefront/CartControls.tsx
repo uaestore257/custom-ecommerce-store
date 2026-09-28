@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Minus, Plus, ShoppingCart } from "lucide-react";
 import { buttonClass } from "@/components/ui";
 import { addToCart } from "@/lib/storefront";
-import type { Product } from "@/lib/types";
+import type { StorefrontProduct } from "@/lib/storefront-types";
 
 export function QuantitySelector({
   value,
@@ -61,7 +61,7 @@ export function AddToCartButton({
   compact = false,
   className = "",
 }: {
-  product: Product;
+  product: StorefrontProduct;
   shownStoreId: string;
   quantity?: number;
   /** How many of this product are already in the cart. */

@@ -86,12 +86,6 @@ export interface Product {
   featured: boolean;
 }
 
-export interface CartItem {
-  storeId: string;
-  productId: string;
-  quantity: number;
-}
-
 export type OrderStatus =
   | "pending"
   | "processing"

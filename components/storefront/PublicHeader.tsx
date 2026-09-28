@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Menu, ShoppingCart, X } from "lucide-react";
 import { StoreLogo } from "@/components/StoreLogo";
-import type { Store } from "@/lib/types";
+import type { StorefrontStore } from "@/lib/storefront-types";
 
 const navLinks = [
   { label: "Home", href: "/" },
@@ -19,7 +19,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function PublicHeader({ store, cartCount }: { store: Store; cartCount: number }) {
+export function PublicHeader({ store, cartCount }: { store: StorefrontStore; cartCount: number }) {
   const pathname = usePathname();
   const [openFor, setOpenFor] = useState<string | null>(null);
   // The mobile menu closes automatically when the page changes.

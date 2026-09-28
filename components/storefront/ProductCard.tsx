@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ProductImage } from "@/components/ProductImage";
-import { formatMoney, isOnSale } from "@/lib/format";
-import type { CurrencyCode, Product } from "@/lib/types";
+import { formatStoreMoney, isProductOnSale } from "@/lib/storefront-cart";
+import type { StorefrontProduct, StorefrontStore } from "@/lib/storefront-types";
 import { AddToCartButton } from "./CartControls";
 
 /**
@@ -15,19 +15,17 @@ export const PRODUCT_GRID =
 export function ProductCard({
   product,
   categoryName,
-  currency,
+  store,
   inCart,
-  shownStoreId,
 }: {
-  product: Product;
-  /** The store the storefront is showing (guards against mixing stores). */
-  shownStoreId: string;
+  product: StorefrontProduct;
+  /** The store the storefront is showing (guards against mixing stores, formats money). */
+  store: StorefrontStore;
   categoryName: string;
-  currency: CurrencyCode;
   inCart: number;
 }) {
   const href = `/products/${product.id}`;
-  const onSale = isOnSale(product);
+  const onSale = isProductOnSale(product);
   const soldOut = product.stock <= 0;
 
   return (
@@ -59,12 +57,12 @@ export function ProductCard({
         <div className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <p className="whitespace-nowrap text-sm font-bold text-brand sm:text-base">
             {onSale && <span className="sr-only">Sale price </span>}
-            {formatMoney(product.price, currency)}
+            {formatStoreMoney(store, product.priceMinor)}
           </p>
-          {onSale && (
+          {onSale && product.compareAtMinor && (
             <p className="whitespace-nowrap text-xs text-slate-400 line-through sm:text-sm">
               <span className="sr-only">Original price </span>
-              {formatMoney(product.compareAtPrice!, currency)}
+              {formatStoreMoney(store, product.compareAtMinor)}
             </p>
           )}
         </div>
@@ -74,7 +72,7 @@ export function ProductCard({
 
         <AddToCartButton
           product={product}
-          shownStoreId={shownStoreId}
+          shownStoreId={store.id}
           inCart={inCart}
           compact
           className="mt-auto pt-2.5 sm:pt-3"

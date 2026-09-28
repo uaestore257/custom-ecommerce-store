@@ -5,9 +5,9 @@ import { RotateCcw } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { LoadingState } from "@/components/EmptyState";
 import { buttonClass, Card, errorProps, Field, inputClass, Notice, PageHeader } from "@/components/ui";
-import { COUNTRIES, CURRENCIES, DEFAULT_STOREFRONT_STORE_ID } from "@/lib/config";
+import { COUNTRIES, CURRENCIES } from "@/lib/config";
 import { resetDemoData, updateAgency, useDemoState } from "@/lib/demo-db";
-import { switchStorefrontStore } from "@/lib/storefront";
+import { resetStorefrontStore } from "@/lib/storefront";
 import type { AgencySettings } from "@/lib/types";
 import { hasErrors, isEmail, type FieldErrors } from "@/lib/validation";
 
@@ -42,7 +42,7 @@ export function AgencySettingsView() {
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => {
           resetDemoData();
-          switchStorefrontStore(DEFAULT_STOREFRONT_STORE_ID);
+          resetStorefrontStore();
           setConfirmReset(false);
           setResetCount((n) => n + 1);
         }}

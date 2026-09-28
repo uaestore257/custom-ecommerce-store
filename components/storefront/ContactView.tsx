@@ -25,7 +25,6 @@ export function ContactView() {
   const [isPending, startTransition] = useTransition();
   if (!view) return null;
   const { store } = view;
-  const { settings } = store;
 
   function update(key: keyof ContactForm, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -64,24 +63,24 @@ export function ContactView() {
 
       <div className="mt-10 grid gap-10 md:grid-cols-[2fr_3fr]">
         <ul className="space-y-4">
-          {settings.contactEmail && (
+          {store.contactEmail && (
             <ContactItem icon={Mail} label="Email">
-              <a href={`mailto:${settings.contactEmail}`} className="hover:text-brand hover:underline">
-                {settings.contactEmail}
+              <a href={`mailto:${store.contactEmail}`} className="hover:text-brand hover:underline">
+                {store.contactEmail}
               </a>
             </ContactItem>
           )}
-          {settings.contactPhone && (
+          {store.contactPhone && (
             <ContactItem icon={Phone} label="Phone">
-              <a href={`tel:${settings.contactPhone.replace(/\s/g, "")}`} className="hover:text-brand hover:underline">
-                {settings.contactPhone}
+              <a href={`tel:${store.contactPhone.replace(/\s/g, "")}`} className="hover:text-brand hover:underline">
+                {store.contactPhone}
               </a>
             </ContactItem>
           )}
-          {settings.contactAddress && (
-            <ContactItem icon={MapPin} label="Address">{settings.contactAddress}</ContactItem>
+          {store.contactAddress && (
+            <ContactItem icon={MapPin} label="Address">{store.contactAddress}</ContactItem>
           )}
-          {!settings.contactEmail && !settings.contactPhone && !settings.contactAddress && (
+          {!store.contactEmail && !store.contactPhone && !store.contactAddress && (
             <li className="text-sm text-slate-500">Contact details have not been added yet.</li>
           )}
         </ul>
