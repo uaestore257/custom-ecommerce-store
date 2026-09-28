@@ -2,8 +2,15 @@
 // STORE CONTACT INQUIRY — validation shared by the Contact form and the
 // server. The server ALWAYS re-validates: this takes untrusted input
 // (anything a browser could POST) and returns either clean values or
-// field errors. Unknown fields (e.g. a storeId smuggled into the form)
-// are ignored — the store always comes from the route, not from input.
+// field errors. Only name/email/subject/message are read here — an
+// unknown field (e.g. a storeId placed in this same object) is simply
+// not one of the keys this function looks at.
+//
+// The store itself is NOT handled here and is NOT server-derived: it is
+// a caller-supplied Server Action argument (see
+// app/(storefront)/actions.ts), which lib/server/inquiries.ts
+// re-validates against the database — see that file's comment on
+// submitInquiry() for the full trust-boundary explanation.
 // ---------------------------------------------------------------
 import { isEmail } from "./validation";
 
@@ -41,7 +48,7 @@ export function validateInquiry(input: unknown): { values: CleanInquiry; errors:
   const values: CleanInquiry = {
     name: str(raw, "name"),
     email: str(raw, "email"),
-    subject: str(raw, "subject").slice(0, INQUIRY_LIMITS.subject),
+    subject: str(raw, "subject"),
     message: str(raw, "message"),
   };
   const errors: InquiryFieldErrors = {

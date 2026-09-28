@@ -112,7 +112,10 @@ These parts are **not** implemented and need a backend:
   payment" can't be switched on because no payment provider is connected.
 - **Orders.** Demo orders are saved in this browser only. They are not sent to
   a store, courier or email inbox, and payment is never confirmed.
-- **Contact form.** It checks the fields but doesn't send or save anything.
+- **Contact form.** Messages are validated and rate-limited on the server and
+  saved to the database for that store, but there is no admin page to read
+  them yet and no email is sent. The store is chosen by the visitor's browser,
+  not yet by domain.
 - **Domains.** The domain field is just a setting. Nothing is registered, no
   DNS is changed and nothing is deployed.
 - **Template versioning.** There is none. Every store uses the current code.

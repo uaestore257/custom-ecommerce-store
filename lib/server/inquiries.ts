@@ -32,7 +32,8 @@ import { withinRateLimit } from "./rate-limit";
 //      exists, storeId for a new public action must be derived from the
 //      resolved domain SERVER-SIDE, not accepted as a caller argument —
 //      otherwise it becomes a genuine tenant-isolation gap (see
-//      tests/db/inquiries.test.ts, "a visitor can direct a message...").
+//      tests/db/inquiries.test.ts, "storeId is trusted once it names a
+//      real, active store...").
 //   2. input is re-validated on the server (validateInquiry),
 //   3. a per-store rate limit curbs spam: per-IP when a trusted IP is
 //      available, otherwise a coarser shared-per-store bucket so
@@ -40,6 +41,31 @@ import { withinRateLimit } from "./rate-limit";
 //      in lib/server/auth/auth.ts, which uses one shared bucket rather
 //      than skipping its rate limit when it can't resolve an IP). This
 //      is not a security boundary (see lib/server/rate-limit.ts).
+//
+// The rate limit runs FIRST, before the store lookup and before
+// validateInquiry(): a request with invalid input, or one naming a
+// missing/inactive store, still consumes the same budget as a valid
+// one. Checking it only after those steps (an earlier version of this
+// file did) let either kind of request bypass the limiter completely,
+// which both let it flood this store lookup unthrottled and made the
+// two different failure messages an unthrottled way to probe which
+// storeIds are real and active. The key is built from the CALLER-
+// SUPPLIED storeId (not yet the DB-confirmed one — that only exists
+// after the lookup below), bounded to 64 chars: identical to the
+// eventual store.id when the store is real (a lookup by id returns a
+// row whose id equals what you searched for), and a safe, short key
+// when it is not. The 64-char bound matters here because
+// RateLimit.key has no column length limit (prisma/schema.prisma) and
+// this codebase's only caller (app/(storefront)/actions.ts) already
+// enforces that bound before calling this function — but this function
+// documents itself as the actual trust boundary, so it must not quietly
+// depend on that; without its own bound, a future or different caller
+// passing an oversized storeId could build a key large enough to trip
+// Postgres's per-index-row size limit and throw. This does NOT bound
+// enumeration across MANY DIFFERENT storeId values from one IP — each
+// gets its own budget under this per-store key design, which remains a
+// known, separate, already-documented tradeoff (see the note on
+// storeId trust above), not something this ordering fix addresses.
 // ---------------------------------------------------------------
 
 // 5 messages / 10 min / store / IP — the normal case, once a trusted IP
@@ -59,6 +85,13 @@ export async function submitInquiry(
   input: unknown,
   context: { ipAddress: string | null },
 ): Promise<ActionResult<{ id: string }>> {
+  const boundedStoreId = storeId.slice(0, 64);
+  const [key, limit] = context.ipAddress
+    ? [`inquiry:${boundedStoreId}:${context.ipAddress}`, IP_RATE_LIMIT]
+    : [`inquiry:${boundedStoreId}:shared`, SHARED_RATE_LIMIT];
+  const allowed = await withinRateLimit(client, key, limit);
+  if (!allowed) return fail(TOO_MANY);
+
   const store = await client.store.findFirst({
     where: { id: storeId, archivedAt: null, status: "ACTIVE" },
     select: { id: true },
@@ -67,12 +100,6 @@ export async function submitInquiry(
 
   const { values, errors } = validateInquiry(input);
   if (hasErrors(errors)) return fail("Please fix the highlighted fields.", errors);
-
-  const [key, limit] = context.ipAddress
-    ? [`inquiry:${store.id}:${context.ipAddress}`, IP_RATE_LIMIT]
-    : [`inquiry:${store.id}:shared`, SHARED_RATE_LIMIT];
-  const allowed = await withinRateLimit(client, key, limit);
-  if (!allowed) return fail(TOO_MANY);
 
   const inquiry = await client.inquiry.create({
     data: {

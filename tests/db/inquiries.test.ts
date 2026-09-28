@@ -96,11 +96,74 @@ test("a missing store refuses the message", async () => {
   assert.equal(result.ok, false);
 });
 
+test("repeated invalid submissions to the same store+IP are eventually rate limited, not left unthrottled", async () => {
+  const ip = `7.7.1.${uid()}`;
+  const invalid = validInput({ email: "not-an-email" });
+  for (let i = 0; i < 5; i++) {
+    const r = await submitInquiry(db, activeStore, invalid, { ipAddress: ip });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.ok(r.fieldErrors?.email, "still a normal validation error while under the limit");
+  }
+  const sixth = await submitInquiry(db, activeStore, invalid, { ipAddress: ip });
+  assert.equal(sixth.ok, false);
+  if (!sixth.ok) assert.match(sixth.error, /too many/i, "the 6th attempt is rate limited, not another validation error");
+});
+
+test("repeated probes against a missing store are eventually rate limited, not left unthrottled", async () => {
+  const ip = `7.7.2.${uid()}`;
+  const missingStore = `missing-${uid()}`;
+  for (let i = 0; i < 5; i++) {
+    const r = await submitInquiry(db, missingStore, validInput(), { ipAddress: ip });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.match(r.error, /isn.t accepting messages/i, "still the normal store-unavailable message while under the limit");
+  }
+  const sixth = await submitInquiry(db, missingStore, validInput(), { ipAddress: ip });
+  assert.equal(sixth.ok, false);
+  if (!sixth.ok) assert.match(sixth.error, /too many/i, "the 6th attempt is rate limited, not another store-unavailable message");
+});
+
+test("an invalid submission and a missing-store probe against the same claimed store+IP share one budget", async () => {
+  // Proves the fix directly: whichever check would have failed (rate
+  // limit only cares about storeId+IP, not about which store, if any,
+  // that id names), attempts are counted on ONE shared counter per
+  // (claimed storeId, IP) — not reset by switching which kind of
+  // request is sent.
+  const ip = `7.7.3.${uid()}`;
+  const claimedStore = `missing-${uid()}`; // never a real store in this test
+  const r1 = await submitInquiry(db, claimedStore, validInput(), { ipAddress: ip }); // store-unavailable
+  const r2 = await submitInquiry(db, claimedStore, validInput({ message: "short" }), { ipAddress: ip }); // would-be validation error, but store check runs first
+  const r3 = await submitInquiry(db, claimedStore, validInput(), { ipAddress: ip });
+  const r4 = await submitInquiry(db, claimedStore, validInput(), { ipAddress: ip });
+  const r5 = await submitInquiry(db, claimedStore, validInput(), { ipAddress: ip });
+  for (const r of [r1, r2, r3, r4, r5]) assert.equal(r.ok, false);
+  const sixth = await submitInquiry(db, claimedStore, validInput(), { ipAddress: ip });
+  assert.equal(sixth.ok, false);
+  if (!sixth.ok) assert.match(sixth.error, /too many/i);
+});
+
 test("an archived store refuses the message even though it still exists", async () => {
   const archivable = await makeStore("ACTIVE");
   await db.store.update({ where: { id: archivable }, data: { archivedAt: new Date() } });
   const result = await submitInquiry(db, archivable, validInput(), { ipAddress: `1.1.6.${uid()}` });
   assert.equal(result.ok, false);
+});
+
+test("an oversized storeId (bypassing the Server Action wrapper's own format check) still rate limits safely, without crashing", async () => {
+  // submitInquiry() documents itself as the actual trust boundary, so it
+  // must not silently depend on its only current caller
+  // (app/(storefront)/actions.ts) having already bounded storeId's
+  // length. RateLimit.key has no column length limit, so an unbounded
+  // key built from a huge storeId could otherwise trip Postgres's
+  // per-index-row size limit.
+  const ip = `7.7.4.${uid()}`;
+  const hugeStoreId = "x".repeat(5000);
+  for (let i = 0; i < 5; i++) {
+    const r = await submitInquiry(db, hugeStoreId, validInput(), { ipAddress: ip });
+    assert.equal(r.ok, false);
+  }
+  const sixth = await submitInquiry(db, hugeStoreId, validInput(), { ipAddress: ip });
+  assert.equal(sixth.ok, false);
+  if (!sixth.ok) assert.match(sixth.error, /too many/i);
 });
 
 test("the same store+IP is rate limited after too many messages", async () => {
