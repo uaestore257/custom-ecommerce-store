@@ -1,5 +1,5 @@
 import "server-only";
-import { normalizeHost } from "@/lib/auth/constants";
+import { isValidIpHeaderName, normalizeHost } from "@/lib/auth/constants";
 
 // ---------------------------------------------------------------
 // Authentication settings from the environment (see .env.example).
@@ -49,7 +49,7 @@ export function readAuthEnv(env: NodeJS.ProcessEnv = process.env): AuthEnv {
   }
 
   const header = env.TRUSTED_IP_HEADER?.trim().toLowerCase() || null;
-  if (header && !/^[a-z0-9-]+$/.test(header)) throw new AuthConfigError("TRUSTED_IP_HEADER must be a single header name.");
+  if (header && !isValidIpHeaderName(header)) throw new AuthConfigError("TRUSTED_IP_HEADER must be a single header name.");
 
   return { secret, baseURL: url.origin, adminHost, trustedIpHeader: header, production };
 }

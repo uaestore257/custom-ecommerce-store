@@ -3,12 +3,15 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
 // ---------------------------------------------------------------
-// The two request-scoped Next.js APIs the admin needs: the incoming
-// request headers (to read the sign-in session) and page revalidation.
-// Both only work inside a Next.js request. Database tests replace them
-// with setRequestRuntimeForTests() so they can call the real Server
-// Actions with a real Better Auth session cookie. That replacement is
-// refused in production.
+// Request-scoped Next.js APIs used outside a request context in tests:
+// headers() (read by both admin actions, for the sign-in session, and
+// the public storefront action, for the trusted-IP header) and
+// revalidateAdmin() (admin-only page revalidation). Both only work
+// inside a real Next.js request. Database tests replace them with
+// setRequestRuntimeForTests() so they can call the real Server Actions
+// — with a real Better Auth session cookie for admin actions, or with a
+// synthetic IP header for the public one. That replacement is refused
+// in production.
 // ---------------------------------------------------------------
 
 export interface RequestRuntime {
