@@ -19,6 +19,19 @@ export function isStoreIdCookieValue(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 64 && /^[A-Za-z0-9_-]+$/.test(value);
 }
 
+/** The store cookie's value from a raw Cookie header (server side), or undefined. */
+export function storeIdFromCookieHeader(header: string | null | undefined): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === STOREFRONT_STORE_COOKIE) {
+      const value = rest.join("=");
+      return isStoreIdCookieValue(value) ? value : undefined;
+    }
+  }
+  return undefined;
+}
+
 /** Browser only. Ignores anything that isn't a plausible store id. */
 export function setStorefrontStoreCookie(storeId: string) {
   if (!isStoreIdCookieValue(storeId)) return;

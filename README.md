@@ -6,10 +6,12 @@ TypeScript and Tailwind CSS.
 > **Partly connected to a database.** The admin's **stores, products and
 > categories** are stored in PostgreSQL ([Database](#database-phase-1)), and
 > the public storefront reads them from there (active stores and products
-> only). The admin requires signing in as the platform owner
-> ([docs/authentication.md](docs/authentication.md)). Checkout, orders,
-> customers and agency settings still use sample data saved in the browser's
-> `localStorage`. There is no payment provider, email or domain/DNS
+> only). Checkout places real orders in the database (cash on delivery or
+> bank transfer, always unpaid until the store handles payment), and the
+> admin lists each store's orders read-only. The admin requires signing in as
+> the platform owner ([docs/authentication.md](docs/authentication.md)).
+> Admin customers and agency settings still use sample data saved in the
+> browser's `localStorage`. There is no payment provider, email or domain/DNS
 > integration. See [Demo limitations](#demo-limitations).
 
 ## Getting started
@@ -98,7 +100,10 @@ host. Set real platform contact details in `PLATFORM_CONTACT` in
 | --- | --- |
 | `lib/types.ts` | Demo data model: `Store`, `StoreSettings`, `Product`, `Category`, `Order`, `Customer` |
 | `lib/demo-data.ts` | Sample data for the three demo stores (also the database seed) |
-| `lib/demo-db.ts` | Browser demo data: admin orders, customers, agency settings and demo checkout orders |
+| `lib/demo-db.ts` | Browser demo data: admin customers, agency settings and legacy demo order details |
+| `lib/checkout.ts` | Checkout input validation (shared by the form and the server) and the order result shape |
+| `lib/server/orders.ts` | Server-side order placement: re-validation, atomic stock, idempotency |
+| `lib/server/admin/orders.ts` | The admin's read-only orders list (one store at a time) |
 | `lib/server/storefront/catalog.ts` | Public storefront reads from the database (active stores/products only) and the store choice |
 | `lib/storefront-types.ts` | Plain data shapes the storefront receives (money as exact minor units) |
 | `lib/storefront-cart.ts` | Cart maths: current prices, stock caps, change detection, totals (pure, tested) |
@@ -122,22 +127,29 @@ These parts are **not** implemented and need a backend:
   ([docs/authentication.md](docs/authentication.md)). Store owners,
   invitations and store-level permissions arrive in Phase 2b. The admin is
   served only on `ADMIN_HOST` (locally <http://admin.localhost:3000>).
-- **Checkout is still a demo.** The storefront shows real database products
-  and prices, but checkout only saves a labelled demo order in your browser:
-  nothing is sent to the store, no stock is reserved or reduced, and prices
-  are not re-checked on the server when the demo order is placed. Admin
-  orders, customers and agency settings are still browser demo data.
+- **Orders are placed, but not yet managed.** Checkout creates a real order in
+  the database: the server re-checks the store, products, prices, delivery
+  and stock, reduces stock atomically (no overselling) and ignores repeated
+  submissions of the same checkout. Only **cash on delivery** and **bank
+  transfer** are offered; both orders start **unpaid** and nothing ever marks
+  them paid yet. The store shares bank transfer details itself — none are
+  shown. The admin can list a store's orders but can't change status, cancel
+  or refund yet (so stock is never restored), and no emails are sent. Admin
+  customers and agency settings are still browser demo data. A store without
+  a delivery rate can't take orders.
 - **Store choice is temporary.** The storefront picks a store from a browser
   cookie or the configured default, not yet from the domain name. Draft
   stores can't be previewed on the storefront yet.
-- **Payments.** Nothing is paid and no card details are collected. "Online card
-  payment" can't be switched on because no payment provider is connected.
-- **Orders.** Demo orders are saved in this browser only. They are not sent to
-  a store, courier or email inbox, and payment is never confirmed.
+- **Payments.** Nothing is paid online and no card details are collected.
+  "Online card payment" can't be switched on because no payment provider is
+  connected, and "card on delivery" isn't offered at checkout yet.
+- **Tax.** No tax is calculated; orders record the store's "prices include
+  tax" setting and a tax amount of zero.
 - **Contact form.** It checks the fields but doesn't send or save anything.
 - **Domains.** The domain field is just a setting. Nothing is registered, no
   DNS is changed and nothing is deployed.
 - **Template versioning.** There is none. Every store uses the current code.
 
-Use made-up details at checkout. To go back to the original sample data, use
-**Agency settings → Reset demo data**.
+Use made-up details when testing checkout locally. To go back to the original
+browser sample data, use **Agency settings → Reset demo data** (this does not
+touch the database).

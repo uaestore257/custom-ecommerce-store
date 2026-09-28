@@ -2,18 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 import { createSeedState, defaultCategories, defaultStoreSettings } from "./demo-data";
-import { roundMoney } from "./format";
 import { readJson, removeKeys, STORAGE_PREFIX, writeJson } from "./storage";
 import type {
   AgencySettings,
   Category,
-  CurrencyCode,
   Customer,
   DemoState,
-  Order,
-  OrderItem,
   OrderStatus,
-  PaymentMethodId,
   Product,
   Store,
   StoreData,
@@ -359,108 +354,4 @@ export function updateOrderStatus(storeId: string, orderId: string, status: Orde
 
 export function customerOrderCount(data: StoreData, customer: Customer) {
   return data.orders.filter((o) => o.customerId === customer.id).length;
-}
-
-function orderPrefix(storeName: string, orders: Order[]) {
-  // Keep using the prefix of the store's existing orders, if any.
-  const existing = orders.at(-1)?.orderNumber.split("-").slice(0, -1).join("-");
-  if (existing) return existing;
-  const letters = storeName
-    .split(/\s+/)
-    .map((word) => word.replace(/[^a-z0-9]/gi, "")[0])
-    .filter(Boolean)
-    .join("")
-    .toUpperCase()
-    .slice(0, 3);
-  return letters || "ORD";
-}
-
-export interface DemoOrderInput {
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  address: string;
-  city: string;
-  paymentMethod: PaymentMethodId;
-  items: OrderItem[];
-  deliveryFee: number;
-}
-
-/**
- * Saves a DEMO order in this browser only. Nothing is sent to the store,
- * no payment is taken and no email is delivered.
- */
-/**
- * Saves a browser-only DEMO order. The public storefront now reads real
- * stores from the database, so `storeInfo` names the store and currency
- * for stores that were never part of the browser demo data.
- */
-export function placeDemoOrder(
-  storeId: string,
-  input: DemoOrderInput,
-  storeInfo: { name: string; currency: string },
-): Order {
-  const current = getSnapshot();
-  const demoStore = findStore(current, storeId);
-  const data = getStoreData(current, storeId);
-
-  const email = input.customerEmail.trim().toLowerCase();
-  let customer = data.customers.find((c) => c.email.toLowerCase() === email);
-  const now = new Date().toISOString();
-  const customers = [...data.customers];
-  if (!customer) {
-    customer = {
-      id: makeId(`${storeId}-cus`),
-      storeId,
-      name: input.customerName.trim(),
-      email,
-      phone: input.customerPhone.trim(),
-      createdAt: now,
-    };
-    customers.push(customer);
-  }
-
-  const lastNumber = data.orders.reduce((max, o) => {
-    const n = Number(o.orderNumber.split("-").pop());
-    return Number.isFinite(n) ? Math.max(max, n) : max;
-  }, 1000);
-
-  const subtotal = roundMoney(
-    input.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
-  );
-  const order: Order = {
-    id: makeId(`${storeId}-ord`),
-    storeId,
-    orderNumber: `${orderPrefix(demoStore?.name ?? storeInfo.name, data.orders)}-${lastNumber + 1}`,
-    customerId: customer.id,
-    customerName: input.customerName.trim(),
-    customerEmail: email,
-    customerPhone: input.customerPhone.trim(),
-    address: input.address.trim(),
-    city: input.city.trim(),
-    items: input.items,
-    subtotal,
-    deliveryFee: input.deliveryFee,
-    total: roundMoney(subtotal + input.deliveryFee),
-    // Demo records keep the store's real ISO 4217 code for display.
-    currency: storeInfo.currency as CurrencyCode,
-    paymentMethod: input.paymentMethod,
-    status: "pending",
-    createdAt: now,
-    isDemo: true,
-  };
-
-  // No stock is changed: the storefront's stock lives in the database and
-  // a demo order never touches it.
-  commit(
-    {
-      ...current,
-      storeData: {
-        ...current.storeData,
-        [storeId]: { ...data, customers, orders: [...data.orders, order] },
-      },
-    },
-    { storeIds: [storeId] },
-  );
-  return order;
 }

@@ -73,7 +73,8 @@ test("host helpers", () => {
   for (const p of ["/admin", "/admin/stores/x", "/login", "/api/auth/sign-in/email"]) assert.ok(isAdminPath(p), p);
   for (const p of ["/", "/shop", "/administrator", "/loginx", "/api/other"]) assert.ok(!isAdminPath(p), p);
   assert.ok(isPublicActionPath("/contact"));
-  for (const p of ["/", "/shop", "/contactus", "/admin", "/contact/"]) assert.ok(!isPublicActionPath(p), p);
+  assert.ok(isPublicActionPath("/checkout"));
+  for (const p of ["/", "/shop", "/cart", "/contactus", "/checkout/x", "/admin", "/contact/"]) assert.ok(!isPublicActionPath(p), p);
   for (const h of ["x-real-ip", "x-forwarded-for", "cf-connecting-ip"]) assert.ok(isValidIpHeaderName(h), h);
   for (const h of ["X-Real-IP", "x real ip", "x-real-ip, x-forwarded-for", ""]) assert.ok(!isValidIpHeaderName(h), h);
 });
@@ -103,12 +104,13 @@ test("proxy: the admin is only served on ADMIN_HOST", () => {
   // A Server Action posted to some OTHER, non-allowlisted public path is
   // also refused (deny by default) — even though that path itself isn't
   // an admin path, it isn't an intentionally public action path either.
-  for (const path of ["/", "/shop", "/checkout", "/cart"]) {
+  for (const path of ["/", "/shop", "/cart", "/products/x", "/checkout/x"]) {
     assert.equal(proxy(request(`https://shop.example${path}`, "shop.example", { "next-action": "abc123" })).status, 404, path);
   }
   // The one allowlisted public action path goes through: it is not gated
   // by host, only by its own checks (e.g. submitInquiry()'s store check).
   assert.equal(proxy(request("https://shop.example/contact", "shop.example", { "next-action": "abc123" })).headers.get("x-middleware-next"), "1");
+  assert.equal(proxy(request("https://shop.example/checkout", "shop.example", { "next-action": "abc123" })).headers.get("x-middleware-next"), "1");
 
   // Admin host: signed out -> /login, with a cookie -> through (pages check it properly).
   process.env.BETTER_AUTH_URL = "https://admin.codexstore.com";

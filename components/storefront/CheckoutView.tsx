@@ -1,17 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { useRef, useState, useTransition, type FormEvent } from "react";
 import { CircleCheck, ShoppingCart } from "lucide-react";
+import { placeOrderAction } from "@/app/(storefront)/actions";
 import { EmptyState, LoadingState } from "@/components/EmptyState";
 import { buttonClass, errorProps, Field, inputClass, LinkButton, Notice } from "@/components/ui";
+import {
+  CHECKOUT_PAYMENT_METHODS,
+  validateCheckoutFields,
+  type CheckoutFieldErrors,
+  type CheckoutPaymentMethod,
+  type PlacedOrder,
+} from "@/lib/checkout";
 import { PAYMENT_METHODS, paymentMethodLabel, UAE_EMIRATES } from "@/lib/config";
-import { placeDemoOrder } from "@/lib/demo-db";
 import { clearCart, useStorefront } from "@/lib/storefront";
-import { formatStoreMoney, hasCartChanges, minorToDemoAmount, type CartSummary } from "@/lib/storefront-cart";
+import { formatStoreMoney, hasCartChanges } from "@/lib/storefront-cart";
 import type { StorefrontStore } from "@/lib/storefront-types";
-import type { Order, PaymentMethodId } from "@/lib/types";
-import { hasErrors, isEmail, isPhone, isUaePhone, type FieldErrors } from "@/lib/validation";
 import { CartChangesNotice, NOT_RESERVED_NOTE, useCatalogRefreshOnOpen } from "./CartChanges";
 import { CartTotals } from "./OrderSummary";
 
@@ -21,7 +27,7 @@ interface CheckoutForm {
   phone: string;
   address: string;
   city: string;
-  paymentMethod: PaymentMethodId | "";
+  paymentMethod: CheckoutPaymentMethod | "";
 }
 
 const emptyForm: CheckoutForm = {
@@ -35,22 +41,29 @@ const emptyForm: CheckoutForm = {
 
 export function CheckoutView() {
   const view = useStorefront();
+  const router = useRouter();
   const { checking } = useCatalogRefreshOnOpen();
   const [form, setForm] = useState<CheckoutForm>(emptyForm);
-  const [errors, setErrors] = useState<FieldErrors<CheckoutForm>>({});
-  const [placed, setPlaced] = useState<{ order: Order; cart: CartSummary } | null>(null);
+  const [errors, setErrors] = useState<CheckoutFieldErrors>({});
+  const [serverError, setServerError] = useState("");
+  const [placed, setPlaced] = useState<PlacedOrder | null>(null);
+  const [submitting, startSubmit] = useTransition();
+  // One idempotency key per checkout attempt: reused if the same attempt is
+  // retried (double click, lost response), replaced after a refusal or success.
+  const attemptKey = useRef<string | null>(null);
 
   if (!view) return null;
   const { store, cart, cartLoaded } = view;
   const isUae = store.countryCode === "AE";
 
-  // Only offline methods can be chosen: no payment provider is connected.
+  // Phase 4: cash on delivery and bank transfer only (no payment provider).
   const paymentOptions = PAYMENT_METHODS.filter(
-    (method) => !method.requiresProvider && store.paymentMethods.includes(method.id),
+    (method): method is (typeof PAYMENT_METHODS)[number] & { id: CheckoutPaymentMethod } =>
+      (CHECKOUT_PAYMENT_METHODS as readonly string[]).includes(method.id) && store.paymentMethods.includes(method.id),
   );
 
   if (placed) {
-    return <OrderConfirmation order={placed.order} cart={placed.cart} store={store} />;
+    return <OrderConfirmation order={placed} store={store} />;
   }
 
   if (!cartLoaded) {
@@ -75,65 +88,60 @@ export function CheckoutView() {
   }
 
   // Only ACTIVE stores ever reach the storefront (the server filters them).
-  const acceptingOrders = paymentOptions.length > 0;
+  const deliveryReady = store.deliveryFeeMinor !== null;
+  const acceptingOrders = paymentOptions.length > 0 && deliveryReady;
   const cartChanged = hasCartChanges(cart);
-  const canPlace = acceptingOrders && !checking && !cartChanged;
+  const canPlace = acceptingOrders && !checking && !cartChanged && !submitting;
 
   function update<K extends keyof CheckoutForm>(key: K, value: CheckoutForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
+    if (serverError) setServerError("");
   }
 
-  function validate(values: CheckoutForm): FieldErrors<CheckoutForm> {
-    const e: FieldErrors<CheckoutForm> = {};
-    if (values.name.trim().length < 2) e.name = "Please enter your full name.";
-    if (!isEmail(values.email)) e.email = "Please enter a valid email address.";
-    if (isUae ? !isUaePhone(values.phone) : !isPhone(values.phone)) {
-      e.phone = isUae
-        ? "Please enter a UAE phone number, e.g. 050 123 4567."
-        : "Please enter a valid phone number.";
-    }
-    if (values.address.trim().length < 5) e.address = "Please enter your delivery address.";
-    if (!values.city.trim()) e.city = isUae ? "Please choose your emirate." : "Please enter your city.";
-    if (!values.paymentMethod) e.paymentMethod = "Please choose a payment method.";
-    return e;
+  function focusFirst(found: CheckoutFieldErrors) {
+    const first = Object.keys(found).find((key) => found[key as keyof CheckoutFieldErrors]);
+    if (first) document.getElementById(`checkout-${first}`)?.focus();
+    return Boolean(first);
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!canPlace) return;
-    const found = validate(form);
+    // Instant feedback; the server checks everything again.
+    const found = validateCheckoutFields(form, store.countryCode);
     setErrors(found);
-    if (hasErrors(found)) {
-      const first = Object.keys(found)[0];
-      document.getElementById(`checkout-${first}`)?.focus();
-      return;
-    }
-    // Browser-only DEMO record: the current server prices, converted to the
-    // demo record's number format. Nothing is sent, charged or reserved.
-    const order = placeDemoOrder(
-      store.id,
-      {
-        customerName: form.name,
-        customerEmail: form.email,
-        customerPhone: form.phone,
-        address: form.address,
-        city: form.city,
-        paymentMethod: form.paymentMethod as PaymentMethodId,
-        deliveryFee: minorToDemoAmount(cart.deliveryMinor, store.minorUnits),
-        items: cart.lines.map(({ product, quantity }) => ({
-          productId: product.id,
-          name: product.name,
-          sku: product.sku,
-          unitPrice: minorToDemoAmount(product.priceMinor, store.minorUnits),
-          quantity,
-        })),
-      },
-      { name: store.name, currency: store.currency },
-    );
-    clearCart();
-    setPlaced({ order, cart });
-    window.scrollTo({ top: 0 });
+    setServerError("");
+    if (focusFirst(found)) return;
+
+    attemptKey.current ??= crypto.randomUUID();
+    const request = {
+      ...form,
+      storeId: store.id,
+      idempotencyKey: attemptKey.current,
+      // Only compared by the server (a difference refuses the order); never used as the price.
+      expectedTotalMinor: cart.totalMinor.toString(),
+      items: cart.lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
+    };
+    startSubmit(async () => {
+      const result = await placeOrderAction(request);
+      if (result.ok) {
+        attemptKey.current = null;
+        clearCart();
+        setPlaced(result.order);
+        router.refresh();
+        window.scrollTo({ top: 0 });
+        return;
+      }
+      if (!result.retrySameKey) attemptKey.current = null;
+      setServerError(result.error);
+      if (result.fieldErrors) {
+        setErrors(result.fieldErrors);
+        focusFirst(result.fieldErrors);
+      }
+      // Prices, stock or availability may have changed: re-check the cart.
+      router.refresh();
+    });
   }
 
   return (
@@ -141,18 +149,30 @@ export function CheckoutView() {
       <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
 
       <Notice className="mt-6">
-        <strong>Demo checkout.</strong> No payment is taken and no card details are collected.
-        Your order is saved only in this browser — it is not sent to {store.name}, and no stock is
-        reserved or reduced in the store. Please use made-up details.
+        No payment is taken online and no card details are collected.
+        {paymentOptions.some((m) => m.id === "cash_on_delivery") && " Cash on delivery: pay the courier when your order arrives."}
+        {paymentOptions.some((m) => m.id === "bank_transfer") &&
+          ` Bank transfer: ${store.name} will send you the transfer details after you order.`}{" "}
+        Prices and stock are checked again when you place your order.
       </Notice>
 
       <p className="mt-3 text-sm text-slate-500" aria-live="polite">
         {checking ? "Checking current prices and stock…" : "Prices and stock checked with the store just now."}
       </p>
       <CartChangesNotice cart={cart} store={store} className="mt-4" />
+      {!deliveryReady && (
+        <Notice tone="warning" className="mt-4">
+          This store hasn&apos;t set up delivery yet, so orders can&apos;t be placed.
+        </Notice>
+      )}
       {paymentOptions.length === 0 && (
         <Notice tone="warning" className="mt-4">
-          This store has no payment methods enabled yet, so orders can&apos;t be placed.
+          This store has no payment methods available yet, so orders can&apos;t be placed.
+        </Notice>
+      )}
+      {serverError && (
+        <Notice tone="error" className="mt-4">
+          {serverError}
         </Notice>
       )}
 
@@ -308,10 +328,10 @@ export function CheckoutView() {
             disabled={!canPlace}
             className={`${buttonClass("primary", { size: "lg", tone: "brand" })} mt-6 w-full`}
           >
-            {checking ? "Checking prices…" : "Place demo order"}
+            {submitting ? "Placing your order…" : checking ? "Checking prices…" : "Place order"}
           </button>
           {cartChanged && (
-            <p className="mt-2 text-xs text-amber-800">Review the cart updates above before placing the demo order.</p>
+            <p className="mt-2 text-xs text-amber-800">Review the cart updates above before placing your order.</p>
           )}
           <p className="mt-2 text-xs text-slate-500">{NOT_RESERVED_NOTE}</p>
           <Link href="/cart" className="mt-3 block text-center text-sm font-medium text-slate-600 hover:underline">
@@ -323,41 +343,60 @@ export function CheckoutView() {
   );
 }
 
-function OrderConfirmation({ order, cart, store }: { order: Order; cart: CartSummary; store: StorefrontStore }) {
+/** Shown after the SERVER placed the order; every figure comes from its response. */
+function OrderConfirmation({ order, store }: { order: PlacedOrder; store: StorefrontStore }) {
+  const money = (minor: string) => formatStoreMoney(store, minor);
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-16">
       <div className="rounded-3xl border border-slate-200 p-5 text-center sm:p-8">
         <CircleCheck className="mx-auto h-12 w-12 text-emerald-600" aria-hidden />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">Demo order placed</h1>
+        <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">Order placed</h1>
         <p className="mt-2 text-slate-600">
-          Thank you, {order.customerName}. Your demo order number is{" "}
-          <strong className="text-slate-900">{order.orderNumber}</strong>.
+          Thank you. Your order number is <strong className="text-slate-900">{order.orderNumber}</strong>.
+          Please keep it for your records — no confirmation email is sent yet.
         </p>
         <Notice className="mt-6 text-left">
-          This is a demonstration. The order was saved in this browser only: it was not sent to{" "}
-          {store.name}, no payment was taken, no stock was reserved and no confirmation email was sent.
+          {order.paymentMethod === "bank_transfer" ? (
+            <>
+              <strong>Payment: bank transfer — not paid yet.</strong> {store.name} will send you the
+              bank transfer details. Your order is confirmed once the store receives your payment.
+            </>
+          ) : (
+            <>
+              <strong>Payment: cash on delivery — not paid yet.</strong> Please pay the courier when
+              your order is delivered.
+            </>
+          )}
         </Notice>
 
         <ul className="mt-6 space-y-2 border-y border-slate-200 py-4 text-left text-sm">
-          {cart.lines.map(({ product, quantity, lineTotalMinor }) => (
-            <li key={product.id} className="flex justify-between gap-3">
-              <span>{product.name} × {quantity}</span>
-              <span className="tabular-nums">{formatStoreMoney(store, lineTotalMinor)}</span>
+          {order.lines.map((line, index) => (
+            <li key={index} className="flex justify-between gap-3">
+              <span>{line.name} × {line.quantity}</span>
+              <span className="tabular-nums">{money(line.lineTotalMinor)}</span>
             </li>
           ))}
         </ul>
-        <div className="mt-4 text-left">
-          <CartTotals cart={cart} store={store} />
-        </div>
+        <dl className="mt-4 space-y-2 text-left text-sm">
+          <div className="flex justify-between">
+            <dt className="text-slate-600">Subtotal</dt>
+            <dd className="font-medium tabular-nums">{money(order.subtotalMinor)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-slate-600">Delivery</dt>
+            <dd className="font-medium tabular-nums">{order.shippingMinor === "0" ? "Free" : money(order.shippingMinor)}</dd>
+          </div>
+          <div className="flex justify-between border-t border-slate-200 pt-3 text-base">
+            <dt className="font-semibold">Total to pay</dt>
+            <dd className="font-bold tabular-nums">{money(order.totalMinor)}</dd>
+          </div>
+        </dl>
         <p className="mt-4 text-left text-sm text-slate-600">
-          Delivery to {order.address}, {order.city} · Payment: {paymentMethodLabel(order.paymentMethod)} (not collected — demo)
+          Delivery to {order.deliveryTo} · Payment: {paymentMethodLabel(order.paymentMethod)} (unpaid)
         </p>
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
           <LinkButton href="/shop" tone="brand">Continue shopping</LinkButton>
-          <LinkButton href={`/admin/stores/${order.storeId}/orders/${order.id}`} variant="secondary">
-            View in agency admin
-          </LinkButton>
         </div>
       </div>
     </main>

@@ -6,7 +6,6 @@ import {
   formatStoreMoney,
   hasCartChanges,
   isProductOnSale,
-  minorToDemoAmount,
   reconcileSession,
   type StoredSession,
 } from "../../lib/storefront-cart";
@@ -159,7 +158,6 @@ test("3-decimal currencies (KWD) stay exact end to end", () => {
   assert.equal(cart.subtotalMinor, BigInt(37035));
   assert.equal(cart.totalMinor, BigInt(38535));
   assert.match(formatStoreMoney(kwd, cart.totalMinor), /38\.535/);
-  assert.equal(minorToDemoAmount(cart.totalMinor, 3), 38.535);
 });
 
 test("acceptedSession saves the cart as it is now: capped, filtered, current prices marked as seen", () => {

@@ -9,9 +9,10 @@
 // exact integer minor units (BigInt).
 //
 // Nothing here reserves stock: another shopper can still buy the last
-// item. Real, server-checked orders arrive in a later phase.
+// item. Only a placed order reduces stock, and the server re-checks
+// everything then (lib/server/orders.ts).
 // ---------------------------------------------------------------
-import { formatMinorUnits, fromMinorUnits } from "./money";
+import { formatMinorUnits } from "./money";
 import type { StorefrontCatalog, StorefrontCategory, StorefrontProduct, StorefrontStore } from "./storefront-types";
 
 export interface StoredCartItem {
@@ -154,13 +155,4 @@ export function isProductOnSale(product: Pick<StorefrontProduct, "priceMinor" | 
 
 export function categoryNameOf(categories: StorefrontCategory[], categoryId: string) {
   return categories.find((c) => c.id === categoryId)?.name ?? "Uncategorised";
-}
-
-/**
- * Converts exact minor units to the legacy number used by the browser-only
- * DEMO order record (lib/demo-db.ts). Only for that labelled demo record —
- * never for real totals, which stay in minor units.
- */
-export function minorToDemoAmount(minor: bigint | string, minorUnits: number) {
-  return Number(fromMinorUnits(typeof minor === "bigint" ? minor : BigInt(minor), minorUnits));
 }
