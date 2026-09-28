@@ -9,8 +9,11 @@ import type {
 
 // ---------------------------------------------------------------
 // DEMO CONFIGURATION
-// The public storefront (/, /shop, /cart ...) shows this store by
-// default. Change it to point the storefront at another client store.
+// The public storefront (/, /shop, /cart ...) shows this store (by its
+// database id) unless the visitor picked another ACTIVE store in the demo
+// switcher. It must be an ACTIVE, non-archived store in the database; if
+// it isn't, and the visitor's choice isn't either, the storefront shows a
+// "not available" page. Temporary until domain-based store resolution.
 // ---------------------------------------------------------------
 export const DEFAULT_STOREFRONT_STORE_ID = "store-a";
 

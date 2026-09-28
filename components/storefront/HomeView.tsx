@@ -5,41 +5,46 @@ import { CreditCard, Tag, Truck } from "lucide-react";
 import { CategoryImage } from "@/components/CategoryImage";
 import { LinkButton } from "@/components/ui";
 import { paymentMethodLabel } from "@/lib/config";
-import { formatMoney } from "@/lib/format";
-import { categoryName } from "@/lib/demo-db";
 import { useStorefront } from "@/lib/storefront";
+import { categoryNameOf, formatStoreMoney } from "@/lib/storefront-cart";
 import { PRODUCT_GRID, ProductCard } from "./ProductCard";
 
 export function HomeView() {
   const view = useStorefront();
   if (!view) return null;
-  const { store, data, products, cartLines } = view;
-  const { settings } = store;
+  const { store, categories: storeCategories, products, cart } = view;
 
   // Up to 4 products (one full desktop row): featured first, then others.
   const shownFeatured = [
     ...products.filter((p) => p.featured),
     ...products.filter((p) => !p.featured),
   ].slice(0, 4);
-  const categories = data.categories
-    .map((category) => ({
-      ...category,
-      count: products.filter((p) => p.categoryId === category.id).length,
-    }));
-  const offlineMethods = settings.paymentMethods
-    .filter((m) => m.enabled && m.id !== "online_card")
-    .map((m) => paymentMethodLabel(m.id));
+  const categories = storeCategories.map((category) => ({
+    ...category,
+    count: products.filter((p) => p.categoryId === category.id).length,
+  }));
+  const offlineMethods = store.paymentMethods
+    .filter((id) => id !== "online_card")
+    .map((id) => paymentMethodLabel(id));
+  const deliveryText =
+    store.deliveryFeeMinor === null
+      ? "Delivery charges are confirmed by the store."
+      : store.freeDeliveryOverMinor !== null
+        ? `Free delivery on orders over ${formatStoreMoney(store, store.freeDeliveryOverMinor)}.`
+        : `Flat delivery fee of ${formatStoreMoney(store, store.deliveryFeeMinor)}.`;
 
   return (
     <main>
       {/* Hero */}
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-8 sm:px-6 sm:py-16 md:grid-cols-2 md:py-24">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand sm:text-sm">{settings.tagline}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand sm:text-sm">{store.tagline}</p>
           <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight sm:mt-3 sm:text-5xl">
-            {settings.heroTitle}
+            {store.heroTitle || store.name}
           </h1>
-          <p className="mt-3 max-w-md text-base leading-relaxed text-slate-600 sm:mt-5 sm:text-lg">{settings.heroText}</p>
+          {store.heroText && (
+            <p className="mt-3 max-w-md text-base leading-relaxed text-slate-600 sm:mt-5 sm:text-lg">{store.heroText}</p>
+          )}
           <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
             <LinkButton href="/shop" tone="brand" size="lg" className="rounded-full">
               Shop now
@@ -110,10 +115,9 @@ export function HomeView() {
                 <ProductCard
                   key={product.id}
                   product={product}
-                  shownStoreId={store.id}
-                  categoryName={categoryName(data, product.categoryId)}
-                  currency={settings.currency}
-                  inCart={cartLines.find((l) => l.product.id === product.id)?.quantity ?? 0}
+                  store={store}
+                  categoryName={categoryNameOf(storeCategories, product.categoryId)}
+                  inCart={cart.lines.find((l) => l.product.id === product.id)?.quantity ?? 0}
                 />
               ))}
             </div>
@@ -125,15 +129,13 @@ export function HomeView() {
       <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-16">
         <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
           <Benefit icon={Truck} title="Delivery">
-            {settings.freeDeliveryThreshold > 0
-              ? `Free delivery on orders over ${formatMoney(settings.freeDeliveryThreshold, settings.currency)}.`
-              : `Flat delivery fee of ${formatMoney(settings.deliveryFee, settings.currency)}.`}
+            {deliveryText}
           </Benefit>
           <Benefit icon={CreditCard} title="Pay on your terms">
             {offlineMethods.length > 0 ? offlineMethods.join(", ") + "." : "Payment options coming soon."}
           </Benefit>
           <Benefit icon={Tag} title="Fair prices">
-            All prices in {settings.currency}, shown clearly before checkout.
+            All prices in {store.currency}, shown clearly before checkout.
           </Benefit>
         </div>
 

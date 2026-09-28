@@ -7,8 +7,7 @@ import { useStorefront } from "@/lib/storefront";
 export function AboutView() {
   const view = useStorefront();
   if (!view) return null;
-  const { store, data, products } = view;
-  const { settings } = store;
+  const { store, categories, products } = view;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
@@ -16,9 +15,9 @@ export function AboutView() {
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-brand">About us</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">{store.name}</h1>
-          <p className="mt-2 text-lg text-slate-600">{settings.tagline}</p>
+          {store.tagline && <p className="mt-2 text-lg text-slate-600">{store.tagline}</p>}
           <div className="mt-6 space-y-4 leading-relaxed text-slate-700">
-            {settings.aboutText
+            {store.aboutText
               .split(/\n+/)
               .filter(Boolean)
               .map((paragraph, i) => (
@@ -34,19 +33,22 @@ export function AboutView() {
         <aside className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Stat label="Products" value={products.length} />
-            <Stat label="Categories" value={data.categories.length} />
+            <Stat label="Categories" value={categories.length} />
           </div>
           <div className="rounded-2xl border border-slate-200 p-4 text-sm sm:p-6">
             <h2 className="text-base font-semibold">Visit or reach us</h2>
             <ul className="mt-4 space-y-3 text-slate-600">
-              {settings.contactAddress && (
-                <li className="flex gap-3"><MapPin className="h-4 w-4 shrink-0 text-brand" aria-hidden />{settings.contactAddress}</li>
+              {store.contactAddress && (
+                <li className="flex gap-3"><MapPin className="h-4 w-4 shrink-0 text-brand" aria-hidden />{store.contactAddress}</li>
               )}
-              {settings.contactPhone && (
-                <li className="flex gap-3"><Phone className="h-4 w-4 shrink-0 text-brand" aria-hidden />{settings.contactPhone}</li>
+              {store.contactPhone && (
+                <li className="flex gap-3"><Phone className="h-4 w-4 shrink-0 text-brand" aria-hidden />{store.contactPhone}</li>
               )}
-              {settings.contactEmail && (
-                <li className="flex gap-3"><Mail className="h-4 w-4 shrink-0 text-brand" aria-hidden />{settings.contactEmail}</li>
+              {store.contactEmail && (
+                <li className="flex gap-3"><Mail className="h-4 w-4 shrink-0 text-brand" aria-hidden />{store.contactEmail}</li>
+              )}
+              {!store.contactAddress && !store.contactPhone && !store.contactEmail && (
+                <li>Contact details have not been added yet.</li>
               )}
             </ul>
           </div>

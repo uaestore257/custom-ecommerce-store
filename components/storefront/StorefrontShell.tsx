@@ -1,45 +1,71 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Store as StoreIcon } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { EmptyState, LoadingState } from "@/components/EmptyState";
+import { EmptyState } from "@/components/EmptyState";
 import { buttonClass } from "@/components/ui";
-import { labelFor, STORE_STATUSES } from "@/lib/config";
-import { switchStorefrontStore, useStorefront, type StorefrontView } from "@/lib/storefront";
+import {
+  StorefrontDataContext,
+  switchStorefrontStore,
+  syncCartStore,
+  useStorefront,
+  type StorefrontView,
+} from "@/lib/storefront";
+import type { StorefrontCatalog, StorefrontStoreOption } from "@/lib/storefront-types";
 import { PlatformContactDisclosure } from "@/components/PlatformContactDisclosure";
 import { PublicFooter } from "./PublicFooter";
 import { PublicHeader } from "./PublicHeader";
 
 /**
  * Wraps every public storefront page: demo bar, header, footer and the
- * selected store's accent colour.
+ * shown store's accent colour. The catalog comes from the server
+ * (app/(storefront)/layout.tsx), for an ACTIVE store only.
  */
-export function StorefrontShell({ children, isAdminHost }: { children: ReactNode; isAdminHost: boolean }) {
+export function StorefrontShell({
+  children,
+  isAdminHost,
+  catalog,
+  stores,
+}: {
+  children: ReactNode;
+  isAdminHost: boolean;
+  catalog: StorefrontCatalog | null;
+  stores: StorefrontStoreOption[];
+}) {
+  const data = useMemo(() => ({ catalog, stores }), [catalog, stores]);
+  return (
+    <StorefrontDataContext.Provider value={data}>
+      <ShellBody isAdminHost={isAdminHost}>{children}</ShellBody>
+    </StorefrontDataContext.Provider>
+  );
+}
+
+function ShellBody({ children, isAdminHost }: { children: ReactNode; isAdminHost: boolean }) {
   const view = useStorefront();
+  const shownStoreId = view?.store.id;
 
-  if (view === undefined) {
-    return (
-      <div className="flex min-h-screen flex-col bg-white">
-        <div className="h-9 bg-slate-900" />
-        <div className="h-[73px] border-b border-slate-200" />
-        <LoadingState label="Loading store…" />
-      </div>
-    );
-  }
+  // A cart saved for another store (switched in another tab, or its store
+  // is no longer public) must never show up here: empty it.
+  useEffect(() => {
+    if (shownStoreId) syncCartStore(shownStoreId);
+  }, [shownStoreId]);
 
-  if (view === null) {
+  if (!view) {
     return (
       <div className="mx-auto w-full max-w-xl px-4 py-24">
         <EmptyState
           icon={StoreIcon}
-          title="No client stores yet"
-          description="Create a client store in the agency admin to see its storefront here."
+          title="This storefront isn't available right now"
+          description="There is no active store to show here yet."
           action={
-            <Link href="/admin/stores/new" className={buttonClass("primary")}>
-              Create a store
-            </Link>
+            isAdminHost ? (
+              <Link href="/admin/stores" className={buttonClass("primary")}>
+                Manage stores
+              </Link>
+            ) : undefined
           }
         />
       </div>
@@ -49,25 +75,32 @@ export function StorefrontShell({ children, isAdminHost }: { children: ReactNode
   return (
     <div
       className="flex min-h-screen flex-col bg-white text-slate-900"
-      style={{ "--brand": view.store.settings.accentColor } as CSSProperties}
+      style={{ "--brand": view.store.accentColor } as CSSProperties}
     >
       <DemoBar view={view} isAdminHost={isAdminHost} />
-      <PublicHeader store={view.store} cartCount={view.cartCount} />
+      <PublicHeader store={view.store} cartCount={view.cart.itemCount} />
       <div className="flex-1">{children}</div>
       <PublicFooter store={view.store} isAdminHost={isAdminHost} />
     </div>
   );
 }
 
-/** Lets the demo viewer switch which client store the storefront shows. */
+/** Lets the demo viewer switch between the ACTIVE stores. Draft and other non-public stores are never listed. */
 function DemoBar({ view, isAdminHost }: { view: StorefrontView; isAdminHost: boolean }) {
+  const router = useRouter();
   const [pendingStoreId, setPendingStoreId] = useState<string | null>(null);
-  const pendingStore = view.state.stores.find((s) => s.id === pendingStoreId);
+  const pendingStore = view.stores.find((s) => s.id === pendingStoreId);
+  const cartCount = view.cart.itemCount;
+
+  function switchTo(storeId: string) {
+    switchStorefrontStore(storeId);
+    router.refresh();
+  }
 
   function requestSwitch(storeId: string) {
     if (storeId === view.store.id) return;
-    if (view.cartCount > 0) setPendingStoreId(storeId);
-    else switchStorefrontStore(storeId);
+    if (cartCount > 0) setPendingStoreId(storeId);
+    else switchTo(storeId);
   }
 
   return (
@@ -84,18 +117,12 @@ function DemoBar({ view, isAdminHost }: { view: StorefrontView; isAdminHost: boo
             onChange={(event) => requestSwitch(event.target.value)}
             className="max-w-[11rem] truncate rounded border border-white/20 bg-slate-800 px-1.5 py-0.5 text-white focus:outline-none focus:ring-2 focus:ring-white/40 sm:max-w-none"
           >
-            {view.state.stores.map((store) => (
+            {view.stores.map((store) => (
               <option key={store.id} value={store.id}>
                 {store.name}
-                {store.status !== "active" ? ` (${labelFor(STORE_STATUSES, store.status)})` : ""}
               </option>
             ))}
           </select>
-          {view.store.status !== "active" && (
-            <span className="text-amber-300">
-              Preview only<span className="hidden sm:inline"> — this store is {labelFor(STORE_STATUSES, view.store.status).toLowerCase()} and not accepting orders</span>.
-            </span>
-          )}
         </div>
         <PlatformContactDisclosure label={isAdminHost ? "Agency Admin" : "Contact admin"} />
       </div>
@@ -107,11 +134,11 @@ function DemoBar({ view, isAdminHost }: { view: StorefrontView; isAdminHost: boo
         cancelLabel="Keep current store"
         onCancel={() => setPendingStoreId(null)}
         onConfirm={() => {
-          if (pendingStoreId) switchStorefrontStore(pendingStoreId);
+          if (pendingStoreId) switchTo(pendingStoreId);
           setPendingStoreId(null);
         }}
       >
-        Your cart has {view.cartCount} {view.cartCount === 1 ? "item" : "items"} from{" "}
+        Your cart has {cartCount} {cartCount === 1 ? "item" : "items"} from{" "}
         <strong>{view.store.name}</strong>. A cart can only hold products from one store, so
         switching will empty it.
       </ConfirmDialog>

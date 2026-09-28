@@ -7,6 +7,7 @@ import { readJson, removeKeys, STORAGE_PREFIX, writeJson } from "./storage";
 import type {
   AgencySettings,
   Category,
+  CurrencyCode,
   Customer,
   DemoState,
   Order,
@@ -360,11 +361,11 @@ export function customerOrderCount(data: StoreData, customer: Customer) {
   return data.orders.filter((o) => o.customerId === customer.id).length;
 }
 
-function orderPrefix(store: Store, orders: Order[]) {
+function orderPrefix(storeName: string, orders: Order[]) {
   // Keep using the prefix of the store's existing orders, if any.
   const existing = orders.at(-1)?.orderNumber.split("-").slice(0, -1).join("-");
   if (existing) return existing;
-  const letters = store.name
+  const letters = storeName
     .split(/\s+/)
     .map((word) => word.replace(/[^a-z0-9]/gi, "")[0])
     .filter(Boolean)
@@ -389,10 +390,18 @@ export interface DemoOrderInput {
  * Saves a DEMO order in this browser only. Nothing is sent to the store,
  * no payment is taken and no email is delivered.
  */
-export function placeDemoOrder(storeId: string, input: DemoOrderInput): Order {
+/**
+ * Saves a browser-only DEMO order. The public storefront now reads real
+ * stores from the database, so `storeInfo` names the store and currency
+ * for stores that were never part of the browser demo data.
+ */
+export function placeDemoOrder(
+  storeId: string,
+  input: DemoOrderInput,
+  storeInfo: { name: string; currency: string },
+): Order {
   const current = getSnapshot();
-  const store = findStore(current, storeId);
-  if (!store) throw new Error(`Unknown store: ${storeId}`);
+  const demoStore = findStore(current, storeId);
   const data = getStoreData(current, storeId);
 
   const email = input.customerEmail.trim().toLowerCase();
@@ -422,7 +431,7 @@ export function placeDemoOrder(storeId: string, input: DemoOrderInput): Order {
   const order: Order = {
     id: makeId(`${storeId}-ord`),
     storeId,
-    orderNumber: `${orderPrefix(store, data.orders)}-${lastNumber + 1}`,
+    orderNumber: `${orderPrefix(demoStore?.name ?? storeInfo.name, data.orders)}-${lastNumber + 1}`,
     customerId: customer.id,
     customerName: input.customerName.trim(),
     customerEmail: email,
@@ -433,25 +442,22 @@ export function placeDemoOrder(storeId: string, input: DemoOrderInput): Order {
     subtotal,
     deliveryFee: input.deliveryFee,
     total: roundMoney(subtotal + input.deliveryFee),
-    currency: store.settings.currency,
+    // Demo records keep the store's real ISO 4217 code for display.
+    currency: storeInfo.currency as CurrencyCode,
     paymentMethod: input.paymentMethod,
     status: "pending",
     createdAt: now,
     isDemo: true,
   };
 
-  // Reduce stock for the ordered products.
-  const products = data.products.map((p) => {
-    const line = input.items.find((item) => item.productId === p.id);
-    return line ? { ...p, stock: Math.max(0, p.stock - line.quantity) } : p;
-  });
-
+  // No stock is changed: the storefront's stock lives in the database and
+  // a demo order never touches it.
   commit(
     {
       ...current,
       storeData: {
         ...current.storeData,
-        [storeId]: { ...data, products, customers, orders: [...data.orders, order] },
+        [storeId]: { ...data, customers, orders: [...data.orders, order] },
       },
     },
     { storeIds: [storeId] },
