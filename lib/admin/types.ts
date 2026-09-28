@@ -82,6 +82,28 @@ export interface AdminProduct {
   hasOrders: boolean;
 }
 
+export type DbOrderStatus = "PENDING" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+export type DbPaymentStatus = "UNPAID" | "PAID";
+
+/** One row of the admin's read-only orders list (from the database). */
+export interface AdminOrderSummary {
+  id: string;
+  /** e.g. "NO-1004" */
+  number: string;
+  placedAt: string; // ISO
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  itemCount: number;
+  /** Formatted in the order's own currency, e.g. "AED 2,499.00". */
+  totalDisplay: string;
+  paymentMethod: string;
+  paymentStatus: DbPaymentStatus;
+  status: DbOrderStatus;
+  /** Seeded sample orders are marked so they aren't mistaken for real ones. */
+  isSample: boolean;
+}
+
 export type ActionResult<T = undefined> =
   | { ok: true; data: T; message?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };

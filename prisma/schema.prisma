@@ -64,6 +64,13 @@ enum PaymentMode {
   LIVE
 }
 
+/// Whether an order has been paid. Cash on delivery and bank transfer
+/// orders start UNPAID; nothing in the storefront ever marks one PAID.
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
 enum InquiryStatus {
   NEW
   READ
@@ -502,30 +509,37 @@ model CustomerAddress {
 }
 
 model Order {
-  id               String      @id @default(cuid())
-  storeId          String
-  number           Int // per-store sequence, shown as "<prefix>-<number>"
-  customerId       String?
-  status           OrderStatus @default(PENDING)
+  id                 String        @id @default(cuid())
+  storeId            String
+  number             Int // per-store sequence, shown as "<prefix>-<number>"
+  customerId         String?
+  status             OrderStatus   @default(PENDING)
   // Snapshot at purchase time: later store changes never alter an order.
-  currency         String      @db.Char(3)
-  locale           String      @db.VarChar(35)
-  pricesIncludeTax Boolean
-  subtotalMinor    BigInt
-  shippingMinor    BigInt      @default(0)
-  taxMinor         BigInt      @default(0)
-  discountMinor    BigInt      @default(0)
-  totalMinor       BigInt
-  customerName     String
-  customerEmail    String
-  customerPhone    String?
-  shippingAddress  Json
-  billingAddress   Json?
-  paymentMethod    String?
-  isDemo           Boolean     @default(false)
-  placedAt         DateTime    @default(now())
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  currency           String        @db.Char(3)
+  locale             String        @db.VarChar(35)
+  pricesIncludeTax   Boolean
+  subtotalMinor      BigInt
+  shippingMinor      BigInt        @default(0)
+  taxMinor           BigInt        @default(0)
+  discountMinor      BigInt        @default(0)
+  totalMinor         BigInt
+  customerName       String
+  customerEmail      String
+  customerPhone      String?
+  shippingAddress    Json
+  billingAddress     Json?
+  paymentMethod      String?
+  paymentStatus      PaymentStatus @default(UNPAID)
+  /// Random key the checkout sends with every attempt; a repeated
+  /// submission with the same key returns the first order instead of
+  /// creating another (unique per store, see @@unique below).
+  idempotencyKey     String?       @db.VarChar(64)
+  /// Hash of what was ordered, so a reused key with a different request is refused.
+  requestFingerprint String?       @db.Char(64)
+  isDemo             Boolean       @default(false)
+  placedAt           DateTime      @default(now())
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   // Orders keep their own currency (not tied to the store's current base
   // currency) and are never deleted with a store by accident.
@@ -537,6 +551,8 @@ model Order {
 
   @@unique([storeId, number])
   @@unique([id, storeId, currency])
+  // Postgres allows many NULL keys, so orders without a key never clash.
+  @@unique([storeId, idempotencyKey])
   @@index([storeId, placedAt])
 }
 
