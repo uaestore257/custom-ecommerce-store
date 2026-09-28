@@ -64,6 +64,12 @@ enum PaymentMode {
   LIVE
 }
 
+enum InquiryStatus {
+  NEW
+  READ
+  ARCHIVED
+}
+
 // ---------------------------------------------------------------------
 // Platform-level reference data (shared, read-only for stores)
 // ---------------------------------------------------------------------
@@ -301,6 +307,7 @@ model Store {
   paymentAccounts PaymentProviderAccount[]
   paymentMethods  StorePaymentMethod[]
   auditEvents     AuditEvent[]
+  inquiries       Inquiry[]
 
   // Lets prices reference (storeId, currency) so they must be in the
   // store's base currency. Changing baseCurrency is blocked while prices exist.
@@ -555,6 +562,32 @@ model OrderItem {
   variant ProductVariant? @relation(fields: [variantId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
 
   @@index([orderId])
+}
+
+// ---------------------------------------------------------------------
+// Contact / inquiries
+// ---------------------------------------------------------------------
+
+/// A message submitted through a store's public Contact page. Not an
+/// order and not a customer account: no payment, fulfillment or sign-in
+/// is implied. Kept only for the platform owner to read and act on.
+model Inquiry {
+  id        String        @id @default(cuid())
+  storeId   String
+  name      String
+  email     String
+  subject   String?
+  message   String
+  status    InquiryStatus @default(NEW)
+  /// Best-effort spam signal only (see lib/server/rate-limit.ts); never
+  /// shown to other stores or used to identify the sender.
+  ipAddress String?       @db.VarChar(64)
+  createdAt DateTime      @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+  @@index([storeId, status])
 }
 
 // ---------------------------------------------------------------------

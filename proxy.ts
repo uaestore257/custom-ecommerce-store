@@ -1,6 +1,6 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_COOKIE_PREFIX, isAdminPath, normalizeHost } from "@/lib/auth/constants";
+import { AUTH_COOKIE_PREFIX, isAdminPath, isPublicActionPath, normalizeHost } from "@/lib/auth/constants";
 
 // ---------------------------------------------------------------
 // PROXY (Next.js 16's replacement for middleware). Runs before routing.
@@ -9,8 +9,17 @@ import { AUTH_COOKIE_PREFIX, isAdminPath, normalizeHost } from "@/lib/auth/const
 //    e.g. admin.codexstore.com. On any other host it is a 404. If
 //    ADMIN_HOST is not set, the admin is unavailable everywhere (fails
 //    closed rather than open).
-// 2. Server Action requests are only accepted on ADMIN_HOST: Next.js
-//    resolves an action by its ID, whatever URL it is posted to.
+// 2. Off ADMIN_HOST, a Server Action ("next-action" header) is refused
+//    UNLESS its pathname is in the small, explicit PUBLIC_ACTION_PATHS
+//    allowlist (lib/auth/constants.ts). This is deny-by-default on
+//    purpose: Next.js resolves an action by its id, not by the URL it
+//    was posted to (see isPublicActionPath's comment), so a denylist
+//    keyed only on isAdminPath(pathname) could be bypassed by posting to
+//    some other pathname with a leaked admin action id. Each admin
+//    action also re-checks the real session itself
+//    (requirePlatformOwner(), lib/server/auth/guards.ts) as a second,
+//    independent layer — this proxy check does not by itself depend on
+//    the caller's host or cookies.
 // 3. Signed-out visitors to /admin are redirected to /login. This only
 //    checks that a session cookie EXISTS (fast, no database); the real
 //    check happens in every page and action (lib/server/auth/guards.ts).
@@ -44,8 +53,8 @@ export function proxy(request: NextRequest) {
   const onAdminHost = adminHost !== "" && host === adminHost;
   const { pathname } = request.nextUrl;
 
-  const isServerAction = request.headers.has("next-action");
-  if ((isAdminPath(pathname) || isServerAction) && !onAdminHost) return notFound();
+  if (isAdminPath(pathname) && !onAdminHost) return notFound();
+  if (request.headers.has("next-action") && !onAdminHost && !isPublicActionPath(pathname)) return notFound();
 
   if (onAdminHost && /^\/admin(\/|$)/.test(pathname)) {
     if (!getSessionCookie(request, { cookiePrefix: AUTH_COOKIE_PREFIX })) {

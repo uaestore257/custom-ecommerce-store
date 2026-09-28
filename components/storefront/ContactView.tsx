@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { buttonClass, errorProps, Field, inputClass, Notice } from "@/components/ui";
 import { useStorefront } from "@/lib/storefront";
-import { hasErrors, isEmail, type FieldErrors } from "@/lib/validation";
+import { validateInquiry, type InquiryFieldErrors } from "@/lib/inquiry";
+import { submitInquiryAction } from "@/app/(storefront)/actions";
 
 interface ContactForm {
   name: string;
@@ -18,8 +19,10 @@ const emptyForm: ContactForm = { name: "", email: "", subject: "", message: "" }
 export function ContactView() {
   const view = useStorefront();
   const [form, setForm] = useState(emptyForm);
-  const [errors, setErrors] = useState<FieldErrors<ContactForm>>({});
+  const [errors, setErrors] = useState<InquiryFieldErrors>({});
   const [submitted, setSubmitted] = useState(false);
+  const [serverError, setServerError] = useState("");
+  const [isPending, startTransition] = useTransition();
   if (!view) return null;
   const { store } = view;
   const { settings } = store;
@@ -27,22 +30,29 @@ export function ContactView() {
   function update(key: keyof ContactForm, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
+    if (serverError) setServerError("");
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const e: FieldErrors<ContactForm> = {};
-    if (form.name.trim().length < 2) e.name = "Please enter your name.";
-    if (!isEmail(form.email)) e.email = "Please enter a valid email address.";
-    if (form.message.trim().length < 10) e.message = "Please write at least 10 characters.";
-    setErrors(e);
-    if (hasErrors(e)) {
-      document.getElementById(`contact-${Object.keys(e)[0]}`)?.focus();
+    const { errors: fieldErrors } = validateInquiry(form);
+    setErrors(fieldErrors);
+    setServerError("");
+    const firstError = Object.keys(fieldErrors).find((key) => fieldErrors[key as keyof InquiryFieldErrors]);
+    if (firstError) {
+      document.getElementById(`contact-${firstError}`)?.focus();
       return;
     }
-    // Demo only: the message is not sent or stored anywhere.
-    setSubmitted(true);
-    setForm(emptyForm);
+    startTransition(async () => {
+      const result = await submitInquiryAction(store.id, form);
+      if (!result.ok) {
+        setServerError(result.error);
+        if (result.fieldErrors) setErrors(result.fieldErrors as InquiryFieldErrors);
+        return;
+      }
+      setSubmitted(true);
+      setForm(emptyForm);
+    });
   }
 
   return (
@@ -77,13 +87,14 @@ export function ContactView() {
         </ul>
 
         <div className="rounded-2xl border border-slate-200 p-4 sm:p-6">
-          <Notice className="mb-6">
-            <strong>Demo form.</strong> Messages are checked for errors but are not sent to a
-            server or email inbox, and are not saved.
-          </Notice>
           {submitted && (
             <Notice tone="success" className="mb-6">
-              Thanks! Your message passed validation. In this demo it was not sent anywhere.
+              Thanks! Your message has been sent to the store.
+            </Notice>
+          )}
+          {serverError && (
+            <Notice tone="error" className="mb-6">
+              {serverError}
             </Notice>
           )}
           <form onSubmit={handleSubmit} noValidate className="grid gap-4 sm:grid-cols-2">
@@ -124,8 +135,8 @@ export function ContactView() {
               />
             </Field>
             <div className="sm:col-span-2">
-              <button type="submit" className={buttonClass("primary", { tone: "brand" })}>
-                Send message (demo)
+              <button type="submit" disabled={isPending} className={buttonClass("primary", { tone: "brand" })}>
+                {isPending ? "Sending…" : "Send message"}
               </button>
             </div>
           </form>

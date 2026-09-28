@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { NextRequest } from "next/server";
 import { passwordProblem } from "../../lib/auth/password-policy";
-import { isAdminPath, isConfiguredAdminHost, normalizeHost } from "../../lib/auth/constants";
+import { isAdminPath, isConfiguredAdminHost, isPublicActionPath, isValidIpHeaderName, normalizeHost } from "../../lib/auth/constants";
 import { AuthConfigError, readAuthEnv } from "../../lib/server/auth/env";
 import { assertSafeToSeed, SeedRefused } from "../../prisma/seed-guard";
 import { proxy } from "../../proxy";
@@ -72,6 +72,10 @@ test("host helpers", () => {
   assert.equal(isConfiguredAdminHost("admin.localhost:3000", ""), false);
   for (const p of ["/admin", "/admin/stores/x", "/login", "/api/auth/sign-in/email"]) assert.ok(isAdminPath(p), p);
   for (const p of ["/", "/shop", "/administrator", "/loginx", "/api/other"]) assert.ok(!isAdminPath(p), p);
+  assert.ok(isPublicActionPath("/contact"));
+  for (const p of ["/", "/shop", "/contactus", "/admin", "/contact/"]) assert.ok(!isPublicActionPath(p), p);
+  for (const h of ["x-real-ip", "x-forwarded-for", "cf-connecting-ip"]) assert.ok(isValidIpHeaderName(h), h);
+  for (const h of ["X-Real-IP", "x real ip", "x-real-ip, x-forwarded-for", ""]) assert.ok(!isValidIpHeaderName(h), h);
 });
 
 function request(url: string, host: string, headers: Record<string, string> = {}) {
@@ -93,8 +97,18 @@ test("proxy: the admin is only served on ADMIN_HOST", () => {
   }
   // X-Forwarded-Host can't be used to pretend to be the admin host.
   assert.equal(proxy(request("https://shop.example/admin", "shop.example", { "x-forwarded-host": "admin.codexstore.com", ...cookie })).status, 404);
-  // Server Actions are refused off the admin host, whatever the path.
-  assert.equal(proxy(request("https://shop.example/", "shop.example", { "next-action": "abc123" })).status, 404);
+  // A Server Action posted to an admin path is refused off the admin host
+  // (its pathname is the calling page's, e.g. an admin form's action).
+  assert.equal(proxy(request("https://shop.example/admin/stores", "shop.example", { "next-action": "abc123" })).status, 404);
+  // A Server Action posted to some OTHER, non-allowlisted public path is
+  // also refused (deny by default) — even though that path itself isn't
+  // an admin path, it isn't an intentionally public action path either.
+  for (const path of ["/", "/shop", "/checkout", "/cart"]) {
+    assert.equal(proxy(request(`https://shop.example${path}`, "shop.example", { "next-action": "abc123" })).status, 404, path);
+  }
+  // The one allowlisted public action path goes through: it is not gated
+  // by host, only by its own checks (e.g. submitInquiry()'s store check).
+  assert.equal(proxy(request("https://shop.example/contact", "shop.example", { "next-action": "abc123" })).headers.get("x-middleware-next"), "1");
 
   // Admin host: signed out -> /login, with a cookie -> through (pages check it properly).
   process.env.BETTER_AUTH_URL = "https://admin.codexstore.com";
