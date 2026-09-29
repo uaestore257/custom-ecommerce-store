@@ -58,6 +58,7 @@ interface Target {
   productId: string;
   categoryId: string;
   orderId: string;
+  inquiryId: string;
 }
 const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise<ActionResult<unknown>>> => ({
   createStoreAction: () => actions.createStoreAction(newStore()),
@@ -76,12 +77,13 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   setOrderStatusAction: () => actions.setOrderStatusAction(t.storeId, t.orderId, "PENDING", "PROCESSING"),
   cancelOrderAction: () => actions.cancelOrderAction(t.storeId, t.orderId, "PENDING"),
   setOrderPaymentAction: () => actions.setOrderPaymentAction(t.storeId, t.orderId, "UNPAID", "PAID"),
+  setInquiryStatusAction: () => actions.setInquiryStatusAction(t.storeId, t.inquiryId, "NEW", "ARCHIVED"),
 });
-const seeded = () => calls({ storeId: "store-a", productId: productOfA, categoryId: categoryOfA, orderId: orderOfA });
+const seeded = () => calls({ storeId: "store-a", productId: productOfA, categoryId: categoryOfA, orderId: orderOfA, inquiryId: "no-such-inquiry" });
 
 /** Everything a refused action could have changed. */
 async function snapshot() {
-  const [stores, products, categories, memberships, users, orders, variants, audit] = await Promise.all([
+  const [stores, products, categories, memberships, users, orders, variants, inquiries, audit] = await Promise.all([
     db.store.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true, status: true, archivedAt: true, updatedAt: true } }),
     db.product.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true, updatedAt: true } }),
     db.category.findMany({ orderBy: { id: "asc" }, select: { id: true, position: true, updatedAt: true } }),
@@ -89,9 +91,10 @@ async function snapshot() {
     db.user.count(),
     db.order.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true, paymentStatus: true, updatedAt: true } }),
     db.productVariant.findMany({ orderBy: { id: "asc" }, select: { id: true, stock: true } }),
-    db.auditEvent.count({ where: { OR: [{ action: { startsWith: "store." } }, { action: { startsWith: "order." } }] } }),
+    db.inquiry.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true } }),
+    db.auditEvent.count({ where: { OR: [{ action: { startsWith: "store." } }, { action: { startsWith: "order." } }, { action: { startsWith: "inquiry." } }] } }),
   ]);
-  return JSON.stringify({ stores, products, categories, memberships, users, orders, variants, audit });
+  return JSON.stringify({ stores, products, categories, memberships, users, orders, variants, inquiries, audit });
 }
 
 test("every exported action has a permission rule, and every rule an action", () => {
@@ -146,7 +149,7 @@ test("the platform owner passes the check for every action", async () => {
   assert.ok(product.ok, JSON.stringify(product));
   // The fresh store has no orders: the order actions only need to get
   // past the permission check here (they answer "not found").
-  const target = { storeId, productId: product.data.id, categoryId, orderId: "no-such-order" };
+  const target = { storeId, productId: product.data.id, categoryId, orderId: "no-such-order", inquiryId: "no-such-inquiry" };
 
   // Archive/restore last, so the other calls find an active store.
   const order = Object.entries(calls(target)).sort(([a], [b]) => Number(/archive|restore/.test(a)) - Number(/archive|restore/.test(b)));

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   LayoutDashboard,
   LayoutTemplate,
+  Mail,
   Menu,
   Package,
   Plus,
@@ -46,6 +47,7 @@ export function storeNav(storeId: string): NavItem[] {
     { label: "Products", href: `${base}/products`, icon: Package },
     { label: "Categories", href: `${base}/categories`, icon: Tags },
     { label: "Orders", href: `${base}/orders`, icon: Receipt },
+    { label: "Messages", href: `${base}/messages`, icon: Mail },
     { label: "Customers", href: `${base}/customers`, icon: Users },
     { label: "Store settings", href: `${base}/settings`, icon: Settings },
   ];

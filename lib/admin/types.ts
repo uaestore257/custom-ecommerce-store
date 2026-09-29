@@ -84,6 +84,18 @@ export interface AdminProduct {
 
 export type DbOrderStatus = "PENDING" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
 export type DbPaymentStatus = "UNPAID" | "PAID";
+export type DbInquiryStatus = "NEW" | "READ" | "ARCHIVED";
+
+/** One contact message in the admin's inbox for a store (from the database). */
+export interface AdminInquiry {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: DbInquiryStatus;
+  createdAt: string; // ISO
+}
 
 /** One row of the admin's read-only orders list (from the database). */
 export interface AdminOrderSummary {
