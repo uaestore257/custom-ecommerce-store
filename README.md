@@ -7,8 +7,9 @@ TypeScript and Tailwind CSS.
 > categories** are stored in PostgreSQL ([Database](#database-phase-1)), and
 > the public storefront reads them from there (active stores and products
 > only). Checkout places real orders in the database (cash on delivery or
-> bank transfer, always unpaid until the store handles payment), and the
-> admin lists each store's orders read-only. The admin requires signing in as
+> bank transfer, always unpaid until staff mark them paid), and the admin
+> can move orders through their statuses, cancel them (returning stock) and
+> record payment. The admin requires signing in as
 > the platform owner ([docs/authentication.md](docs/authentication.md)).
 > Admin customers and agency settings still use sample data saved in the
 > browser's `localStorage`. There is no payment provider, email or domain/DNS
@@ -103,7 +104,7 @@ host. Set real platform contact details in `PLATFORM_CONTACT` in
 | `lib/demo-db.ts` | Browser demo data: admin customers, agency settings and legacy demo order details |
 | `lib/checkout.ts` | Checkout input validation (shared by the form and the server) and the order result shape |
 | `lib/server/orders.ts` | Server-side order placement: re-validation, atomic stock, idempotency |
-| `lib/server/admin/orders.ts` | The admin's read-only orders list (one store at a time) |
+| `lib/server/admin/orders.ts` | The admin's orders: list, order page, status, cancellation and payment (one store at a time) |
 | `lib/server/storefront/catalog.ts` | Public storefront reads from the database (active stores/products only) and the store choice |
 | `lib/storefront-types.ts` | Plain data shapes the storefront receives (money as exact minor units) |
 | `lib/storefront-cart.ts` | Cart maths: current prices, stock caps, change detection, totals (pure, tested) |
@@ -127,16 +128,18 @@ These parts are **not** implemented and need a backend:
   ([docs/authentication.md](docs/authentication.md)). Store owners,
   invitations and store-level permissions arrive in Phase 2b. The admin is
   served only on `ADMIN_HOST` (locally <http://admin.localhost:3000>).
-- **Orders are placed, but not yet managed.** Checkout creates a real order in
-  the database: the server re-checks the store, products, prices, delivery
-  and stock, reduces stock atomically (no overselling) and ignores repeated
-  submissions of the same checkout. Only **cash on delivery** and **bank
-  transfer** are offered; both orders start **unpaid** and nothing ever marks
-  them paid yet. The store shares bank transfer details itself — none are
-  shown. The admin can list a store's orders but can't change status, cancel
-  or refund yet (so stock is never restored), and no emails are sent. Admin
-  customers and agency settings are still browser demo data. A store without
-  a delivery rate can't take orders.
+- **Orders are placed and managed, but simply.** Checkout creates a real
+  order in the database: the server re-checks the store, products, prices,
+  delivery and stock, reduces stock atomically (no overselling) and ignores
+  repeated submissions of the same checkout. Only **cash on delivery** and
+  **bank transfer** are offered; both orders start **unpaid**. The store
+  shares bank transfer details itself — none are shown. In the admin, an
+  order moves Pending → Processing → Shipped → Delivered; a pending or
+  processing, unpaid order can be cancelled, which returns its stock; and
+  staff mark payment as paid (or back to unpaid) by hand once money arrives.
+  There are no refunds, returns or item edits, and no emails are sent to the
+  customer or store. Admin customers and agency settings are still browser
+  demo data. A store without a delivery rate can't take orders.
 - **Store choice is temporary.** The storefront picks a store from a browser
   cookie or the configured default, not yet from the domain name. Draft
   stores can't be previewed on the storefront yet.

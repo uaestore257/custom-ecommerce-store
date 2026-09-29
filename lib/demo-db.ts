@@ -8,7 +8,6 @@ import type {
   Category,
   Customer,
   DemoState,
-  OrderStatus,
   Product,
   Store,
   StoreData,
@@ -343,14 +342,7 @@ export function deleteProduct(storeId: string, productId: string) {
   }));
 }
 
-// ---------------- Orders & customers ----------------
-
-export function updateOrderStatus(storeId: string, orderId: string, status: OrderStatus) {
-  updateStoreData(storeId, (data) => ({
-    ...data,
-    orders: data.orders.map((o) => (o.id === orderId ? { ...o, status } : o)),
-  }));
-}
+// ---------------- Customers ----------------
 
 export function customerOrderCount(data: StoreData, customer: Customer) {
   return data.orders.filter((o) => o.customerId === customer.id).length;

@@ -19,6 +19,7 @@ let ownerCookie = "";
 let productOfA = "";
 let productOfB = "";
 let categoryOfA = "";
+let orderOfA = "";
 
 const SIGNED_OUT = "Your session has ended. Please sign in again.";
 const FORBIDDEN = "You don't have access to do this.";
@@ -29,6 +30,7 @@ before(async () => {
   productOfA = (await db.product.findFirstOrThrow({ where: { storeId: "store-a" } })).id;
   productOfB = (await db.product.findFirstOrThrow({ where: { storeId: "store-b" } })).id;
   categoryOfA = (await db.category.findFirstOrThrow({ where: { storeId: "store-a" } })).id;
+  orderOfA = (await db.order.findFirstOrThrow({ where: { storeId: "store-a", status: "PENDING", paymentStatus: "UNPAID" } })).id;
 });
 after(async () => {
   setRequestRuntimeForTests(null);
@@ -55,6 +57,7 @@ interface Target {
   storeId: string;
   productId: string;
   categoryId: string;
+  orderId: string;
 }
 const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise<ActionResult<unknown>>> => ({
   createStoreAction: () => actions.createStoreAction(newStore()),
@@ -70,20 +73,25 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   updateCategoryAction: () => actions.updateCategoryAction(t.storeId, t.categoryId, { name: `Renamed ${uid()}` }),
   moveCategoryAction: () => actions.moveCategoryAction(t.storeId, t.categoryId, "down"),
   deleteCategoryAction: () => actions.deleteCategoryAction(t.storeId, t.categoryId, null),
+  setOrderStatusAction: () => actions.setOrderStatusAction(t.storeId, t.orderId, "PENDING", "PROCESSING"),
+  cancelOrderAction: () => actions.cancelOrderAction(t.storeId, t.orderId, "PENDING"),
+  setOrderPaymentAction: () => actions.setOrderPaymentAction(t.storeId, t.orderId, "UNPAID", "PAID"),
 });
-const seeded = () => calls({ storeId: "store-a", productId: productOfA, categoryId: categoryOfA });
+const seeded = () => calls({ storeId: "store-a", productId: productOfA, categoryId: categoryOfA, orderId: orderOfA });
 
 /** Everything a refused action could have changed. */
 async function snapshot() {
-  const [stores, products, categories, memberships, users, audit] = await Promise.all([
+  const [stores, products, categories, memberships, users, orders, variants, audit] = await Promise.all([
     db.store.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true, status: true, archivedAt: true, updatedAt: true } }),
     db.product.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true, updatedAt: true } }),
     db.category.findMany({ orderBy: { id: "asc" }, select: { id: true, position: true, updatedAt: true } }),
     db.storeMembership.findMany({ orderBy: { id: "asc" }, select: { id: true, userId: true, role: true } }),
     db.user.count(),
-    db.auditEvent.count({ where: { action: { startsWith: "store." } } }),
+    db.order.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true, paymentStatus: true, updatedAt: true } }),
+    db.productVariant.findMany({ orderBy: { id: "asc" }, select: { id: true, stock: true } }),
+    db.auditEvent.count({ where: { OR: [{ action: { startsWith: "store." } }, { action: { startsWith: "order." } }] } }),
   ]);
-  return JSON.stringify({ stores, products, categories, memberships, users, audit });
+  return JSON.stringify({ stores, products, categories, memberships, users, orders, variants, audit });
 }
 
 test("every exported action has a permission rule, and every rule an action", () => {
@@ -136,7 +144,9 @@ test("the platform owner passes the check for every action", async () => {
     name: "Test lamp", sku: `LAMP-${uid()}`, categoryId, description: "A warm brass lamp.", price: "10", stock: "3", status: "ACTIVE",
   });
   assert.ok(product.ok, JSON.stringify(product));
-  const target = { storeId, productId: product.data.id, categoryId };
+  // The fresh store has no orders: the order actions only need to get
+  // past the permission check here (they answer "not found").
+  const target = { storeId, productId: product.data.id, categoryId, orderId: "no-such-order" };
 
   // Archive/restore last, so the other calls find an active store.
   const order = Object.entries(calls(target)).sort(([a], [b]) => Number(/archive|restore/.test(a)) - Number(/archive|restore/.test(b)));

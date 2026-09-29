@@ -27,4 +27,7 @@ export const ACTION_PERMISSIONS = {
   updateCategoryAction: "platform-owner",
   moveCategoryAction: "platform-owner",
   deleteCategoryAction: "platform-owner",
+  setOrderStatusAction: "platform-owner",
+  cancelOrderAction: "platform-owner",
+  setOrderPaymentAction: "platform-owner",
 } as const satisfies Record<string, ActionPermission>;

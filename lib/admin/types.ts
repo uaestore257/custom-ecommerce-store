@@ -104,6 +104,31 @@ export interface AdminOrderSummary {
   isSample: boolean;
 }
 
+/** One order with everything the admin's order page shows (from the database). */
+export interface AdminOrderDetail extends AdminOrderSummary {
+  address: {
+    recipientName: string;
+    line1: string;
+    city: string;
+    region: string;
+    countryCode: string;
+  };
+  items: {
+    id: string;
+    name: string;
+    variantTitle: string;
+    sku: string;
+    quantity: number;
+    unitPriceDisplay: string;
+    lineTotalDisplay: string;
+  }[];
+  subtotalDisplay: string;
+  shippingDisplay: string;
+  taxDisplay: string;
+  /** Empty when there is no discount. */
+  discountDisplay: string;
+}
+
 export type ActionResult<T = undefined> =
   | { ok: true; data: T; message?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };

@@ -1,7 +1,7 @@
 "use server";
 
 // ---------------------------------------------------------------
-// ADMIN SERVER ACTIONS (stores, products, categories)
+// ADMIN SERVER ACTIONS (stores, products, categories, orders)
 //
 // Server Actions are public POST endpoints, so each one:
 //   1. checks its arguments are plain strings (never trusts the client),
@@ -25,6 +25,7 @@ import {
   moveAdminCategory,
   updateAdminCategory,
 } from "@/lib/server/admin/categories";
+import { cancelAdminOrder, setAdminOrderPayment, setAdminOrderStatus } from "@/lib/server/admin/orders";
 import { createAdminProduct, deleteAdminProduct, updateAdminProduct } from "@/lib/server/admin/products";
 import {
   archiveAdminStore,
@@ -142,4 +143,23 @@ export async function deleteCategoryAction(storeId: unknown, categoryId: unknown
   return asPlatformOwner("deleteCategory", () =>
     deleteAdminCategory(getDb(), storeId, categoryId, moveProductsTo ?? undefined),
   );
+}
+
+// ---------- Orders (scoped to the route's store) ----------
+// "from" is the status the admin saw; the change only applies if the
+// order is still in it (see lib/server/admin/orders.ts).
+
+export async function setOrderStatusAction(storeId: unknown, orderId: unknown, from: unknown, to: unknown) {
+  if (!isId(storeId) || !isId(orderId)) return badRequest;
+  return asPlatformOwner("setOrderStatus", (owner) => setAdminOrderStatus(owner, getDb(), storeId, orderId, from, to));
+}
+
+export async function cancelOrderAction(storeId: unknown, orderId: unknown, from: unknown) {
+  if (!isId(storeId) || !isId(orderId)) return badRequest;
+  return asPlatformOwner("cancelOrder", (owner) => cancelAdminOrder(owner, getDb(), storeId, orderId, from));
+}
+
+export async function setOrderPaymentAction(storeId: unknown, orderId: unknown, from: unknown, to: unknown) {
+  if (!isId(storeId) || !isId(orderId)) return badRequest;
+  return asPlatformOwner("setOrderPayment", (owner) => setAdminOrderPayment(owner, getDb(), storeId, orderId, from, to));
 }
