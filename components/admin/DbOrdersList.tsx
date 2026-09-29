@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Receipt } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -7,13 +8,13 @@ import { paymentMethodLabel } from "@/lib/config";
 import { formatDate } from "@/lib/format";
 import type { PaymentMethodId } from "@/lib/types";
 
-/** Read-only list of this store's orders from the database. */
-export function DbOrdersList({ orders, storeName }: { orders: AdminOrderSummary[]; storeName: string }) {
+/** This store's orders from the database; each opens its order page. */
+export function DbOrdersList({ orders, storeId, storeName }: { orders: AdminOrderSummary[]; storeId: string; storeName: string }) {
   return (
     <>
       <PageHeader
         title="Orders"
-        description={`Orders placed in ${storeName}'s storefront, newest first. Read-only for now: statuses can't be changed here yet.`}
+        description={`Orders placed in ${storeName}'s storefront, newest first. Open an order to update its status or payment.`}
       />
       {orders.length === 0 ? (
         <EmptyState icon={Receipt} title="No orders yet" description="Orders placed in the storefront will appear here." />
@@ -35,7 +36,9 @@ export function DbOrdersList({ orders, storeName }: { orders: AdminOrderSummary[
               {orders.map((order) => (
                 <tr key={order.id}>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
-                    {order.number}
+                    <Link href={`/admin/stores/${storeId}/orders/${order.id}`} className="hover:text-brand hover:underline">
+                      {order.number}
+                    </Link>
                     {order.isSample && (
                       <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">Sample</span>
                     )}

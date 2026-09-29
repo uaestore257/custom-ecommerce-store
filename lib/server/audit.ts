@@ -19,7 +19,10 @@ export type AuditAction =
   | "store.status_change"
   | "store.archive"
   | "store.restore"
-  | "store.owner_change";
+  | "store.owner_change"
+  | "order.status_change"
+  | "order.cancel"
+  | "order.payment_change";
 
 type SafeValue = string | number | boolean | null | string[];
 

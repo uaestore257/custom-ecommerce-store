@@ -9,7 +9,8 @@ public storefront's reads — store branding and content, categories, active
 products, prices and stock (`lib/server/storefront/catalog.ts`, which only
 ever returns ACTIVE, non-archived stores and ACTIVE products, through
 `storeScope()`); checkout's orders (`lib/server/orders.ts`, see
-[Orders](#orders)); and the admin's read-only orders list.
+[Orders](#orders)); and the admin's order management
+([Order management](#order-management)).
 
 **Still browser demo data** (`lib/demo-db.ts`, localStorage): the cart's item
 list (product ids and quantities only — never prices), admin customers,
@@ -45,6 +46,33 @@ only) and calls `placeOrder()`:
 * Customers are created once per store and email and never overwritten from
   the public form; each order keeps its own copy of the submitted details.
 * Adding to the cart never reserves stock.
+
+## Order management
+
+The admin's order page (`/admin/stores/[storeId]/orders/[orderId]`) calls
+`setOrderStatusAction`, `cancelOrderAction` and `setOrderPaymentAction`
+(`app/admin/actions.ts`), which call `lib/server/admin/orders.ts`. The rules
+live in `lib/admin/order-rules.ts`:
+
+* **Status only moves forward, one step:** `PENDING → PROCESSING → SHIPPED →
+  DELIVERED`. `DELIVERED` and `CANCELLED` are final.
+* **Cancelling** is allowed from `PENDING` or `PROCESSING`, only while
+  `paymentStatus` is `UNPAID` (a paid order is refunded outside the system
+  and marked unpaid first). It returns each item's quantity to its variant's
+  stock in the same transaction. Seeded sample orders (`isDemo`) never
+  reduced stock, so cancelling one returns none.
+* **Payment** can be marked `PAID` or back to `UNPAID` on any order that
+  isn't cancelled, for `cash_on_delivery` and `bank_transfer` only.
+* **No double changes.** Every call names the state the page showed
+  (`from`). The write is a conditional update (`WHERE status = from`, or
+  `paymentStatus = from`), so a stale page, a double click or two admins at
+  once apply a change at most once — a cancellation can't return stock twice,
+  and "mark paid" and "cancel" can't both succeed.
+* **Scoped to the route's store:** another store's order is "not found";
+  archived stores are refused.
+* **Audited** in the same transaction: `order.status_change`,
+  `order.cancel` (with `stockReturned`) and `order.payment_change`, with the
+  before/after values and the acting user. No customer details are logged.
 
 ## Admin data flow
 
@@ -232,10 +260,9 @@ so later migrations leave them in place (verified: a follow-up
   secret manager or environment variable.
 * Language switcher UI and right-to-left layout.
 * Domain routing (the storefront's store choice is a temporary cookie plus a
-  configured default); order management (status changes, cancellation and
-  refunds with stock restored, payment confirmation, emails); moving admin
-  customers from localStorage to the database; importing any data saved in
-  browsers.
+  configured default); refunds, returns and editing orders; order emails;
+  moving admin customers from localStorage to the database; importing any
+  data saved in browsers.
 * Data-residency rules differ by country (e.g. GDPR, Saudi PDPL); this
   phase uses a single database.
 

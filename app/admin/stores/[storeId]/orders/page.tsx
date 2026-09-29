@@ -7,7 +7,7 @@ import { getAdminStore } from "@/lib/server/admin/stores";
 
 export const metadata: Metadata = { title: "Orders" };
 
-// Read-only list of this store's orders from the database. Only the
+// This store's orders from the database. Only the
 // signed-in platform owner reaches it (requireAdminPage), and only the
 // store in the URL is read.
 export default async function OrdersPage({ params }: PageProps<"/admin/stores/[storeId]/orders">) {
@@ -15,5 +15,5 @@ export default async function OrdersPage({ params }: PageProps<"/admin/stores/[s
   const { db: client } = await requireAdminPage();
   const [store, orders] = await Promise.all([getAdminStore(client, storeId), listAdminOrders(client, storeId)]);
   if (!store || !orders) notFound();
-  return <DbOrdersList orders={orders} storeName={store.name} />;
+  return <DbOrdersList orders={orders} storeId={store.id} storeName={store.name} />;
 }

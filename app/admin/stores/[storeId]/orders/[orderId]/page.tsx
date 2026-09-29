@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
-import { OrderDetailView } from "@/components/admin/OrdersViews";
-import { DemoStoreData } from "@/components/admin/StoreContext";
+import { notFound } from "next/navigation";
+import { DbOrderDetail } from "@/components/admin/DbOrderDetail";
+import { getAdminOrder } from "@/lib/server/admin/orders";
 import { requireAdminPage } from "@/lib/server/admin/request";
+import { getAdminStore } from "@/lib/server/admin/stores";
 
 export const metadata: Metadata = { title: "Order details" };
 
-// Orders still use browser demo data (not connected to the database yet).
+// One order from the database. Scoped by BOTH ids: an order of another
+// store is "not found". Only the signed-in platform owner reaches it.
 export default async function OrderDetailPage({ params }: PageProps<"/admin/stores/[storeId]/orders/[orderId]">) {
-  await requireAdminPage();
-  const { orderId } = await params;
-  return (
-    <DemoStoreData area="orders">
-      <OrderDetailView orderId={orderId} />
-    </DemoStoreData>
-  );
+  const { storeId, orderId } = await params;
+  const { db: client } = await requireAdminPage();
+  const [store, order] = await Promise.all([getAdminStore(client, storeId), getAdminOrder(client, storeId, orderId)]);
+  if (!store || !order) notFound();
+  return <DbOrderDetail storeId={store.id} storeName={store.name} order={order} />;
 }
