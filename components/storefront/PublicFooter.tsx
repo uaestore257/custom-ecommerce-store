@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlatformContactDisclosure } from "@/components/PlatformContactDisclosure";
+import { POLICIES } from "@/lib/policies";
 import type { StorefrontStore } from "@/lib/storefront-types";
 
 export function PublicFooter({ store, isAdminHost }: { store: StorefrontStore; isAdminHost: boolean }) {
@@ -30,7 +31,16 @@ export function PublicFooter({ store, isAdminHost }: { store: StorefrontStore; i
       </div>
       <div className="border-t border-slate-200">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 text-xs text-slate-500 sm:flex-row sm:justify-between sm:px-6">
-          <p>© {new Date().getFullYear()} {store.name}. All rights reserved.</p>
+          <div className="flex flex-col gap-2">
+            <p>© {new Date().getFullYear()} {store.name}. All rights reserved.</p>
+            <nav aria-label="Store policies">
+              <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                {POLICIES.map((policy) => (
+                  <li key={policy.id}><Link href={policy.href} className="hover:text-brand">{policy.title}</Link></li>
+                ))}
+              </ul>
+            </nav>
+          </div>
           <div className="flex flex-wrap items-center gap-x-1">
             Demo storefront built on the Master Ecommerce Template ·{" "}
             <PlatformContactDisclosure

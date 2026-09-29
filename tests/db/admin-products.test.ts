@@ -58,6 +58,8 @@ const productInput = (categoryId: string, overrides: Record<string, unknown> = {
   compareAtPrice: "",
   imageUrl: "",
   stock: "5",
+  // The stock an edit form started from (ignored when creating).
+  expectedStock: "5",
   status: "ACTIVE",
   featured: false,
   ...overrides,
@@ -262,4 +264,52 @@ test("categories: add, rename, reorder and delete with product move", async () =
   assert.equal(refused.ok, false, "must say where its products go");
   assert.ok((await deleteAdminCategory(db, storeA, created.data.id, categoryA)).ok);
   assert.equal((await getAdminProduct(db, storeA, p.data.id))?.categoryId, categoryA);
+});
+
+// ---------- Stock edits vs. sales ----------
+
+/** A fresh product with stock 5 and its default variant id. */
+async function stockProduct() {
+  const created = await createAdminProduct(db, storeA, productInput(categoryA, { name: `Stock chair ${uid()}` }));
+  assert.ok(created.ok, JSON.stringify(created));
+  const variant = await db.productVariant.findFirstOrThrow({ where: { productId: created.data.id, isDefault: true } });
+  return { id: created.data.id, variantId: variant.id };
+}
+const stockOf = async (variantId: string) => (await db.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stock;
+/** What checkout does when it sells `quantity` units. */
+const sell = (variantId: string, quantity: number) =>
+  db.productVariant.update({ where: { id: variantId }, data: { stock: { decrement: quantity } } });
+
+test("an old form can't overwrite stock that a sale reduced after it was opened", async () => {
+  const p = await stockProduct();
+  await sell(p.variantId, 2); // 5 -> 3 while the admin's form still shows 5
+  const result = await updateAdminProduct(db, storeA, p.id, productInput(categoryA, { name: "Renamed", stock: "7", expectedStock: "5" }));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.fieldErrors?.stock ?? "", /changed to 3/);
+  assert.equal(await stockOf(p.variantId), 3, "the sale is kept");
+  assert.notEqual((await getAdminProduct(db, storeA, p.id))?.name, "Renamed", "the whole save is rolled back");
+
+  // With the current stock as the starting point, the same change saves.
+  const retry = await updateAdminProduct(db, storeA, p.id, productInput(categoryA, { name: "Renamed", stock: "7", expectedStock: "3" }));
+  assert.ok(retry.ok, JSON.stringify(retry));
+  assert.equal(await stockOf(p.variantId), 7);
+});
+
+test("saving other fields with the stock field untouched keeps a sale made meanwhile", async () => {
+  const p = await stockProduct();
+  await sell(p.variantId, 1); // 5 -> 4
+  const result = await updateAdminProduct(db, storeA, p.id, productInput(categoryA, { name: "New name", stock: "5", expectedStock: "5" }));
+  assert.ok(result.ok, JSON.stringify(result));
+  assert.equal(await stockOf(p.variantId), 4, "stock wasn't written back to 5");
+  assert.equal((await getAdminProduct(db, storeA, p.id))?.name, "New name");
+});
+
+test("an update without a valid starting stock is refused and nothing changes", async () => {
+  const p = await stockProduct();
+  for (const expectedStock of [undefined, "", "-1", "abc", "2.5", "99999999"]) {
+    const result = await updateAdminProduct(db, storeA, p.id, productInput(categoryA, { name: "Hijacked", stock: "0", expectedStock }));
+    assert.equal(result.ok, false, String(expectedStock));
+  }
+  assert.equal(await stockOf(p.variantId), 5);
+  assert.notEqual((await getAdminProduct(db, storeA, p.id))?.name, "Hijacked");
 });

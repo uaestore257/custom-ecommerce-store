@@ -1,26 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, type CSSProperties, type ReactNode } from "react";
 import { Store as StoreIcon } from "lucide-react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { buttonClass } from "@/components/ui";
 import {
   StorefrontDataContext,
-  switchStorefrontStore,
   syncCartStore,
   useStorefront,
   type StorefrontView,
 } from "@/lib/storefront";
-import type { StorefrontCatalog, StorefrontStoreOption } from "@/lib/storefront-types";
+import type { StorefrontCatalog } from "@/lib/storefront-types";
 import { PlatformContactDisclosure } from "@/components/PlatformContactDisclosure";
 import { PublicFooter } from "./PublicFooter";
 import { PublicHeader } from "./PublicHeader";
 
 /**
- * Wraps every public storefront page: demo bar, header, footer and the
+ * Wraps every public storefront page: preview bar (platform host only), header, footer and the
  * shown store's accent colour. The catalog comes from the server
  * (app/(storefront)/layout.tsx), for an ACTIVE store only.
  */
@@ -28,14 +25,12 @@ export function StorefrontShell({
   children,
   isAdminHost,
   catalog,
-  stores,
 }: {
   children: ReactNode;
   isAdminHost: boolean;
   catalog: StorefrontCatalog | null;
-  stores: StorefrontStoreOption[];
 }) {
-  const data = useMemo(() => ({ catalog, stores }), [catalog, stores]);
+  const data = useMemo(() => ({ catalog }), [catalog]);
   return (
     <StorefrontDataContext.Provider value={data}>
       <ShellBody isAdminHost={isAdminHost}>{children}</ShellBody>
@@ -77,7 +72,7 @@ function ShellBody({ children, isAdminHost }: { children: ReactNode; isAdminHost
       className="flex min-h-screen flex-col bg-white text-slate-900"
       style={{ "--brand": view.store.accentColor } as CSSProperties}
     >
-      <DemoBar view={view} isAdminHost={isAdminHost} />
+      {isAdminHost && <PreviewBar view={view} />}
       <PublicHeader store={view.store} cartCount={view.cart.itemCount} />
       <div className="flex-1">{children}</div>
       <PublicFooter store={view.store} isAdminHost={isAdminHost} />
@@ -85,63 +80,23 @@ function ShellBody({ children, isAdminHost }: { children: ReactNode; isAdminHost
   );
 }
 
-/** Lets the demo viewer switch between the ACTIVE stores. Draft and other non-public stores are never listed. */
-function DemoBar({ view, isAdminHost }: { view: StorefrontView; isAdminHost: boolean }) {
-  const router = useRouter();
-  const [pendingStoreId, setPendingStoreId] = useState<string | null>(null);
-  const pendingStore = view.stores.find((s) => s.id === pendingStoreId);
-  const cartCount = view.cart.itemCount;
-
-  function switchTo(storeId: string) {
-    switchStorefrontStore(storeId);
-    router.refresh();
-  }
-
-  function requestSwitch(storeId: string) {
-    if (storeId === view.store.id) return;
-    if (cartCount > 0) setPendingStoreId(storeId);
-    else switchTo(storeId);
-  }
-
+/**
+ * Only on the platform host (ADMIN_HOST): says this is the platform owner's
+ * preview of a store. A store's own site has no bar and no way to switch
+ * to another store; the store is chosen by the site's hostname.
+ */
+function PreviewBar({ view }: { view: StorefrontView }) {
   return (
     <div className="bg-slate-900 text-xs text-slate-200">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 sm:px-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded bg-white/10 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-white">
-            Demo
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="rounded bg-white/10 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-white">Preview</span>
+          <span>
+            Previewing <strong className="text-white">{view.store.name}</strong> on the platform host. Choose another store in the admin.
           </span>
-          <label htmlFor="demo-store-select"><span className="hidden sm:inline">Viewing storefront:</span><span className="sr-only sm:hidden">Viewing storefront</span></label>
-          <select
-            id="demo-store-select"
-            value={view.store.id}
-            onChange={(event) => requestSwitch(event.target.value)}
-            className="max-w-[11rem] truncate rounded border border-white/20 bg-slate-800 px-1.5 py-0.5 text-white focus:outline-none focus:ring-2 focus:ring-white/40 sm:max-w-none"
-          >
-            {view.stores.map((store) => (
-              <option key={store.id} value={store.id}>
-                {store.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <PlatformContactDisclosure label={isAdminHost ? "Agency Admin" : "Contact admin"} />
+        </p>
+        <PlatformContactDisclosure label="Agency Admin" />
       </div>
-
-      <ConfirmDialog
-        open={pendingStore !== undefined}
-        title={`Switch to ${pendingStore?.name ?? "another store"}?`}
-        confirmLabel="Switch and empty cart"
-        cancelLabel="Keep current store"
-        onCancel={() => setPendingStoreId(null)}
-        onConfirm={() => {
-          if (pendingStoreId) switchTo(pendingStoreId);
-          setPendingStoreId(null);
-        }}
-      >
-        Your cart has {cartCount} {cartCount === 1 ? "item" : "items"} from{" "}
-        <strong>{view.store.name}</strong>. A cart can only hold products from one store, so
-        switching will empty it.
-      </ConfirmDialog>
     </div>
   );
 }

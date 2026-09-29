@@ -14,7 +14,6 @@ import type {
   StorefrontCategory,
   StorefrontProduct,
   StorefrontStore,
-  StorefrontStoreOption,
 } from "./storefront-types";
 import { readJson, writeJson } from "./storage";
 
@@ -165,18 +164,15 @@ export function acceptCartChanges(summary: CartSummary, storeId: string) {
 
 export interface StorefrontData {
   catalog: StorefrontCatalog | null;
-  stores: StorefrontStoreOption[];
 }
 
-export const StorefrontDataContext = createContext<StorefrontData>({ catalog: null, stores: [] });
+export const StorefrontDataContext = createContext<StorefrontData>({ catalog: null });
 
 export interface StorefrontView {
   store: StorefrontStore;
   categories: StorefrontCategory[];
   /** ACTIVE products of this store, as the server last sent them. */
   products: StorefrontProduct[];
-  /** Public stores the switcher may offer. */
-  stores: StorefrontStoreOption[];
   cart: CartSummary;
   /** false during the server render and hydration, before the saved cart is read. */
   cartLoaded: boolean;
@@ -184,14 +180,13 @@ export interface StorefrontView {
 
 /** Everything a storefront page needs, or null if there is no public store to show. */
 export function useStorefront(): StorefrontView | null {
-  const { catalog, stores } = useContext(StorefrontDataContext);
+  const { catalog } = useContext(StorefrontDataContext);
   const current = useSession();
   if (!catalog) return null;
   return {
     store: catalog.store,
     categories: catalog.categories,
     products: catalog.products,
-    stores,
     cart: computeCart(catalog, current),
     cartLoaded: current !== undefined,
   };

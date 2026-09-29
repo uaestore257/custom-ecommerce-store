@@ -69,6 +69,14 @@ export function ProductForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
+  // The stock this form started from, sent as `expectedStock` so the server
+  // refuses to overwrite a sale made meanwhile. When the page passes a newer
+  // stock (after a save or refresh), an untouched stock field follows it.
+  const [baseStock, setBaseStock] = useState(product?.stock ?? 0);
+  if (product && product.stock !== baseStock) {
+    setBaseStock(product.stock);
+    if (values.stock === String(baseStock)) setValues((v) => ({ ...v, stock: String(product.stock) }));
+  }
   const base = `/admin/stores/${store.id}`;
   const isEdit = Boolean(product);
   const step = minorUnits === 0 ? "1" : `0.${"0".repeat(minorUnits - 1)}1`;
@@ -90,15 +98,19 @@ export function ProductForm({
     }
     startTransition(async () => {
       const result = product
-        ? await updateProductAction(store.id, product.id, values)
+        ? await updateProductAction(store.id, product.id, { ...values, expectedStock: String(baseStock) })
         : await createProductAction(store.id, values);
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {});
         setFormError(result.error);
+        // e.g. stock changed since the form opened: fetch the current stock.
+        if (result.fieldErrors?.stock) router.refresh();
         return;
       }
-      if (product) setSaved(true);
-      else router.push(`${base}/products`);
+      if (product) {
+        setSaved(true);
+        router.refresh(); // the saved stock becomes the new starting point
+      } else router.push(`${base}/products`);
     });
   }
 

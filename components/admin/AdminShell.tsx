@@ -163,7 +163,8 @@ function SidebarContent({ stores }: { stores: ShellStore[] }) {
           View storefront
         </Link>
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">
-          <strong>Demo mode.</strong> No login or permissions. Data is saved in this browser only.
+          <strong>Partly sample data.</strong> Customers and agency settings are still saved in this browser only. Stores,
+          products, categories and orders are saved in the database.
         </p>
       </div>
     </div>

@@ -16,18 +16,20 @@ after(() => db.$disconnect());
 
 const TEST_IP_HEADER = "x-test-client-ip";
 const previousTrustedIpHeader = process.env.TRUSTED_IP_HEADER;
+const previousRootDomain = process.env.PLATFORM_ROOT_DOMAIN;
 
-/** Makes the action see a request with (or without) this IP header. */
-function actAsRequest(ip: string | null) {
+/** Makes the action see a request to this store's host, with (or without) this IP header. */
+function actAsRequest(ip: string | null, host = activeHost) {
   setRequestRuntimeForTests({
     async headers() {
-      const headers = new Headers();
+      const headers = new Headers({ host });
       if (ip) headers.set(TEST_IP_HEADER, ip);
       return headers;
     },
     revalidateAdmin() {},
   });
 }
+const hostOf = async (storeId: string) => `${(await db.store.findUniqueOrThrow({ where: { id: storeId } })).slug}.shops.test`;
 
 async function makeStore(label: string) {
   const result = await createAdminStore(await testActor(db), db, {
@@ -49,15 +51,19 @@ async function makeStore(label: string) {
 }
 
 let activeStore = "";
+let activeHost = "";
 
 before(async () => {
   process.env.TRUSTED_IP_HEADER = TEST_IP_HEADER;
+  process.env.PLATFORM_ROOT_DOMAIN = "shops.test";
   activeStore = await makeStore("test");
+  activeHost = await hostOf(activeStore);
 });
 
 after(() => {
   setRequestRuntimeForTests(null);
   process.env.TRUSTED_IP_HEADER = previousTrustedIpHeader;
+  process.env.PLATFORM_ROOT_DOMAIN = previousRootDomain;
 });
 
 const validInput = () => ({
@@ -120,9 +126,21 @@ test("with no IP header, the row is stored with no IP but the action still succe
   assert.equal(row.ipAddress, null);
 });
 
+test("the message goes to the store the host serves; another store's id or an unknown host is refused", async () => {
+  const other = await makeStore("other");
+  const before = await db.inquiry.count({ where: { storeId: { in: [activeStore, other] } } });
+  actAsRequest(null); // the active store's host
+  const wrongStore = await submitInquiryAction(other, validInput());
+  assert.ok(!wrongStore.ok && /out of date/i.test(wrongStore.error), JSON.stringify(wrongStore));
+  actAsRequest(null, "elsewhere.example");
+  const unknownHost = await submitInquiryAction(activeStore, validInput());
+  assert.ok(!unknownHost.ok && /isn.t accepting messages/i.test(unknownHost.error), JSON.stringify(unknownHost));
+  assert.equal(await db.inquiry.count({ where: { storeId: { in: [activeStore, other] } } }), before);
+});
+
 test("per-IP rate limiting works through the real action, not just the underlying function", async () => {
   const store = await makeStore("rate-limit");
-  actAsRequest("198.51.100.7");
+  actAsRequest("198.51.100.7", await hostOf(store));
   for (let i = 0; i < 5; i++) {
     const r = await submitInquiryAction(store, validInput());
     assert.ok(r.ok, JSON.stringify(r));

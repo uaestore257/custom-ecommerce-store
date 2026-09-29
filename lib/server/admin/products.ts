@@ -3,7 +3,7 @@ import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import { formatMinorUnits, fromMinorUnits } from "@/lib/money";
 import { storeFormatLocale } from "@/lib/standards";
 import type { ActionResult, AdminProduct } from "@/lib/admin/types";
-import { hasErrors, validateProduct, type CleanProduct } from "@/lib/admin/validation";
+import { hasErrors, readExpectedStock, validateProduct, type CleanProduct } from "@/lib/admin/validation";
 import { pickTranslation } from "../store-scope";
 import { fail, INVALID, isRecordNotFound, NOT_FOUND, ok, toSlug, uniqueSlug, uniqueViolation, type Client } from "./common";
 
@@ -168,6 +168,17 @@ export async function createAdminProduct(
   }
 }
 
+/** Thrown inside the update transaction to roll it back when stock changed meanwhile. */
+class StockChanged extends Error {}
+
+const stockChangedMessage = (stock: number) =>
+  `Stock changed to ${stock} since you opened this form (for example, a sale). Check the stock quantity and save again.`;
+
+/**
+ * Stock is only written when the admin changed it, and only if it still
+ * equals the stock the form started from (`expectedStock`). So an old form
+ * can never overwrite a sale that reduced stock after it was opened.
+ */
 export async function updateAdminProduct(
   client: PrismaClient,
   storeId: string,
@@ -186,6 +197,8 @@ export async function updateAdminProduct(
 
   const { values, errors } = validateProduct(input, store.minorUnits);
   if (hasErrors(errors)) return fail(INVALID, errors);
+  const expectedStock = readExpectedStock(input);
+  if (expectedStock === null) return fail("This form is out of date. Reload the page and try again.");
   const relationErrors = await checkRelations(client, store.id, values, variant?.id);
   if (hasErrors(relationErrors)) return fail(INVALID, relationErrors);
 
@@ -206,16 +219,29 @@ export async function updateAdminProduct(
         create: { productId, storeId: store.id, locale: store.defaultLanguage, name: values.name, description: values.description, slug },
         update: { name: values.name, description: values.description, slug },
       });
-      await tx.productVariant.update({
-        where: { id_storeId: { id: variant.id, storeId: store.id } },
-        data: { sku: values.sku, priceMinor: values.priceMinor, compareAtMinor: values.compareAtMinor, stock: values.stock },
-      });
+      const variantData = { sku: values.sku, priceMinor: values.priceMinor, compareAtMinor: values.compareAtMinor };
+      if (values.stock === expectedStock) {
+        // Stock untouched by the admin: leave whatever it is now (a sale may have changed it).
+        await tx.productVariant.update({ where: { id_storeId: { id: variant.id, storeId: store.id } }, data: variantData });
+      } else {
+        // Conditional write: only if no sale or other edit changed stock since the form was opened.
+        const updated = await tx.productVariant.updateMany({
+          where: { id: variant.id, storeId: store.id, stock: expectedStock },
+          data: { ...variantData, stock: values.stock },
+        });
+        if (updated.count !== 1) throw new StockChanged();
+      }
       await tx.productImage.deleteMany({ where: { productId, storeId: store.id } });
       if (values.imageUrl) {
         await tx.productImage.create({ data: { productId, storeId: store.id, url: values.imageUrl, position: 0 } });
       }
     });
   } catch (error) {
+    if (error instanceof StockChanged) {
+      const now = await client.productVariant.findFirst({ where: { id: variant.id, storeId: store.id }, select: { stock: true } });
+      if (!now) return fail(NOT_FOUND.product);
+      return fail(INVALID, { stock: stockChangedMessage(now.stock) });
+    }
     const conflict = skuConflict(error);
     if (conflict) return conflict;
     if (isRecordNotFound(error)) return fail(NOT_FOUND.product);

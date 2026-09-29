@@ -19,7 +19,7 @@ TypeScript and Tailwind CSS.
 
 ```bash
 npm install
-npm run dev      # storefront http://localhost:3000, admin http://admin.localhost:3000/admin
+npm run dev      # a store: http://<store-slug>.localhost:3000 (e.g. nest-and-oak), admin http://admin.localhost:3000/admin
 npm run lint
 npm run build
 ```
@@ -140,9 +140,12 @@ These parts are **not** implemented and need a backend:
   There are no refunds, returns or item edits, and no emails are sent to the
   customer or store. Admin customers and agency settings are still browser
   demo data. A store without a delivery rate can't take orders.
-- **Store choice is temporary.** The storefront picks a store from a browser
-  cookie or the configured default, not yet from the domain name. Draft
-  stores can't be previewed on the storefront yet.
+- **Stores are chosen by hostname.** Each active store is served at
+  `<slug>.<PLATFORM_ROOT_DOMAIN>`, or at a client domain listed in
+  `STORE_DOMAINS` (see `.env.example`); other hosts show no store. Custom
+  domains are configuration, not yet stored per store in the database, and
+  changing a store's slug changes its address. Draft stores can't be
+  previewed on the storefront yet.
 - **Payments.** Nothing is paid online and no card details are collected.
   "Online card payment" can't be switched on because no payment provider is
   connected, and "card on delivery" isn't offered at checkout yet.

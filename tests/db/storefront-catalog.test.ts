@@ -3,13 +3,14 @@
 // Every store here is created fresh, so nothing depends on seeded data.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { DEFAULT_STOREFRONT_STORE_ID } from "../../lib/config";
 import { listAdminCategories } from "../../lib/server/admin/categories";
 import { createAdminProduct, updateAdminProduct } from "../../lib/server/admin/products";
 import { archiveAdminStore, createAdminStore, setAdminStoreStatus } from "../../lib/server/admin/stores";
 import {
   getStorefrontCatalog,
   getStorefrontProduct,
-  listStorefrontStores,
+  resolveStoreForHost,
   resolveStorefrontStoreId,
 } from "../../lib/server/storefront/catalog";
 import { testActor, testDb, uid } from "./helpers";
@@ -113,11 +114,39 @@ test("a valid cookie store still wins when the default is unavailable", async ()
   assert.equal(await resolveStorefrontStoreId(db, active, suspended), active);
 });
 
-test("the public store switcher lists only ACTIVE, non-archived stores", async () => {
-  const ids = (await listStorefrontStores(db)).map((s) => s.id);
-  assert.ok(ids.includes(active) && ids.includes(otherActive));
-  for (const hidden of [draft, paused, suspended, archived]) assert.ok(!ids.includes(hidden), hidden);
-  for (const option of await listStorefrontStores(db)) assert.deepEqual(Object.keys(option).sort(), ["id", "name"]);
+// ---------- Store from the hostname ----------
+
+const HOST_ENV = {
+  ADMIN_HOST: "admin.shops.test",
+  PLATFORM_ROOT_DOMAIN: "shops.test",
+  NODE_ENV: "production",
+} as unknown as NodeJS.ProcessEnv;
+const slugOf = async (id: string) => (await db.store.findUniqueOrThrow({ where: { id } })).slug;
+
+test("a store's own subdomain serves that store, and ignores any preview cookie", async () => {
+  const host = `${await slugOf(active)}.shops.test`;
+  assert.equal(await resolveStoreForHost(db, host, undefined, HOST_ENV), active);
+  assert.equal(await resolveStoreForHost(db, `${host}:3000`, otherActive, HOST_ENV), active, "cookie naming another store is ignored");
+  assert.equal(await resolveStoreForHost(db, host.toUpperCase(), undefined, HOST_ENV), active, "hostnames are case-insensitive");
+});
+
+test("a mapped custom domain serves its store", async () => {
+  const env = { ...HOST_ENV, STORE_DOMAINS: `shop.client.test=${await slugOf(otherActive)}` } as unknown as NodeJS.ProcessEnv;
+  assert.equal(await resolveStoreForHost(db, "shop.client.test", active, env), otherActive);
+});
+
+test("a non-public store's host, an unknown slug or an unknown domain serves no store — never another one", async () => {
+  for (const id of [draft, paused, suspended, archived]) {
+    assert.equal(await resolveStoreForHost(db, `${await slugOf(id)}.shops.test`, active, HOST_ENV), null, id);
+  }
+  for (const host of [`no-such-store-${uid()}.shops.test`, "elsewhere.example", "shops.test", "", "www.shops.test"]) {
+    assert.equal(await resolveStoreForHost(db, host, active, HOST_ENV), null, host);
+  }
+});
+
+test("only the platform host uses the preview cookie (falling back to the default)", async () => {
+  assert.equal(await resolveStoreForHost(db, "admin.shops.test", active, HOST_ENV), active);
+  assert.equal(await resolveStoreForHost(db, "admin.shops.test", draft, HOST_ENV), await resolveStorefrontStoreId(db, undefined, DEFAULT_STOREFRONT_STORE_ID));
 });
 
 // ---------- Catalog contents ----------
@@ -200,6 +229,7 @@ test("an admin price or stock change is what the next catalog read returns", asy
     compareAtPrice: "",
     imageUrl: "",
     stock: "1",
+    expectedStock: "4",
     status: "ACTIVE",
     featured: false,
   });

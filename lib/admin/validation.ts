@@ -251,6 +251,18 @@ export interface CleanProduct {
   featured: boolean;
 }
 
+/**
+ * The stock an edit form started from (`expectedStock`), or null if it is
+ * missing or malformed. The server only changes stock if it still equals
+ * this, so an old form can't overwrite a sale made since it was opened.
+ */
+export function readExpectedStock(input: unknown): number | null {
+  const raw = record(input).expectedStock;
+  const text = typeof raw === "number" ? String(raw) : typeof raw === "string" ? raw.trim() : "";
+  if (!/^\d+$/.test(text) || Number(text) > LIMITS.maxStock) return null;
+  return Number(text);
+}
+
 export function validateProduct(input: unknown, minorUnits: number) {
   const raw = record(input);
   const errors: Errors = {};

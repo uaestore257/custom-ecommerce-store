@@ -15,6 +15,7 @@ import {
   type PlacedOrder,
 } from "@/lib/checkout";
 import { PAYMENT_METHODS, paymentMethodLabel, UAE_EMIRATES } from "@/lib/config";
+import { paymentInstructions } from "@/lib/payment-instructions";
 import { clearCart, useStorefront } from "@/lib/storefront";
 import { formatStoreMoney, hasCartChanges } from "@/lib/storefront-cart";
 import type { StorefrontStore } from "@/lib/storefront-types";
@@ -358,8 +359,8 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
         <Notice className="mt-6 text-left">
           {order.paymentMethod === "bank_transfer" ? (
             <>
-              <strong>Payment: bank transfer — not paid yet.</strong> {store.name} will send you the
-              bank transfer details. Your order is confirmed once the store receives your payment.
+              <strong>Payment: bank transfer — not paid yet.</strong>{" "}
+              {paymentInstructions("bank_transfer", store.name, order.orderNumber)}
             </>
           ) : (
             <>

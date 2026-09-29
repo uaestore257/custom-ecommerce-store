@@ -65,6 +65,10 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next.js build assets and files with an extension.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[a-zA-Z0-9]+$).*)"],
+  // Everything except Next.js build assets and the favicon. Paths with a
+  // dot are NOT skipped: dynamic routes accept them (/products/x.js is the
+  // product page, /admin/stores/a.b an admin page), so skipping them would
+  // skip the checks above. Files in public/ also pass through here; the
+  // proxy just lets them through. Tested in tests/unit/proxy-matcher.test.ts.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
