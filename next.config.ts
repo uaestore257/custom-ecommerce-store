@@ -21,6 +21,7 @@ const securityHeaders = (production: boolean) => [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  logging: { serverFunctions: false },
   headers() {
     return [{ source: "/:path*", headers: securityHeaders(process.env.NODE_ENV === "production") }];
   },
