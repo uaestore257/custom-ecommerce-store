@@ -145,7 +145,10 @@ These parts are **not** implemented and need a backend:
   connected, and "card on delivery" isn't offered at checkout yet.
 - **Tax.** No tax is calculated; orders record the store's "prices include
   tax" setting and a tax amount of zero.
-- **Contact form.** It checks the fields but doesn't send or save anything.
+- **Contact form.** Messages are validated and rate-limited on the server and
+  saved to the database for that store, but there is no admin page to read
+  them yet and no email is sent. The store is chosen by the visitor's browser,
+  not yet by domain.
 - **Domains.** The domain field is just a setting. Nothing is registered, no
   DNS is changed and nothing is deployed.
 - **Template versioning.** There is none. Every store uses the current code.
