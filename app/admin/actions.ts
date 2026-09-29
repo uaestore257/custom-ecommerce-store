@@ -1,7 +1,7 @@
 "use server";
 
 // ---------------------------------------------------------------
-// ADMIN SERVER ACTIONS (stores, products, categories, orders)
+// ADMIN SERVER ACTIONS (stores, products, categories, orders, messages)
 //
 // Server Actions are public POST endpoints, so each one:
 //   1. checks its arguments are plain strings (never trusts the client),
@@ -25,6 +25,7 @@ import {
   moveAdminCategory,
   updateAdminCategory,
 } from "@/lib/server/admin/categories";
+import { setAdminInquiryStatus } from "@/lib/server/admin/inquiries";
 import { cancelAdminOrder, setAdminOrderPayment, setAdminOrderStatus } from "@/lib/server/admin/orders";
 import { createAdminProduct, deleteAdminProduct, updateAdminProduct } from "@/lib/server/admin/products";
 import {
@@ -162,4 +163,13 @@ export async function cancelOrderAction(storeId: unknown, orderId: unknown, from
 export async function setOrderPaymentAction(storeId: unknown, orderId: unknown, from: unknown, to: unknown) {
   if (!isId(storeId) || !isId(orderId)) return badRequest;
   return asPlatformOwner("setOrderPayment", (owner) => setAdminOrderPayment(owner, getDb(), storeId, orderId, from, to));
+}
+
+// ---------- Contact messages (scoped to the route's store) ----------
+// "from" is the status the admin saw; the change only applies if the
+// message still has it (see lib/server/admin/inquiries.ts).
+
+export async function setInquiryStatusAction(storeId: unknown, inquiryId: unknown, from: unknown, to: unknown) {
+  if (!isId(storeId) || !isId(inquiryId)) return badRequest;
+  return asPlatformOwner("setInquiryStatus", (owner) => setAdminInquiryStatus(owner, getDb(), storeId, inquiryId, from, to));
 }

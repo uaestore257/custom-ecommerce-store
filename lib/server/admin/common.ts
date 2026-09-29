@@ -25,6 +25,7 @@ export const NOT_FOUND = {
   product: "This product was not found in this store.",
   category: "This category was not found in this store.",
   order: "This order was not found in this store.",
+  inquiry: "This message was not found in this store.",
 } as const;
 
 export const INVALID = "Please fix the highlighted fields.";

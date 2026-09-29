@@ -30,4 +30,5 @@ export const ACTION_PERMISSIONS = {
   setOrderStatusAction: "platform-owner",
   cancelOrderAction: "platform-owner",
   setOrderPaymentAction: "platform-owner",
+  setInquiryStatusAction: "platform-owner",
 } as const satisfies Record<string, ActionPermission>;
