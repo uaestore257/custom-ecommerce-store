@@ -1,15 +1,11 @@
 import "server-only";
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { DEFAULT_STOREFRONT_STORE_ID, PAYMENT_METHODS } from "@/lib/config";
 import { storeFormatLocale } from "@/lib/standards";
 import { isStoreIdCookieValue, STOREFRONT_STORE_COOKIE } from "@/lib/storefront-cookie";
-import type {
-  StorefrontCatalog,
-  StorefrontProduct,
-  StorefrontStore,
-  StorefrontStoreOption,
-} from "@/lib/storefront-types";
+import { matchStoreHost, storeHostConfig } from "@/lib/store-host";
+import type { StorefrontCatalog, StorefrontProduct, StorefrontStore } from "@/lib/storefront-types";
 import type { PaymentMethodId } from "@/lib/types";
 import type { Client } from "../admin/common";
 import { getDb } from "../db";
@@ -26,9 +22,10 @@ import { storeScope } from "../store-scope";
 // minor-unit strings), so nothing else from the database row reaches the
 // browser.
 //
-// Which store to show is a TEMPORARY, demo-era choice (a browser cookie
-// plus a configured default — see lib/storefront-cookie.ts). It is NOT
-// domain-based tenant resolution; that replaces it in a later phase.
+// Which store to show comes from the request's hostname
+// (resolveStoreForHost, rules in lib/store-host.ts). Only the platform
+// host (ADMIN_HOST, and the bare root domain in development) still uses
+// the preview cookie plus a configured default (lib/storefront-cookie.ts).
 // ---------------------------------------------------------------
 
 const PUBLIC_STORE = { status: "ACTIVE", archivedAt: null } as const;
@@ -53,14 +50,23 @@ export async function resolveStorefrontStoreId(
   return null;
 }
 
-/** Stores the public store switcher may offer: active and not archived. */
-export async function listStorefrontStores(client: Client): Promise<StorefrontStoreOption[]> {
-  const rows = await client.store.findMany({
-    where: PUBLIC_STORE,
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    select: { id: true, name: true },
-  });
-  return rows.map((row) => ({ id: row.id, name: row.name }));
+/**
+ * The store a request's Host serves, if it is public (ACTIVE, not
+ * archived): a store's own host by slug; on the platform host, the
+ * preview cookie's store or the default (resolveStorefrontStoreId); an
+ * unknown host serves no store. Never another store than the host names.
+ */
+export async function resolveStoreForHost(
+  client: Client,
+  host: string,
+  previewCookie: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | null> {
+  const match = matchStoreHost(host, storeHostConfig(env));
+  if (match.kind === "platform") return resolveStorefrontStoreId(client, previewCookie, DEFAULT_STOREFRONT_STORE_ID);
+  if (match.kind === "unknown") return null;
+  const store = await client.store.findFirst({ where: { slug: match.slug, ...PUBLIC_STORE }, select: { id: true } });
+  return store?.id ?? null;
 }
 
 type ScopedProduct = NonNullable<Awaited<ReturnType<ReturnType<typeof storeScope>["getProduct"]>>>;
@@ -169,17 +175,10 @@ export async function getStorefrontProduct(
 /** The store and catalog for this request, resolved once and shared by the layout and page. */
 export const getRequestStorefront = cache(async () => {
   const db = getDb();
-  const jar = await cookies();
-  const storeId = await resolveStorefrontStoreId(
-    db,
-    jar.get(STOREFRONT_STORE_COOKIE)?.value,
-    DEFAULT_STOREFRONT_STORE_ID,
-  );
-  const [catalog, stores] = await Promise.all([
-    storeId ? getStorefrontCatalog(db, storeId) : Promise.resolve(null),
-    listStorefrontStores(db),
-  ]);
-  return { catalog, stores };
+  const [requestHeaders, jar] = await Promise.all([headers(), cookies()]);
+  const storeId = await resolveStoreForHost(db, requestHeaders.get("host") ?? "", jar.get(STOREFRONT_STORE_COOKIE)?.value);
+  const catalog = storeId ? await getStorefrontCatalog(db, storeId) : null;
+  return { catalog };
 });
 
 /** A fresh read of one product of this request's store (for product pages and their metadata). */

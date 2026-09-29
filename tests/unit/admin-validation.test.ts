@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   normalizePhone,
   parseMoney,
+  readExpectedStock,
   validateCategory,
   validateProduct,
   validateStoreBase,
@@ -86,4 +87,15 @@ test("category input and phone normalisation", () => {
   assert.ok(validateCategory({ name: "Garden", imageUrl: "javascript:alert(1)" }).errors.imageUrl);
   assert.deepEqual(validateCategory({ name: "Garden" }).errors, {});
   assert.equal(normalizePhone("+44 (20) 7946-0000"), "+442079460000");
+});
+
+test("the starting stock of an edit form is read exactly, or refused", () => {
+  assert.equal(readExpectedStock({ expectedStock: "5" }), 5);
+  assert.equal(readExpectedStock({ expectedStock: " 0 " }), 0);
+  assert.equal(readExpectedStock({ expectedStock: 12 }), 12);
+  for (const value of [undefined, null, "", "-1", "2.5", "1e3", "abc", "99999999", [5], {}]) {
+    assert.equal(readExpectedStock({ expectedStock: value }), null, JSON.stringify(value));
+  }
+  assert.equal(readExpectedStock(null), null);
+  assert.equal(readExpectedStock("5"), null);
 });

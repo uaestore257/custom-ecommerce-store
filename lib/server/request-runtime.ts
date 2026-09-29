@@ -1,6 +1,7 @@
 import "server-only";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
+import { after } from "next/server";
 
 // ---------------------------------------------------------------
 // Request-scoped Next.js APIs used outside a request context in tests:
@@ -17,6 +18,8 @@ import { headers } from "next/headers";
 export interface RequestRuntime {
   headers(): Promise<Headers>;
   revalidateAdmin(): void;
+  /** Runs `task` after the response is sent (Next.js after()). Test runtimes may leave it out. */
+  afterResponse?(task: () => Promise<void>): void;
 }
 
 const nextRuntime: RequestRuntime = {
@@ -25,6 +28,9 @@ const nextRuntime: RequestRuntime = {
   },
   revalidateAdmin() {
     revalidatePath("/admin", "layout");
+  },
+  afterResponse(task) {
+    after(task);
   },
 };
 

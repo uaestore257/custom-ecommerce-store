@@ -60,8 +60,3 @@ export interface StorefrontCatalog {
   products: StorefrontProduct[];
 }
 
-/** One entry in the public store switcher. */
-export interface StorefrontStoreOption {
-  id: string;
-  name: string;
-}

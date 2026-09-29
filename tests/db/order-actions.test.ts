@@ -1,12 +1,12 @@
 // The public placeOrderAction wrapper: the store is resolved on the
-// server from the store cookie (Cookie header) or the configured default,
-// never from the request body. Headers are injected the same way
-// tests/db/auth-actions.test.ts does for admin actions.
+// server from the request's Host (a store's own subdomain here), never
+// from the request body or, on a store's host, from the preview cookie.
+// Headers are injected the same way tests/db/auth-actions.test.ts does for
+// admin actions.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { placeOrderAction } from "../../app/(storefront)/actions";
-import { DEFAULT_STOREFRONT_STORE_ID } from "../../lib/config";
 import { listAdminCategories } from "../../lib/server/admin/categories";
 import { createAdminProduct } from "../../lib/server/admin/products";
 import { createAdminStore } from "../../lib/server/admin/stores";
@@ -15,21 +15,26 @@ import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
 import { testActor, testDb, uid } from "./helpers";
 
 const db = testDb();
+const savedEnv = { root: process.env.PLATFORM_ROOT_DOMAIN, admin: process.env.ADMIN_HOST };
 after(async () => {
   setRequestRuntimeForTests(null);
+  process.env.PLATFORM_ROOT_DOMAIN = savedEnv.root;
+  process.env.ADMIN_HOST = savedEnv.admin;
   await db.$disconnect();
 });
 
-function asVisitor(cookie: string | null) {
+/** Makes the action see a request to this host (with an optional Cookie header). */
+function asVisitor(host: string, cookie: string | null = null) {
   setRequestRuntimeForTests({
     async headers() {
-      const headers = new Headers();
+      const headers = new Headers({ host });
       if (cookie) headers.set("cookie", cookie);
       return headers;
     },
     revalidateAdmin() {},
   });
 }
+const hostOf = async (storeId: string) => `${(await db.store.findUniqueOrThrow({ where: { id: storeId } })).slug}.shops.test`;
 
 async function makeStore(status: "ACTIVE" | "DRAFT") {
   const result = await createAdminStore(await testActor(db), db, {
@@ -90,40 +95,54 @@ let draft = "";
 let activeProduct = "";
 
 before(async () => {
+  process.env.PLATFORM_ROOT_DOMAIN = "shops.test";
+  process.env.ADMIN_HOST = "admin.shops.test";
   active = await makeStore("ACTIVE");
   draft = await makeStore("DRAFT");
   activeProduct = await makeProduct(active);
 });
 
-test("the store comes from the store cookie on the server, and the order is placed there", async () => {
-  asVisitor(`storefront_store=${active}`);
+test("the store comes from the request's host on the server, and the order is placed there", async () => {
+  asVisitor(await hostOf(active));
   const result = await placeOrderAction(input(active, activeProduct));
   assert.ok(result.ok, JSON.stringify(result));
   assert.equal(await db.order.count({ where: { storeId: active } }), 1);
 });
 
-test("a cart claiming another store than the one the cookie selects is refused", async () => {
-  asVisitor(`storefront_store=${active}`);
+test("a cart claiming another store than the one the host serves is refused", async () => {
+  asVisitor(await hostOf(active));
   const other = await makeStore("ACTIVE");
   const result = await placeOrderAction(input(other, activeProduct));
   assert.ok(!result.ok && result.error === ORDER_MESSAGES.otherStore, JSON.stringify(result));
 });
 
-test("a cookie naming a non-public store falls back to the default store — never to the named one", async () => {
-  asVisitor(`storefront_store=${draft}`);
+test("on a store's own host, a preview cookie naming another store is ignored", async () => {
+  const other = await makeStore("ACTIVE");
+  asVisitor(await hostOf(other), `storefront_store=${active}`);
+  const result = await placeOrderAction(input(active, activeProduct));
+  assert.ok(!result.ok && result.error === ORDER_MESSAGES.otherStore, JSON.stringify(result));
+  assert.equal(await db.order.count({ where: { storeId: other } }), 0);
+});
+
+test("a draft store's host, or an unknown host, takes no order", async () => {
   const draftProduct = await makeProduct(draft);
-  const result = await placeOrderAction(input(draft, draftProduct));
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    // The default store is shown instead, so a draft-store cart doesn't match it.
-    assert.ok([ORDER_MESSAGES.otherStore, ORDER_MESSAGES.storeUnavailable].includes(result.error as never), result.error);
+  const before = await db.order.count({ where: { storeId: { in: [active, draft] } } });
+  for (const host of [await hostOf(draft), "elsewhere.example", `no-such-store-${uid()}.shops.test`]) {
+    asVisitor(host, `storefront_store=${active}`);
+    const result = await placeOrderAction(input(draft, draftProduct));
+    assert.ok(!result.ok && result.error === ORDER_MESSAGES.storeUnavailable, `${host}: ${JSON.stringify(result)}`);
   }
-  assert.equal(await db.order.count({ where: { storeId: draft } }), 0);
-  assert.notEqual(DEFAULT_STOREFRONT_STORE_ID, draft);
+  assert.equal(await db.order.count({ where: { storeId: { in: [active, draft] } } }), before);
+});
+
+test("the platform host still uses the platform owner's preview cookie", async () => {
+  asVisitor("admin.shops.test", `storefront_store=${active}`);
+  const result = await placeOrderAction(input(active, activeProduct));
+  assert.ok(result.ok, JSON.stringify(result));
 });
 
 test("a malformed request is refused safely, without internal details", async () => {
-  asVisitor(`storefront_store=${active}`);
+  asVisitor(await hostOf(active));
   for (const bad of [null, "x", 42, {}, { storeId: active }, { ...input(active, activeProduct), items: "all" }]) {
     const result = await placeOrderAction(bad);
     assert.equal(result.ok, false, JSON.stringify(bad));
