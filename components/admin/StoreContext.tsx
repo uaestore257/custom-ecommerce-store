@@ -28,7 +28,16 @@ export function useAdminStore(): AdminStoreSummary {
   return value;
 }
 
-export function StoreContextLayout({ store, children }: { store: AdminStoreSummary; children: ReactNode }) {
+export function StoreContextLayout({
+  store,
+  readOnly = false,
+  children,
+}: {
+  store: AdminStoreSummary;
+  /** A suspended store, seen by its owner: nothing can be changed (the server refuses it too). */
+  readOnly?: boolean;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
 
   return (
@@ -74,7 +83,16 @@ export function StoreContextLayout({ store, children }: { store: AdminStoreSumma
           </ul>
         </nav>
       </div>
-      {children}
+      {readOnly && (
+        <p role="status" className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>This store is suspended.</strong> The admin is read-only: you can view everything, but nothing can be
+          changed. Contact the platform owner to reactivate the store.
+        </p>
+      )}
+      {/* Disables every form control below while read-only (links still work). */}
+      <fieldset disabled={readOnly} className="contents">
+        {children}
+      </fieldset>
     </DbStoreContext.Provider>
   );
 }

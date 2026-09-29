@@ -66,7 +66,18 @@ export interface ShellUser {
   email: string;
 }
 
-export function AdminShell({ children, stores, user }: { children: ReactNode; stores: ShellStore[]; user: ShellUser }) {
+export function AdminShell({
+  children,
+  stores,
+  user,
+  platform,
+}: {
+  children: ReactNode;
+  stores: ShellStore[];
+  user: ShellUser;
+  /** The platform owner (agency pages shown); false for a store owner, who sees only their store. */
+  platform: boolean;
+}) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
 
@@ -88,7 +99,7 @@ export function AdminShell({ children, stores, user }: { children: ReactNode; st
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <SidebarContent stores={stores} />
+        <SidebarContent stores={stores} platform={platform} />
       </aside>
 
       {/* Mobile drawer */}
@@ -109,20 +120,20 @@ export function AdminShell({ children, stores, user }: { children: ReactNode; st
             >
               <X className="h-5 w-5" aria-hidden />
             </button>
-            <SidebarContent stores={stores} />
+            <SidebarContent stores={stores} platform={platform} />
           </aside>
         </div>
       )}
 
       <div className="lg:pl-64">
-        <AdminHeader stores={stores} user={user} onOpenMenu={() => setDrawerOpen(true)} />
+        <AdminHeader stores={stores} user={user} platform={platform} onOpenMenu={() => setDrawerOpen(true)} />
         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
   );
 }
 
-function SidebarContent({ stores }: { stores: ShellStore[] }) {
+function SidebarContent({ stores, platform }: { stores: ShellStore[]; platform: boolean }) {
   const pathname = usePathname();
   const params = useParams<{ storeId?: string }>();
   // The agency name is still demo data (agency settings are not in the database yet).
@@ -143,10 +154,12 @@ function SidebarContent({ stores }: { stores: ShellStore[] }) {
         </span>
       </Link>
 
-      <nav aria-label="Agency" className="px-3 py-4">
-        <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Agency</p>
-        <NavList items={agencyNav} pathname={pathname} />
-      </nav>
+      {platform && (
+        <nav aria-label="Agency" className="px-3 py-4">
+          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Agency</p>
+          <NavList items={agencyNav} pathname={pathname} />
+        </nav>
+      )}
 
       {selected && (
         <nav aria-label={`Store: ${selected.name}`} className="border-t border-slate-200 px-3 py-4">
@@ -197,7 +210,17 @@ function NavList({ items, pathname }: { items: NavItem[]; pathname: string }) {
   );
 }
 
-function AdminHeader({ stores, user, onOpenMenu }: { stores: ShellStore[]; user: ShellUser; onOpenMenu: () => void }) {
+function AdminHeader({
+  stores,
+  user,
+  platform,
+  onOpenMenu,
+}: {
+  stores: ShellStore[];
+  user: ShellUser;
+  platform: boolean;
+  onOpenMenu: () => void;
+}) {
   // The dashboard has its own "Create New Store" button.
   const onDashboard = usePathname() === "/admin";
   return (
@@ -212,14 +235,14 @@ function AdminHeader({ stores, user, onOpenMenu }: { stores: ShellStore[]; user:
           <Menu className="h-5 w-5" aria-hidden />
         </button>
         <StoreSelector stores={stores} />
-        {!onDashboard && (
+        {platform && !onDashboard && (
           <LinkButton href="/admin/stores/new" size="sm" className="ml-auto shrink-0">
             <Plus className="h-4 w-4" aria-hidden />
             <span className="hidden sm:inline">Create New Store</span>
             <span className="sm:hidden">New</span>
           </LinkButton>
         )}
-        <div className={onDashboard ? "ml-auto" : undefined}>
+        <div className={onDashboard || !platform ? "ml-auto" : undefined}>
           <SignOutButton email={user.email} />
         </div>
       </div>

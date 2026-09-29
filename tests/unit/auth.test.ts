@@ -138,10 +138,21 @@ function files(dir: string): string[] {
   });
 }
 
-test("every admin page and layout checks the session itself", () => {
+test("every admin page and layout checks access itself, with the guard that fits it", () => {
   const entries = files("app/admin").filter((f) => /(^|[\\/])(page|layout)\.tsx$/.test(f));
-  assert.ok(entries.length >= 16);
+  assert.ok(entries.length >= 17);
+  // The admin layout and dashboard serve either kind of admin; they check who it is.
+  const viewer = new Set([join("app", "admin", "layout.tsx"), join("app", "admin", "page.tsx")]);
   for (const file of entries) {
-    assert.match(readFileSync(file, "utf8"), /await requireAdminPage\(\)/, `${file} must call requireAdminPage()`);
+    const source = readFileSync(file, "utf8");
+    if (viewer.has(file)) {
+      assert.match(source, /await requireAdminViewer\(\)/, `${file} must call requireAdminViewer()`);
+    } else if (/[\\/]stores[\\/]\[storeId\][\\/]/.test(file)) {
+      // Inside one store: the platform owner, or that store's OWNER on its own host.
+      assert.match(source, /await requireStorePage\(storeId\)/, `${file} must call requireStorePage(storeId)`);
+    } else {
+      // Platform-only pages: the platform owner on ADMIN_HOST.
+      assert.match(source, /await requireAdminPage\(\)/, `${file} must call requireAdminPage()`);
+    }
   }
 });

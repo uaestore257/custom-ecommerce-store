@@ -6,12 +6,18 @@ import "server-only";
 // as a non-owner and as the platform owner, and fails if an action is
 // missing here — so a new action can't ship without a rule.
 //
-// Phase 2a: everything is platform-owner only. Phase 2b adds
-// "store-owner" for products, categories and the owner-editable
-// store settings, while store lifecycle and ownership stay platform-only.
+// Store owners manage their own store's products, categories, orders,
+// messages, delivery and payment settings; store lifecycle, status, slug
+// and ownership stay platform-only.
 // ---------------------------------------------------------------
 
-export type ActionPermission = "platform-owner";
+/**
+ * "platform-owner": only the platform owner, on ADMIN_HOST (store
+ * lifecycle, status, slug and ownership). "store-owner": inside one
+ * store — the platform owner on ADMIN_HOST or that store's OWNER on its
+ * own host, never while the store is suspended (requireStoreAccess).
+ */
+export type ActionPermission = "platform-owner" | "store-owner";
 
 export const ACTION_PERMISSIONS = {
   createStoreAction: "platform-owner",
@@ -20,15 +26,15 @@ export const ACTION_PERMISSIONS = {
   setStoreStatusAction: "platform-owner",
   archiveStoreAction: "platform-owner",
   restoreStoreAction: "platform-owner",
-  createProductAction: "platform-owner",
-  updateProductAction: "platform-owner",
-  deleteProductAction: "platform-owner",
-  createCategoryAction: "platform-owner",
-  updateCategoryAction: "platform-owner",
-  moveCategoryAction: "platform-owner",
-  deleteCategoryAction: "platform-owner",
-  setOrderStatusAction: "platform-owner",
-  cancelOrderAction: "platform-owner",
-  setOrderPaymentAction: "platform-owner",
-  setInquiryStatusAction: "platform-owner",
+  createProductAction: "store-owner",
+  updateProductAction: "store-owner",
+  deleteProductAction: "store-owner",
+  createCategoryAction: "store-owner",
+  updateCategoryAction: "store-owner",
+  moveCategoryAction: "store-owner",
+  deleteCategoryAction: "store-owner",
+  setOrderStatusAction: "store-owner",
+  cancelOrderAction: "store-owner",
+  setOrderPaymentAction: "store-owner",
+  setInquiryStatusAction: "store-owner",
 } as const satisfies Record<string, ActionPermission>;

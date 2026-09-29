@@ -5,14 +5,14 @@ import type { AdminOrderDetail, AdminOrderSummary, DbOrderStatus, DbPaymentStatu
 import { formatMinorUnits } from "@/lib/money";
 import { storeFormatLocale } from "@/lib/standards";
 import { recordAudit } from "../audit";
-import type { PlatformOwner } from "../auth/guards";
+import type { StoreActor } from "../auth/guards";
 import { fail, NOT_FOUND, ok, type Client } from "./common";
 
 // ---------------------------------------------------------------
 // ORDERS (admin) — always inside ONE store.
 // The storeId comes from the route; an order of another store is "not
-// found". Callers must already have passed requireAdminPage() (reads) or
-// requirePlatformOwner() (changes, which take the PlatformOwner).
+// found". Callers must already have passed requireStorePage(storeId) (reads) or
+// requireStoreAccess(storeId, "write") (changes, which take its actor).
 //
 // Every change names the state the admin saw ("from"). The database only
 // applies it while the order is still in that state (a conditional
@@ -145,7 +145,7 @@ async function currentOrder(tx: Prisma.TransactionClient, storeId: string, order
 
 /** Moves an order one step forward: Pending → Processing → Shipped → Delivered. */
 export async function setAdminOrderStatus(
-  actor: PlatformOwner,
+  actor: StoreActor,
   client: PrismaClient,
   storeId: string,
   orderId: string,
@@ -176,7 +176,7 @@ export async function setAdminOrderStatus(
  * Cancels a pending or processing, unpaid order and returns its stock.
  * Seeded sample orders never reduced stock, so none is returned for them.
  */
-export async function cancelAdminOrder(actor: PlatformOwner, client: PrismaClient, storeId: string, orderId: string, from: unknown) {
+export async function cancelAdminOrder(actor: StoreActor, client: PrismaClient, storeId: string, orderId: string, from: unknown) {
   if (!isOrderStatus(from)) return fail(NOT_ALLOWED);
   return client.$transaction(async (tx) => {
     const current = await currentOrder(tx, storeId, orderId);
@@ -226,7 +226,7 @@ export async function cancelAdminOrder(actor: PlatformOwner, client: PrismaClien
 
 /** Marks a cash on delivery or bank transfer order as paid or unpaid. */
 export async function setAdminOrderPayment(
-  actor: PlatformOwner,
+  actor: StoreActor,
   client: PrismaClient,
   storeId: string,
   orderId: string,

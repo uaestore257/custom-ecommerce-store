@@ -112,15 +112,46 @@ export interface CleanStoreBase extends CleanStoreProfile, CleanStoreOwner {
   status: DbStoreStatus;
 }
 
-export interface CleanStoreSettings extends CleanStoreProfile {
+/** Delivery and payment settings: the part of store settings a store's owner may change. */
+export interface CleanCommerceSettings {
+  deliveryFeeMinor: bigint;
+  freeDeliveryOverMinor: bigint | null;
+  paymentMethods: Record<(typeof PAYMENT_METHOD_IDS)[number], boolean>;
+}
+
+export interface CleanStoreSettings extends CleanStoreProfile, CleanCommerceSettings {
   logoUrl: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   contactAddress: string | null;
   content: { tagline: string; heroTitle: string; heroText: string; aboutText: string };
-  deliveryFeeMinor: bigint;
-  freeDeliveryOverMinor: bigint | null;
-  paymentMethods: Record<(typeof PAYMENT_METHOD_IDS)[number], boolean>;
+}
+
+/**
+ * Delivery fee, free-delivery threshold and payment methods, in the
+ * store's currency. Online card payment is always off (no provider).
+ */
+export function validateCommerceSettings(input: unknown, minorUnits: number) {
+  const raw = record(input);
+  const errors: Errors = {};
+  const fee = parseMoney(str(raw, "deliveryFee"), minorUnits);
+  if (fee.error) errors.deliveryFee = fee.error;
+  const freeOverRaw = str(raw, "freeDeliveryThreshold");
+  const freeOver = freeOverRaw && freeOverRaw !== "0" ? parseMoney(freeOverRaw, minorUnits) : { minor: null };
+  if ("error" in freeOver && freeOver.error) errors.freeDeliveryThreshold = freeOver.error;
+
+  const methodsRaw = record(raw.paymentMethods);
+  const paymentMethods = Object.fromEntries(
+    // Online card payment needs a payment provider, which is not connected.
+    PAYMENT_METHOD_IDS.map((id) => [id, id === "online_card" ? false : bool(methodsRaw, id)]),
+  ) as CleanCommerceSettings["paymentMethods"];
+
+  const values: CleanCommerceSettings = {
+    deliveryFeeMinor: fee.minor ?? BigInt(0),
+    freeDeliveryOverMinor: "minor" in freeOver && freeOver.minor ? freeOver.minor : null,
+    paymentMethods,
+  };
+  return { values, errors: clean(errors) };
 }
 
 export function validateStoreOwner(input: unknown) {
@@ -210,17 +241,8 @@ export function validateStoreSettings(input: unknown, ref: StoreReference) {
   errors.heroText = tooLong(content.heroText, LIMITS.heroText) as string;
   errors.aboutText = tooLong(content.aboutText, LIMITS.aboutText) as string;
 
-  const fee = parseMoney(str(raw, "deliveryFee"), minorUnits);
-  if (fee.error) errors.deliveryFee = fee.error;
-  const freeOverRaw = str(raw, "freeDeliveryThreshold");
-  const freeOver = freeOverRaw && freeOverRaw !== "0" ? parseMoney(freeOverRaw, minorUnits) : { minor: null };
-  if ("error" in freeOver && freeOver.error) errors.freeDeliveryThreshold = freeOver.error;
-
-  const methodsRaw = record(raw.paymentMethods);
-  const paymentMethods = Object.fromEntries(
-    // Online card payment needs a payment provider, which is not connected.
-    PAYMENT_METHOD_IDS.map((id) => [id, id === "online_card" ? false : bool(methodsRaw, id)]),
-  ) as CleanStoreSettings["paymentMethods"];
+  const commerce = validateCommerceSettings(input, minorUnits);
+  Object.assign(errors, commerce.errors);
 
   const values: CleanStoreSettings = {
     ...base.values,
@@ -229,9 +251,7 @@ export function validateStoreSettings(input: unknown, ref: StoreReference) {
     contactPhone: contactPhone || null,
     contactAddress: contactAddress || null,
     content,
-    deliveryFeeMinor: fee.minor ?? BigInt(0),
-    freeDeliveryOverMinor: "minor" in freeOver && freeOver.minor ? freeOver.minor : null,
-    paymentMethods,
+    ...commerce.values,
   };
   return { values, errors: clean(errors) };
 }
