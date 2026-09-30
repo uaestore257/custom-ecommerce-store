@@ -43,14 +43,26 @@ Never set `TEST_DATABASE_URL` in production.
 ### Deploying
 
 1. Build: `npm ci` (runs `prisma generate`) and `npm run build`.
-2. Migrate: `npm run db:deploy` (`prisma migrate deploy`: applies pending
-   migrations only, never drops data). Take a backup first (below).
+2. Migrate: from an intentional interactive release terminal, set
+   `NODE_ENV=production`, provide the production `DATABASE_URL` from the
+   deployment secret store, ensure `TEST_DATABASE_URL` is not set, then run
+   `npm run db:deploy:production`. The command rejects loopback and
+   dev/test/local/demo database targets, prints the database name/host/port
+   (never credentials), and requires typing `DEPLOY <database>` before
+   applying checked-in migrations. Take a backup first (below).
 3. Start: `npm run start`.
 4. Create the one platform owner: `npm run platform:create-owner`.
+5. Sign in on `ADMIN_HOST` and create each store with its Store Owner
+   credentials; legacy owner memberships must be provisioned through that
+   store's protected Settings page. Do not send passwords by email or place
+   them in deployment variables.
 
-Never run `db:reset`, `db:seed`, `db:migrate` or `test:db` against
-production. `db:reset` and `db:seed` refuse production themselves
-(`prisma/seed-guard.ts`), and `test:db` only accepts a database named `*test*`.
+`npm run db:deploy` is the guarded local-development migration command.
+Production migrations use only the separate, explicitly confirmed
+`npm run db:deploy:production` workflow above. Never run `db:reset`,
+`db:seed`, `db:migrate` or `test:db` against production. Destructive reset and
+test commands require typing `DROP <database>` after the exact target and
+data-loss warning are displayed.
 
 ## Backups and restore
 
@@ -74,17 +86,25 @@ then switch `DATABASE_URL` to it and restart.
 
 ## Email
 
-Order emails are built and scheduled after each new order
-(`lib/server/order-emails.ts`, sent after the response so they can never
-undo an order), but **nothing is sent until a provider is connected**:
-`getMailer()` in `lib/server/mailer.ts` returns null. To connect one:
+Order and Store Team invitation emails use the `Mailer` abstraction in
+`lib/server/mailer.ts`. The supported transport is SMTP. With no valid SMTP
+configuration, `getMailer()` returns null: order emails are skipped and the
+Team UI disables invitations without creating invitation records.
 
-* Choose a provider (a transactional email API, or SMTP from an existing
-  mail service). This is a business/cost decision.
-* Implement `Mailer` for it in `lib/server/mailer.ts`.
-* Configure `EMAIL_PROVIDER`, `EMAIL_FROM` (an address on a domain you
-  control) and the provider's credentials in the host's secret store.
-* Add the provider's SPF/DKIM DNS records for the sending domain.
+For local development, point SMTP at a loopback-only test sink such as
+Mailpit (`SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `SMTP_SECURE=false`) and
+leave credentials empty. The app refuses unauthenticated SMTP to a
+non-loopback host. Production SMTP requires TLS plus a username and password.
+Set `EMAIL_PROVIDER=smtp`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+`SMTP_PASSWORD`, and `SMTP_SECURE` through the local environment or host
+secret manager; never put provider credentials in source control. Add the
+provider's SPF/DKIM records for the sending domain. No provider credentials
+or mail sink are provisioned by this project.
+
+Invitation emails contain a 72-hour, single-use link. Tokens are stored only
+as hashes, are not logged, and are exchanged from the URL fragment for a
+short-lived HttpOnly cookie before the browser removes the fragment. See
+`docs/authentication.md` for invitation acceptance and role boundaries.
 
 Recipients: the customer, and the store at its contact email (else its
 owner's email). Logs name only the order number and email kind.

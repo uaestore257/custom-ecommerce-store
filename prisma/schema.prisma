@@ -144,6 +144,7 @@ model User {
   updatedAt       DateTime  @updatedAt
 
   memberships StoreMembership[]
+  invitations StoreInvitation[] @relation("StoreInvitationSender")
   sessions    Session[]
   accounts    Account[]
   auditEvents AuditEvent[]
@@ -252,6 +253,27 @@ model StoreMembership {
   @@index([storeId])
 }
 
+/// A single-use, store-scoped invitation. Only a hash of the bearer token
+/// is persisted; the raw token is delivered once and never returned to UI.
+model StoreInvitation {
+  id              String     @id @default(cuid())
+  storeId         String
+  invitedByUserId String
+  email           String     @db.VarChar(254)
+  role            StoreRole
+  tokenHash       String     @unique @db.Char(64)
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime   @default(now())
+
+  store      Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invitedBy  User  @relation("StoreInvitationSender", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+  @@index([storeId, email])
+}
+
 // ---------------------------------------------------------------------
 // Store (tenant) and its configuration
 // ---------------------------------------------------------------------
@@ -302,6 +324,7 @@ model Store {
   language Language @relation("StoreDefaultLanguage", fields: [defaultLanguage], references: [code])
 
   memberships     StoreMembership[]
+  invitations     StoreInvitation[]
   languages       StoreLanguage[]
   categories      Category[]
   products        Product[]

@@ -1,6 +1,6 @@
 import "server-only";
 import { connection } from "next/server";
-import type { AdminViewer, PlatformOwner, StoreAccessGrant } from "../auth/guards";
+import type { AdminViewer, PlatformOwner, StoreAccessGrant, StoreSection } from "../auth/guards";
 import { requireAdminViewerPage, requirePlatformOwnerPage, requireStoreAccessPage } from "../auth/page-guards";
 import { getDb } from "../db";
 
@@ -14,8 +14,8 @@ import { getDb } from "../db";
  * because layouts are not re-run on every navigation.
  *
  *  * requireAdminPage()        — platform-only pages; the platform owner on ADMIN_HOST.
- *  * requireStorePage(storeId) — pages inside one store; the platform owner on
- *                                ADMIN_HOST or that store's OWNER on its own host.
+ *  * requireStorePage(storeId, section) — pages inside one store; the platform
+ *                                owner on ADMIN_HOST or a permitted member on its host.
  *                                `grant.access` is "read" for a suspended store.
  *  * requireAdminViewer()      — the admin layout (either of the above).
  */
@@ -25,9 +25,12 @@ export async function requireAdminPage(): Promise<{ db: ReturnType<typeof getDb>
   return { db: getDb(), owner };
 }
 
-export async function requireStorePage(storeId: string): Promise<{ db: ReturnType<typeof getDb>; grant: StoreAccessGrant }> {
+export async function requireStorePage(
+  storeId: string,
+  section?: StoreSection,
+): Promise<{ db: ReturnType<typeof getDb>; grant: StoreAccessGrant }> {
   await connection();
-  const grant = await requireStoreAccessPage(storeId);
+  const grant = await requireStoreAccessPage(storeId, section);
   return { db: getDb(), grant };
 }
 

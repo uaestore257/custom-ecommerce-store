@@ -12,14 +12,22 @@ import {
   updateAdminStore,
 } from "../../lib/server/admin/stores";
 import type { PlatformOwner } from "../../lib/server/auth/guards";
+import { getAuth } from "../../lib/server/auth/auth";
+import { AccessDenied, requireStoreAccess } from "../../lib/server/auth/guards";
+import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
+import { actAs, authRequest, cookieHeader, setTestAuthEnv } from "./auth-helpers";
 import { testActor, testDb, uid } from "./helpers";
 
+setTestAuthEnv();
 const db = testDb();
 let actor: PlatformOwner;
 before(async () => {
   actor = await testActor(db);
 });
-after(() => db.$disconnect());
+after(async () => {
+  setRequestRuntimeForTests(null);
+  await db.$disconnect();
+});
 
 const newStore = (overrides: Record<string, unknown> = {}) => ({
   name: "Maple & Co",
@@ -28,6 +36,7 @@ const newStore = (overrides: Record<string, unknown> = {}) => ({
   status: "DRAFT",
   ownerName: "Jamie Lee",
   ownerEmail: `jamie-${uid()}@example.com`,
+  ownerPassword: "a store owner passphrase 2026",
   countryCode: "US",
   baseCurrency: "USD",
   timezone: "America/New_York",
@@ -99,6 +108,28 @@ test("creating a store persists valid data (international, no UAE defaults)", as
   assert.equal(store.memberships.length, 1);
   assert.equal(store.memberships[0].role, "OWNER");
   assert.equal(store.memberships[0].user.email, input.ownerEmail);
+  const account = await db.account.findUniqueOrThrow({
+    where: { providerId_accountId: { providerId: "credential", accountId: store.memberships[0].userId } },
+  });
+  assert.ok(account.password);
+  assert.notEqual(account.password, input.ownerPassword);
+  const authContext = await getAuth().$context;
+  assert.equal(await authContext.password.verify({ hash: account.password!, password: input.ownerPassword }), true);
+  await db.rateLimit.deleteMany();
+  const ownerHost = `${input.slug}.test.local`;
+  const response = await authRequest(
+    "/sign-in/email",
+    { email: input.ownerEmail, password: input.ownerPassword },
+    { host: ownerHost },
+  );
+  assert.equal(response.status, 200, "new owner can sign in immediately on the new store host");
+  actAs(cookieHeader(response), ownerHost);
+  assert.equal((await requireStoreAccess(store.id)).access, "write");
+  await assert.rejects(
+    requireStoreAccess("store-a"),
+    (error: unknown) => error instanceof AccessDenied && error.reason === "forbidden",
+  );
+  setRequestRuntimeForTests(null);
   // Starter categories for the store type, like the demo.
   assert.deepEqual(store.categories.map((c) => c.translations[0].name).sort(), ["Bedroom", "Living Room", "Storage"]);
   assert.equal((await listAdminStores(db)).some((s) => s.id === store.id), true);

@@ -20,7 +20,8 @@ import { sessionAllowed } from "./store-access";
 // re-read the user from the database on every request.
 //
 //  * Email + password only. Public sign-up is disabled; the platform
-//    owner is created with the CLI (scripts/platform-owner.ts).
+//    owner uses the CLI and Store Owner credentials are provisioned by the
+//    platform owner through the store workflows.
 //  * Only the endpoints in ENABLED_PATHS are reachable over HTTP
 //    (authHandler allow-list, plus Better Auth's own disabledPaths).
 //  * Sessions live in the database (revocable) and last 8 hours.
@@ -137,7 +138,7 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
       session: {
         create: {
           // Refuse to open a session unless this user may use the admin ON
-          // THIS HOST: the platform owner on ADMIN_HOST, or an OWNER of the
+          // THIS HOST: the platform owner on ADMIN_HOST, or a member of the
           // store a store host serves (lib/admin/store-access.ts). Disabled
           // users never. No request context -> no session (fails closed).
           before: async (session, context) => {

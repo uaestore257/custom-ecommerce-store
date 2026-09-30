@@ -3,6 +3,25 @@
 Last updated 2026-09-29, when work stopped mid-implementation.
 **This is a snapshot — re-check the live repository before acting.**
 
+## Current implementation update (2026-09-30)
+
+The earlier incomplete-state notes below are historical. Store Owner
+credentials are now created with stores, Store Owners can authenticate on
+their own recognized host, and the existing host/store guards restrict
+them to their own store. Legacy/demo owners without credentials can be
+provisioned through the Platform Owner's Store settings page. Account
+changes and the remaining limitations are documented in
+`docs/authentication.md`. No schema migration is needed for this flow.
+
+## Team and role update (2026-10-01)
+
+OWNER/MANAGER/STAFF permissions and the secure invitation lifecycle are now
+implemented as documented in `docs/authentication.md`. Invitations use the
+new additive `StoreInvitation` migration; apply pending migrations through
+the guarded local migration command before using Team invitation status.
+SMTP delivery remains disabled until configured, and the Team UI reports
+that state without creating invitations or exposing tokens.
+
 ## 1. Project overview
 
 Code X Store (repo `uaestore257/custom-ecommerce-store`): a multi-store
@@ -124,7 +143,7 @@ rest was written but has had only a type-check since.
 7. Draft and paused → full owner access. 8. Suspended → read-only. 9. Archived → no owner access.
 10. Store creation, archive/restore, ownership, status, slug/domain, platform-wide settings → platform owner only.
 11. No email invitations; no card-payment integration.
-12. No cross-store access via URL, request data, store id or domain. MANAGER/STAFF get nothing.
+12. No cross-store access via URL, request data, store id or domain. MANAGER gets operational access; STAFF is read-only for orders/messages.
 
 ## 6. Tests and checks
 
@@ -136,9 +155,9 @@ rest was written but has had only a type-check since.
 
 **Known to need updating before DB tests can pass:**
 - `tests/db/auth-helpers.ts`: `actAs()` sends only `host: ADMIN_HOST`; add a host parameter, and set `process.env.PLATFORM_ROOT_DOMAIN` in `setTestAuthEnv()` (e.g. `"test.local"`, stores at `<slug>.test.local`).
-- `tests/db/auth-actions.test.ts`: add store-owner cases (below). Existing expectations should still hold (non-platform-owner on `ADMIN_HOST` is refused for every action) — verify.
+- `tests/db/auth-actions.test.ts`: add store-member cases (below). Existing expectations should still hold (non-platform-owner on `ADMIN_HOST` is refused for every action) — verify.
 
-**Must add:** proxy tests (store host allowed for `/login`, `/api/auth`, `/admin` + admin Server Actions; look-alike/unknown hosts refused); DB tests: owner on own host OK; other store / other host / mismatched storeId / no membership / MANAGER refused; platform-only actions refused for owners; draft & paused writable; suspended → every mutation `READ_ONLY`; archived denied; store list shows only own store; real sign-in on a store host (session hook + trusted origin); account creation (new OWNER, not platform owner; existing email reused, password unchanged; no duplicate membership; password absent from audit/logs); customers scoped by store.
+**Must add:** proxy tests (store host allowed for `/login`, `/api/auth`, `/admin` + admin Server Actions; look-alike/unknown hosts refused); DB tests: role-specific access on the assigned host only; cross-store IDs/hosts refused; managers/staff cannot access platform routes; Owners cannot be changed by members; platform-only actions refused for non-platform users; draft & paused writable; suspended → mutations refused; archived denied; store list shows only own store; real sign-in on a store host (session hook + trusted origin); account creation (new OWNER, not platform owner; existing email reused, password unchanged; no duplicate membership; password absent from audit/logs); customers scoped by store.
 
 **Safe checks to use:** `npx tsc --noEmit --incremental false` (not `npm run typecheck`, which runs `next typegen` and writes generated files), `npm run lint`, `npm run test:unit`.
 

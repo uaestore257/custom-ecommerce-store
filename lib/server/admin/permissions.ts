@@ -16,16 +16,24 @@ import "server-only";
  * lifecycle, status, slug and ownership). "store-owner": inside one
  * store — the platform owner on ADMIN_HOST or that store's OWNER on its
  * own host, never while the store is suspended (requireStoreAccess).
+ * "store-owner-context": an OWNER or permitted MANAGER on their own store
+ * host, never a platform owner acting as another store.
  */
-export type ActionPermission = "platform-owner" | "store-owner";
+export type ActionPermission = "platform-owner" | "store-owner" | "store-owner-context" | "admin-viewer";
 
 export const ACTION_PERMISSIONS = {
   createStoreAction: "platform-owner",
   updateStoreAction: "platform-owner",
+  updateOwnStoreSettingsAction: "store-owner",
+  updateStoreMemberRoleAction: "store-owner-context",
+  revokeStoreMemberAction: "store-owner-context",
+  createStoreInvitationAction: "store-owner-context",
+  revokeStoreInvitationAction: "store-owner-context",
   setStoreOwnerAction: "platform-owner",
   setStoreStatusAction: "platform-owner",
   archiveStoreAction: "platform-owner",
   restoreStoreAction: "platform-owner",
+  updateMyAccountAction: "admin-viewer",
   createProductAction: "store-owner",
   updateProductAction: "store-owner",
   deleteProductAction: "store-owner",

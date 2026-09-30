@@ -2,7 +2,12 @@
   "name": "custom-ecommerce-store",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.12 <23"
+  },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "setup:check": "node scripts/setup.mjs --check",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -10,15 +15,18 @@
     "postinstall": "prisma generate",
     "typecheck": "next typegen && tsc --noEmit",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed",
-    "db:reset": "tsx scripts/db-reset.ts",
+    "db:migrate": "node scripts/db-command.mjs migrate",
+    "db:deploy": "node scripts/db-command.mjs deploy",
+    "db:deploy:production": "node scripts/db-command.mjs deploy-production",
+    "db:seed": "node scripts/db-command.mjs seed",
+    "db:provision-demo-owners": "tsx --conditions=react-server scripts/provision-demo-owners.ts",
+    "db:reset": "node scripts/db-command.mjs reset",
     "db:studio": "prisma studio",
     "platform:create-owner": "tsx --conditions=react-server scripts/platform-owner.ts create",
     "platform:reset-password": "tsx --conditions=react-server scripts/platform-owner.ts reset-password",
     "test:unit": "tsx --conditions=react-server --test tests/unit/*.test.ts",
-    "test:db": "tsx scripts/test-db.ts"
+    "test:setup": "node --test tests/unit/setup.test.mjs",
+    "test:db": "node scripts/db-command.mjs test"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
@@ -26,6 +34,7 @@
     "better-auth": "1.7.6",
     "lucide-react": "^1.48.0",
     "next": "16.3.6",
+    "nodemailer": "^10.0.13",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1"
@@ -33,6 +42,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^18.0.4",

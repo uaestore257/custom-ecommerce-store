@@ -1,9 +1,19 @@
 import "server-only";
-import { decideStoreAccess, type AdminHost, type StoreAccess, type StoreFacts } from "@/lib/admin/store-access";
+import {
+  decideStoreAccess,
+  mayAccessStoreSection,
+  mayRunStoreAction,
+  type AdminHost,
+  type StoreAccess,
+  type StoreFacts,
+  type StoreMembershipRole,
+  type StoreSection,
+  type StoreAction,
+} from "@/lib/admin/store-access";
 import { getDb } from "@/lib/server/db";
 import { requestRuntime } from "@/lib/server/request-runtime";
 import { getAuth } from "./auth";
-import { hostContext, isStoreOwner, storeFacts } from "./store-access";
+import { hostContext, isStoreOwner, storeFacts, storeMembershipRole } from "./store-access";
 
 // ---------------------------------------------------------------
 // ACCESS GUARDS — the only way admin code learns who is calling.
@@ -21,11 +31,10 @@ import { hostContext, isStoreOwner, storeFacts } from "./store-access";
 // requires the exact ADMIN_HOST: the platform owner never works on a
 // store's host.
 //
-// requireStoreAccess(storeId) is for everything inside ONE store. It
-// applies lib/admin/store-access.ts: the platform owner on ADMIN_HOST, or
-// an OWNER of that exact store on that store's own host (the storeId
-// must be the store the Host serves). Suspended stores are read-only;
-// archived stores are closed to owners.
+// requireStoreAccess(storeId) checks role-based access inside ONE store.
+// The platform owner acts on ADMIN_HOST; store members act only on their
+// own store host. Suspended stores are read-only; archived stores are
+// closed to members.
 // ---------------------------------------------------------------
 
 declare const platformOwnerBrand: unique symbol;
@@ -58,6 +67,7 @@ export interface StoreActor {
 export interface StoreAccessGrant {
   user: SignedInUser;
   access: Exclude<StoreAccess, "none">;
+  role: StoreMembershipRole;
   actor: StoreActor;
 }
 
@@ -94,32 +104,52 @@ export async function requirePlatformOwner(): Promise<PlatformOwner> {
  * nothing about other stores leaks), or "read-only" (a suspended store's
  * owner asking to change something).
  */
-export async function requireStoreAccess(storeId: string, need: "read" | "write" = "read"): Promise<StoreAccessGrant> {
+export async function requireStoreAccess(
+  storeId: string,
+  need: "read" | "write" = "read",
+  action?: StoreAction,
+): Promise<StoreAccessGrant> {
   const user = await getSignedInUser();
   if (!user) throw new AccessDenied("unauthenticated");
   const db = getDb();
   const { host, hostStore } = await hostContext(db, await requestHost());
   const routeStore = await storeFacts(db, { id: storeId });
-  const ownsRouteStore = routeStore && host.kind === "store" ? await isStoreOwner(db, user.id, routeStore.id) : false;
+  const role = routeStore && host.kind === "store"
+    ? await storeMembershipRole(db, user.id, routeStore.id)
+    : null;
+  const ownsRouteStore =
+    routeStore && role === "OWNER" && host.kind === "store"
+      ? await isStoreOwner(db, user.id, routeStore.id)
+      : false;
   const access = decideStoreAccess({
     user: { isPlatformOwner: user.isPlatformOwner, disabled: false },
     host,
     hostStore,
     routeStore,
+    membershipRole: role,
     ownsRouteStore,
   });
   if (access === "none") throw new AccessDenied("forbidden");
   if (need === "write" && access !== "write") throw new AccessDenied("read-only");
-  return { user, access, actor: { userId: user.id } };
+  if (action && !mayRunStoreAction(role ?? "STAFF", action, user.isPlatformOwner && host.kind === "admin")) {
+    throw new AccessDenied("forbidden");
+  }
+  return { user, access, role: role ?? "STAFF", actor: { userId: user.id } };
 }
 
 export type AdminViewer =
   | { kind: "platform"; user: SignedInUser }
-  | { kind: "store"; user: SignedInUser; store: StoreFacts; access: Exclude<StoreAccess, "none"> };
+  | {
+      kind: "store";
+      user: SignedInUser;
+      store: StoreFacts;
+      access: Exclude<StoreAccess, "none">;
+      role: StoreMembershipRole;
+    };
 
 /**
  * Who is using the admin on this host: the platform owner on ADMIN_HOST,
- * or the owner of the store this store host serves. Throws AccessDenied
+ * or a member of the store this store host serves. Throws AccessDenied
  * otherwise (the admin layout turns that into /login or a 404).
  */
 export async function requireAdminViewer(): Promise<AdminViewer> {
@@ -132,16 +162,25 @@ export async function requireAdminViewer(): Promise<AdminViewer> {
     return { kind: "platform", user };
   }
   if (host.kind !== "store" || !hostStore) throw new AccessDenied("forbidden");
-  const owns = await isStoreOwner(db, user.id, hostStore.id);
+  const role = await storeMembershipRole(db, user.id, hostStore.id);
+  const owns = role === "OWNER" ? await isStoreOwner(db, user.id, hostStore.id) : false;
   const access = decideStoreAccess({
     user: { isPlatformOwner: user.isPlatformOwner, disabled: false },
     host,
     hostStore,
     routeStore: hostStore,
+    membershipRole: role,
     ownsRouteStore: owns,
   });
   if (access === "none") throw new AccessDenied("forbidden");
-  return { kind: "store", user, store: hostStore, access };
+  return { kind: "store", user, store: hostStore, access, role: role ?? "STAFF" };
 }
 
-export type { AdminHost };
+export async function requireStoreSection(storeId: string, section: StoreSection): Promise<StoreAccessGrant> {
+  const grant = await requireStoreAccess(storeId);
+  if (!mayAccessStoreSection(grant.role, section, grant.user.isPlatformOwner)) throw new AccessDenied("forbidden");
+  return grant;
+}
+
+export { mayRunStoreAction };
+export type { AdminHost, StoreAction, StoreSection };

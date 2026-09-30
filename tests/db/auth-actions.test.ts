@@ -3,13 +3,24 @@
 // and as the platform owner. Refused calls must leave the database
 // untouched. A new action without a rule in ACTION_PERMISSIONS fails here.
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import * as actions from "../../app/admin/actions";
 import type { ActionResult } from "../../lib/admin/types";
+import { hashStoreInvitationToken } from "../../lib/admin/invitations";
+import {
+  acceptStoreInvitation,
+  createStoreInvitation,
+  invitationForAcceptance,
+  listStoreInvitations,
+  listStoreTeamMembers,
+} from "../../lib/server/admin/team";
 import { ACTION_PERMISSIONS } from "../../lib/server/admin/permissions";
+import { getAuth } from "../../lib/server/auth/auth";
+import { requireAdminViewer } from "../../lib/server/auth/guards";
 import { getDb } from "../../lib/server/db";
 import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
-import { actAs, ensurePlatformOwner, signIn, setTestAuthEnv } from "./auth-helpers";
+import { actAs, ensurePlatformOwner, signIn, setTestAuthEnv, STORE_HOST } from "./auth-helpers";
 import { uid } from "./helpers";
 
 setTestAuthEnv();
@@ -44,6 +55,7 @@ const newStore = () => ({
   status: "ACTIVE",
   ownerName: "Crafted Owner",
   ownerEmail: `crafted-${uid()}@example.com`,
+  ownerPassword: "a crafted owner passphrase 2026",
   countryCode: "GB",
   baseCurrency: "GBP",
   timezone: "Europe/London",
@@ -59,10 +71,12 @@ interface Target {
   categoryId: string;
   orderId: string;
   inquiryId: string;
+  membershipId: string;
 }
 const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise<ActionResult<unknown>>> => ({
   createStoreAction: () => actions.createStoreAction(newStore()),
   updateStoreAction: () => actions.updateStoreAction(t.storeId, { name: "Hijacked", status: "ACTIVE" }),
+  updateOwnStoreSettingsAction: () => actions.updateOwnStoreSettingsAction(t.storeId, {}),
   setStoreOwnerAction: () => actions.setStoreOwnerAction(t.storeId, { ownerName: "Crafted", ownerEmail: `crafted-owner-${uid()}@example.com` }),
   setStoreStatusAction: () => actions.setStoreStatusAction(t.storeId, "SUSPENDED"),
   archiveStoreAction: () => actions.archiveStoreAction(t.storeId),
@@ -78,8 +92,26 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   cancelOrderAction: () => actions.cancelOrderAction(t.storeId, t.orderId, "PENDING"),
   setOrderPaymentAction: () => actions.setOrderPaymentAction(t.storeId, t.orderId, "UNPAID", "PAID"),
   setInquiryStatusAction: () => actions.setInquiryStatusAction(t.storeId, t.inquiryId, "NEW", "ARCHIVED"),
+  updateStoreMemberRoleAction: () => actions.updateStoreMemberRoleAction(t.membershipId, "STAFF"),
+  revokeStoreMemberAction: () => actions.revokeStoreMemberAction(t.membershipId),
+  createStoreInvitationAction: () => actions.createStoreInvitationAction(`invite-${uid()}@example.com`, "STAFF"),
+  revokeStoreInvitationAction: () => actions.revokeStoreInvitationAction(t.membershipId),
+  updateMyAccountAction: () => actions.updateMyAccountAction({
+    name: "",
+    email: "",
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  }),
 });
-const seeded = () => calls({ storeId: "store-a", productId: productOfA, categoryId: categoryOfA, orderId: orderOfA, inquiryId: "no-such-inquiry" });
+const seeded = () => calls({
+  storeId: "store-a",
+  productId: productOfA,
+  categoryId: categoryOfA,
+  orderId: orderOfA,
+  inquiryId: "no-such-inquiry",
+  membershipId: "missing-membership",
+});
 
 /** Everything a refused action could have changed. */
 async function snapshot() {
@@ -122,6 +154,458 @@ test("a forged or tampered cookie is treated as signed out", async () => {
   assert.equal(await snapshot(), before);
 });
 
+test("a Store Owner can call only actions for their own store and cannot call platform actions", async () => {
+  const password = "an action-scoped store owner passphrase 2026";
+  const user = await db.user.create({
+    data: { email: `scoped-owner-${uid()}@example.com`, name: "Scoped Owner" },
+  });
+
+  await db.storeMembership.create({ data: { userId: user.id, storeId: "store-a", role: "OWNER" } });
+  const context = await getAuth().$context;
+  await db.account.create({
+    data: {
+      id: randomUUID(),
+      userId: user.id,
+      accountId: user.id,
+      providerId: "credential",
+      password: await context.password.hash(password),
+    },
+  });
+  try {
+    const cookie = await signIn(user.email, password, STORE_HOST);
+    actAs(cookie, STORE_HOST);
+    const own = await actions.setInquiryStatusAction("store-a", "missing-inquiry", "NEW", "READ");
+    assert.ok(own.ok || own.error !== FORBIDDEN, "own-store action passes authorization and reaches its scoped lookup");
+    const other = await actions.setInquiryStatusAction("store-b", "missing-inquiry", "NEW", "READ");
+    assert.deepEqual(other, { ok: false, error: FORBIDDEN });
+    const platformOnly = await actions.setStoreOwnerAction("store-a", {
+      ownerName: "Attempted",
+      ownerEmail: `attempted-${uid()}@example.com`,
+      ownerPassword: password,
+    });
+    assert.deepEqual(platformOnly, { ok: false, error: FORBIDDEN });
+  } finally {
+    setRequestRuntimeForTests(null);
+    await db.user.delete({ where: { id: user.id } });
+  }
+});
+
+test("Store Owner team operations are scoped to the current store and cannot change Owner memberships", async () => {
+  const password = "a team-scoped owner passphrase 2026";
+  const store = await db.store.findUniqueOrThrow({ where: { id: "store-a" }, select: { slug: true } });
+  const owner = await db.user.create({
+    data: { email: `team-owner-${uid()}@example.com`, name: "Team Owner" },
+  });
+  const ownerMembership = await db.storeMembership.create({
+    data: { userId: owner.id, storeId: "store-a", role: "OWNER" },
+  });
+  const member = await db.user.create({
+    data: { email: `team-member-${uid()}@example.com`, name: "Team Member" },
+  });
+  const memberMembership = await db.storeMembership.create({
+    data: { userId: member.id, storeId: "store-a", role: "MANAGER" },
+  });
+  const otherStoreOwner = await db.storeMembership.findFirstOrThrow({
+    where: { storeId: "store-b", role: "OWNER" },
+  });
+  const platformOwnerMembership = await db.storeMembership.create({
+    data: { userId: ownerId, storeId: "store-a", role: "STAFF" },
+  });
+  let invitedEmail = "";
+  const context = await getAuth().$context;
+  await db.account.create({
+    data: {
+      id: randomUUID(),
+      userId: owner.id,
+      accountId: owner.id,
+      providerId: "credential",
+      password: await context.password.hash(password),
+    },
+  });
+  try {
+    const host = `${store.slug}.test.local`;
+    const cookie = await signIn(owner.email, password, host);
+    actAs(cookie, host);
+
+    const members = await listStoreTeamMembers(db, "store-a");
+    assert.ok(members.some(({ id }) => id === memberMembership.id));
+    assert.ok(!members.some(({ id }) => id === otherStoreOwner.id));
+    assert.equal(members.find(({ id }) => id === platformOwnerMembership.id)?.isPlatformOwner, true);
+    assert.deepEqual(await actions.updateStoreMemberRoleAction(memberMembership.id, "STAFF"), {
+      ok: true,
+      data: undefined,
+      message: "Team role updated.",
+    });
+    assert.equal((await db.storeMembership.findUniqueOrThrow({ where: { id: memberMembership.id } })).role, "STAFF");
+    assert.equal((await actions.updateStoreMemberRoleAction(memberMembership.id, "OWNER")).ok, false);
+    assert.deepEqual(await actions.revokeStoreMemberAction(memberMembership.id), {
+      ok: true,
+      data: undefined,
+      message: "Team access revoked.",
+    });
+    assert.equal(await db.storeMembership.findUnique({ where: { id: memberMembership.id } }), null);
+
+    assert.equal((await actions.updateStoreMemberRoleAction(otherStoreOwner.id, "STAFF")).ok, false);
+    assert.equal((await actions.revokeStoreMemberAction(otherStoreOwner.id)).ok, false);
+    assert.equal((await db.storeMembership.findUniqueOrThrow({ where: { id: otherStoreOwner.id } })).role, "OWNER");
+    assert.equal((await actions.updateStoreMemberRoleAction(ownerMembership.id, "STAFF")).ok, false);
+    assert.equal((await actions.revokeStoreMemberAction(ownerMembership.id)).ok, false);
+    assert.equal((await db.storeMembership.findUniqueOrThrow({ where: { id: ownerMembership.id } })).role, "OWNER");
+    assert.equal((await actions.updateStoreMemberRoleAction(platformOwnerMembership.id, "MANAGER")).ok, false);
+    assert.equal((await actions.revokeStoreMemberAction(platformOwnerMembership.id)).ok, false);
+    assert.equal((await db.storeMembership.findUniqueOrThrow({ where: { id: platformOwnerMembership.id } })).role, "STAFF");
+
+    const delivery: string[] = [];
+    invitedEmail = `invited-${uid()}@example.com`;
+    const invitationSent = await createStoreInvitation(
+      db,
+      {
+        storeId: "store-a",
+        actorUserId: owner.id,
+        email: invitedEmail,
+        role: "MANAGER",
+        storeName: "Test Store",
+        acceptUrl: `http://${host}/accept-invitation`,
+      },
+      { send: async (message) => { delivery.push(message.text); } },
+    );
+    assert.equal(invitationSent.ok, true);
+    const token = /#token=([A-Za-z0-9_-]{43})/.exec(delivery[0])?.[1];
+    assert.ok(token);
+    const listed = await listStoreInvitations(db, "store-a");
+    const pending = listed.find((invitation) => invitation.email === invitedEmail);
+    assert.equal(pending?.status, "PENDING");
+    assert.equal(JSON.stringify(pending).includes(token), false);
+    assert.equal(await invitationForAcceptance(db, "store-b", token), null);
+    assert.equal(
+      (await acceptStoreInvitation(db, getAuth(), {
+        storeId: "store-b",
+        token,
+        name: "Wrong Store",
+        password: "wrong store invitation account password",
+      })).ok,
+      false,
+      "an invitation cannot be accepted on another store",
+    );
+    assert.equal(
+      (await acceptStoreInvitation(db, getAuth(), {
+        storeId: "store-a",
+        token: `${token}x`,
+        name: "New Manager",
+        password: "manager invite account password 2026",
+      })).ok,
+      false,
+    );
+    const acceptedPassword = "manager invite account password 2026";
+    const accepted = await acceptStoreInvitation(db, getAuth(), {
+      storeId: "store-a",
+      token,
+      name: "New Manager",
+      password: acceptedPassword,
+    });
+    assert.equal(accepted.ok, true);
+    const invitedUser = await db.user.findUniqueOrThrow({ where: { email: invitedEmail } });
+    assert.equal(invitedUser.emailVerified, true);
+    assert.equal(
+      (await db.storeMembership.findUniqueOrThrow({
+        where: { userId_storeId: { userId: invitedUser.id, storeId: "store-a" } },
+      })).role,
+      "MANAGER",
+    );
+    const invitedCookie = await signIn(invitedEmail, acceptedPassword, host);
+    actAs(invitedCookie, host);
+    const invitedViewer = await requireAdminViewer();
+    assert.equal(invitedViewer.kind, "store");
+    if (invitedViewer.kind === "store") assert.equal(invitedViewer.role, "MANAGER");
+    actAs(cookie, host);
+    assert.equal(
+      (await acceptStoreInvitation(db, getAuth(), {
+        storeId: "store-a",
+        token,
+        name: "New Manager",
+        password: "manager invite account password 2026",
+      })).ok,
+      false,
+      "an accepted bearer token cannot be reused",
+    );
+
+    const expiredDelivery: string[] = [];
+    const expiredEmail = `expired-${uid()}@example.com`;
+    const expiredResult = await createStoreInvitation(
+      db,
+      {
+        storeId: "store-a",
+        actorUserId: owner.id,
+        email: expiredEmail,
+        role: "STAFF",
+        storeName: "Test Store",
+        acceptUrl: `http://${host}/accept-invitation`,
+      },
+      { send: async (message) => { expiredDelivery.push(message.text); } },
+    );
+    assert.equal(expiredResult.ok, true);
+    const expiredToken = /#token=([A-Za-z0-9_-]{43})/.exec(expiredDelivery[0])?.[1];
+    assert.ok(expiredToken);
+    await db.storeInvitation.updateMany({
+      where: { tokenHash: hashStoreInvitationToken(expiredToken) },
+      data: { expiresAt: new Date(0) },
+    });
+    assert.equal(
+      (await acceptStoreInvitation(db, getAuth(), {
+        storeId: "store-a",
+        token: expiredToken,
+        name: "Expired Staff",
+        password: "expired invitation account password",
+      })).ok,
+      false,
+    );
+    assert.equal((await createStoreInvitation(
+      db,
+      { storeId: "store-a", actorUserId: owner.id, email: `owner-role-${uid()}@example.com`, role: "OWNER", storeName: "Test Store", acceptUrl: `http://${host}/accept-invitation` },
+      { send: async () => { assert.fail("Owner invitations must not be sent"); } },
+    )).ok, false);
+    assert.equal((await createStoreInvitation(
+      db,
+      { storeId: "store-a", actorUserId: owner.id, email: (await db.user.findUniqueOrThrow({ where: { id: ownerId } })).email, role: "STAFF", storeName: "Test Store", acceptUrl: `http://${host}/accept-invitation` },
+      { send: async () => { assert.fail("Platform Owner invitations must not be sent"); } },
+    )).ok, false);
+    assert.equal((await createStoreInvitation(
+      db,
+      {
+        storeId: "store-a",
+        actorUserId: owner.id,
+        email: (await db.user.findUniqueOrThrow({ where: { id: otherStoreOwner.userId } })).email,
+        role: "STAFF",
+        storeName: "Test Store",
+        acceptUrl: `http://${host}/accept-invitation`,
+      },
+      { send: async () => { assert.fail("Another store's Owner must not be invited as a team member"); } },
+    )).ok, false);
+
+    const revokeDelivery: string[] = [];
+    const revokeEmail = `revoke-${uid()}@example.com`;
+    assert.equal((await createStoreInvitation(
+      db,
+      { storeId: "store-a", actorUserId: owner.id, email: revokeEmail, role: "STAFF", storeName: "Test Store", acceptUrl: `http://${host}/accept-invitation` },
+      { send: async (message) => { revokeDelivery.push(message.text); } },
+    )).ok, true);
+    const revokeToken = /#token=([A-Za-z0-9_-]{43})/.exec(revokeDelivery[0])?.[1];
+    assert.ok(revokeToken);
+    const revokeInvitation = (await listStoreInvitations(db, "store-a")).find(({ email }) => email === revokeEmail);
+    assert.ok(revokeInvitation);
+    assert.deepEqual(await actions.revokeStoreInvitationAction(revokeInvitation.id), {
+      ok: true,
+      data: undefined,
+      message: "Invitation revoked.",
+    });
+    assert.equal(
+      (await acceptStoreInvitation(db, getAuth(), {
+        storeId: "store-a",
+        token: revokeToken,
+        name: "Revoked Staff",
+        password: "revoked invitation account password 2026",
+      })).ok,
+      false,
+    );
+  } finally {
+    setRequestRuntimeForTests(null);
+    if (invitedEmail) await db.user.deleteMany({ where: { email: invitedEmail } });
+    await db.storeMembership.delete({ where: { id: platformOwnerMembership.id } });
+    await db.user.delete({ where: { id: owner.id } });
+    await db.user.delete({ where: { id: member.id } });
+  }
+});
+
+test("Manager and Staff sessions stay store-scoped and respect their role limits", async () => {
+  const store = await db.store.findUniqueOrThrow({ where: { id: "store-a" }, select: { slug: true } });
+  const managerPassword = "a manager test passphrase 2026";
+  const staffPassword = "a staff test passphrase 2026";
+  const context = await getAuth().$context;
+  const manager = await db.user.create({
+    data: { email: `manager-${uid()}@example.com`, name: "Test Manager" },
+  });
+  const staff = await db.user.create({
+    data: { email: `staff-${uid()}@example.com`, name: "Test Staff" },
+  });
+  const managedMember = await db.user.create({
+    data: { email: `managed-${uid()}@example.com`, name: "Managed Member" },
+  });
+  const protectedManager = await db.user.create({
+    data: { email: `protected-manager-${uid()}@example.com`, name: "Protected Manager" },
+  });
+  await db.storeMembership.create({ data: { userId: manager.id, storeId: "store-a", role: "MANAGER" } });
+  await db.storeMembership.create({ data: { userId: staff.id, storeId: "store-a", role: "STAFF" } });
+  const managedMemberMembership = await db.storeMembership.create({
+    data: { userId: managedMember.id, storeId: "store-a", role: "MANAGER" },
+  });
+  const protectedManagerMembership = await db.storeMembership.create({
+    data: { userId: protectedManager.id, storeId: "store-a", role: "MANAGER" },
+  });
+  const platformMembership = await db.storeMembership.create({
+    data: { userId: ownerId, storeId: "store-a", role: "STAFF" },
+  });
+  await Promise.all([
+    db.account.create({
+      data: {
+        id: randomUUID(),
+        userId: manager.id,
+        accountId: manager.id,
+        providerId: "credential",
+        password: await context.password.hash(managerPassword),
+      },
+    }),
+    db.account.create({
+      data: {
+        id: randomUUID(),
+        userId: staff.id,
+        accountId: staff.id,
+        providerId: "credential",
+        password: await context.password.hash(staffPassword),
+      },
+    }),
+  ]);
+  const ownerMembership = await db.storeMembership.findFirstOrThrow({
+    where: { storeId: "store-a", role: "OWNER" },
+  });
+  try {
+    const host = `${store.slug}.test.local`;
+    const managerCookie = await signIn(manager.email, managerPassword, host);
+    actAs(managerCookie, host);
+    const managerViewer = await requireAdminViewer();
+    assert.equal(managerViewer.kind, "store");
+    if (managerViewer.kind === "store") assert.equal(managerViewer.role, "MANAGER");
+    const managerOwnAction = await actions.setInquiryStatusAction("store-a", "missing-message", "NEW", "READ");
+    assert.ok(managerOwnAction.ok || managerOwnAction.error !== FORBIDDEN, "Manager's own-store operational action passes authorization");
+    assert.deepEqual(
+      await actions.setInquiryStatusAction("store-b", "missing-message", "NEW", "READ"),
+      { ok: false, error: FORBIDDEN },
+    );
+    assert.deepEqual(await actions.updateOwnStoreSettingsAction("store-a", {}), { ok: false, error: FORBIDDEN });
+    assert.deepEqual(await actions.createStoreAction(newStore()), { ok: false, error: FORBIDDEN });
+    assert.equal((await actions.updateStoreMemberRoleAction(ownerMembership.id, "STAFF")).ok, false);
+    assert.equal((await actions.revokeStoreMemberAction(ownerMembership.id)).ok, false);
+    assert.equal((await actions.updateStoreMemberRoleAction(platformMembership.id, "MANAGER")).ok, false);
+    assert.equal((await db.storeMembership.findUniqueOrThrow({ where: { id: platformMembership.id } })).role, "STAFF");
+    assert.deepEqual(await actions.updateStoreMemberRoleAction(managedMemberMembership.id, "STAFF"), {
+      ok: true,
+      data: undefined,
+      message: "Team role updated.",
+    });
+
+    const staffCookie = await signIn(staff.email, staffPassword, host);
+    actAs(staffCookie, host);
+    const staffViewer = await requireAdminViewer();
+    assert.equal(staffViewer.kind, "store");
+    if (staffViewer.kind === "store") {
+      assert.equal(staffViewer.role, "STAFF");
+      assert.equal(staffViewer.access, "read");
+    }
+    assert.deepEqual(await actions.createStoreAction(newStore()), { ok: false, error: FORBIDDEN });
+    assert.deepEqual(
+      await actions.createStoreInvitationAction(`staff-invite-${uid()}@example.com`, "STAFF"),
+      { ok: false, error: FORBIDDEN },
+      "Staff cannot create invitations",
+    );
+    assert.equal((await actions.setInquiryStatusAction("store-a", "missing-message", "NEW", "READ")).ok, false);
+    assert.equal((await actions.updateStoreMemberRoleAction(ownerMembership.id, "STAFF")).ok, false);
+    assert.equal((await actions.revokeStoreMemberAction(ownerMembership.id)).ok, false);
+    assert.equal((await actions.updateStoreMemberRoleAction(protectedManagerMembership.id, "STAFF")).ok, false);
+    assert.equal((await actions.revokeStoreMemberAction(protectedManagerMembership.id)).ok, false);
+    assert.equal((await db.storeMembership.findUniqueOrThrow({ where: { id: protectedManagerMembership.id } })).role, "MANAGER");
+  } finally {
+    setRequestRuntimeForTests(null);
+    await db.user.deleteMany({ where: { id: { in: [manager.id, staff.id, managedMember.id, protectedManager.id] } } });
+    await db.storeMembership.delete({ where: { id: platformMembership.id } });
+  }
+});
+
+test("Store Owner settings update only the owner store and ignore slug, role and platform fields", async () => {
+  actAs(ownerCookie);
+  const input = newStore();
+  const created = await actions.createStoreAction(input);
+  assert.ok(created.ok, JSON.stringify(created));
+  const storeId = created.data.id;
+  const store = await db.store.findUniqueOrThrow({ where: { id: storeId }, select: { slug: true, status: true } });
+  const host = `${store.slug}.test.local`;
+  let storeOwnerId = "";
+
+  try {
+    const cookie = await signIn(input.ownerEmail, input.ownerPassword, host);
+    const owner = await db.user.findUniqueOrThrow({ where: { email: input.ownerEmail }, select: { id: true } });
+    storeOwnerId = owner.id;
+    actAs(cookie, host);
+
+    const settings = {
+      name: "Owner Updated Store",
+      slug: "attempted-slug-change",
+      status: "ACTIVE",
+      businessType: "electronics",
+      countryCode: "GB",
+      baseCurrency: "GBP",
+      timezone: "Europe/London",
+      defaultLanguage: "en",
+      languages: ["en"],
+      accentColor: "#abcdef",
+      heroTitle: "A new welcome",
+      heroText: "Updated by the store owner.",
+      aboutText: "",
+      tagline: "Owner managed",
+      deliveryFee: "4.50",
+      freeDeliveryThreshold: "80",
+      paymentMethods: { cash_on_delivery: false, card_on_delivery: false, bank_transfer: true, online_card: true },
+      contactEmail: "store@example.com",
+      contactPhone: "",
+      contactAddress: "1 Store Street",
+      ownerName: "Must not change",
+      ownerEmail: "must-not-change@example.com",
+      role: "STAFF",
+      isPlatformOwner: true,
+    };
+    const result = await actions.updateOwnStoreSettingsAction(storeId, settings);
+    assert.ok(result.ok, JSON.stringify(result));
+
+    const updated = await db.store.findUniqueOrThrow({
+      where: { id: storeId },
+      include: { memberships: { include: { user: true } }, paymentMethods: true },
+    });
+    assert.equal(updated.name, settings.name);
+    assert.equal(updated.slug, store.slug, "store owner cannot change hostname slug");
+    assert.equal(updated.status, store.status, "store owner cannot change lifecycle status");
+    assert.equal(updated.countryCode, settings.countryCode);
+    assert.equal(updated.baseCurrency, settings.baseCurrency);
+    assert.equal(updated.timezone, settings.timezone);
+    assert.equal(updated.defaultLanguage, settings.defaultLanguage);
+    assert.equal(updated.memberships.length, 1);
+    assert.equal(updated.memberships[0].role, "OWNER", "submitted role cannot change membership");
+    assert.equal(updated.memberships[0].user.id, storeOwnerId);
+    assert.equal(updated.memberships[0].user.email, input.ownerEmail);
+    assert.equal(updated.memberships[0].user.isPlatformOwner, false);
+    assert.equal(updated.paymentMethods.find(({ method }) => method === "bank_transfer")?.enabled, true);
+    assert.equal(updated.paymentMethods.find(({ method }) => method === "online_card")?.enabled, false);
+
+    const otherStoreBefore = await db.store.findUniqueOrThrow({ where: { id: "store-b" }, select: { name: true } });
+    assert.deepEqual(
+      await actions.updateOwnStoreSettingsAction("store-b", { ...settings, name: "Cross-store attempt" }),
+      { ok: false, error: FORBIDDEN },
+    );
+    assert.equal((await db.store.findUniqueOrThrow({ where: { id: "store-b" }, select: { name: true } })).name, otherStoreBefore.name);
+
+    await db.storeMembership.update({
+      where: { userId_storeId: { userId: storeOwnerId, storeId } },
+      data: { role: "MANAGER" },
+    });
+    assert.deepEqual(await actions.updateOwnStoreSettingsAction(storeId, { ...settings, name: "Manager attempt" }), {
+      ok: false,
+      error: FORBIDDEN,
+    });
+    assert.equal((await db.store.findUniqueOrThrow({ where: { id: storeId }, select: { name: true } })).name, settings.name);
+  } finally {
+    setRequestRuntimeForTests(null);
+    await db.store.delete({ where: { id: storeId } });
+    if (storeOwnerId) await db.user.delete({ where: { id: storeOwnerId } });
+  }
+});
+
 test("signed in but not the platform owner: every action is refused and nothing changes", async () => {
   await db.user.update({ where: { id: ownerId }, data: { isPlatformOwner: false } });
   try {
@@ -149,12 +633,23 @@ test("the platform owner passes the check for every action", async () => {
   assert.ok(product.ok, JSON.stringify(product));
   // The fresh store has no orders: the order actions only need to get
   // past the permission check here (they answer "not found").
-  const target = { storeId, productId: product.data.id, categoryId, orderId: "no-such-order", inquiryId: "no-such-inquiry" };
+  const target = {
+    storeId,
+    productId: product.data.id,
+    categoryId,
+    orderId: "no-such-order",
+    inquiryId: "no-such-inquiry",
+    membershipId: "missing-membership",
+  };
 
   // Archive/restore last, so the other calls find an active store.
   const order = Object.entries(calls(target)).sort(([a], [b]) => Number(/archive|restore/.test(a)) - Number(/archive|restore/.test(b)));
   for (const [name, call] of order) {
     const result = await call();
+    if (ACTION_PERMISSIONS[name as keyof typeof ACTION_PERMISSIONS] === "store-owner-context") {
+      assert.deepEqual(result, { ok: false, error: FORBIDDEN }, name);
+      continue;
+    }
     assert.ok(result.ok || (result.error !== SIGNED_OUT && result.error !== FORBIDDEN), `${name}: ${JSON.stringify(result)}`);
   }
 });
@@ -207,12 +702,20 @@ test("suspend and reactivate are platform actions that keep all data", async () 
   assert.ok((await actions.setStoreStatusAction("store-c", original)).ok);
 });
 
-test("assigning an existing user as owner doesn't rename them", async () => {
+test("reassigning a store owner updates their store-specific details and credentials", async () => {
   actAs(ownerCookie);
   const existing = await db.user.create({ data: { email: `shared-${uid()}@example.com`, name: "Original Name" } });
-  const result = await actions.setStoreOwnerAction("store-c", { ownerName: "Changed Name", ownerEmail: existing.email });
+  const result = await actions.setStoreOwnerAction("store-c", {
+    ownerName: "Changed Name",
+    ownerEmail: existing.email,
+    ownerPassword: "a reassigned owner passphrase 2026",
+  });
   assert.ok(result.ok, JSON.stringify(result));
-  assert.equal((await db.user.findUniqueOrThrow({ where: { id: existing.id } })).name, "Original Name");
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: existing.id } })).name, "Changed Name");
+  const account = await db.account.findUniqueOrThrow({
+    where: { providerId_accountId: { providerId: "credential", accountId: existing.id } },
+  });
+  assert.notEqual(account.password, "a reassigned owner passphrase 2026");
   const owners = await db.storeMembership.findMany({ where: { storeId: "store-c", role: "OWNER" } });
   assert.deepEqual(owners.map((m) => m.userId), [existing.id]);
   assert.ok(await db.auditEvent.findFirst({ where: { action: "store.owner_change", storeId: "store-c", targetId: existing.id } }));

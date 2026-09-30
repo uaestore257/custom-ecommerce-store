@@ -11,8 +11,8 @@ export const metadata: Metadata = { title: "Order details" };
 // store is "not found". Only the signed-in platform owner reaches it.
 export default async function OrderDetailPage({ params }: PageProps<"/admin/stores/[storeId]/orders/[orderId]">) {
   const { storeId, orderId } = await params;
-  const { db: client } = await requireStorePage(storeId);
+  const { db: client, grant } = await requireStorePage(storeId, "orders");
   const [store, order] = await Promise.all([getAdminStore(client, storeId), getAdminOrder(client, storeId, orderId)]);
   if (!store || !order) notFound();
-  return <DbOrderDetail storeId={store.id} storeName={store.name} order={order} />;
+  return <DbOrderDetail storeId={store.id} storeName={store.name} order={order} readOnly={grant.access === "read"} />;
 }

@@ -7,6 +7,7 @@ import {
   validateCategory,
   validateProduct,
   validateStoreBase,
+  validateStoreSettings,
   type StoreReference,
 } from "../../lib/admin/validation";
 
@@ -22,6 +23,7 @@ const store = {
   status: "DRAFT",
   ownerName: "Jamie Lee",
   ownerEmail: "Jamie@Example.com",
+  ownerPassword: "a safe owner passphrase 2026",
   countryCode: "GB",
   baseCurrency: "GBP",
   timezone: "Europe/London",
@@ -45,6 +47,7 @@ test("store input: valid values are normalised", () => {
   const { values, errors } = validateStoreBase(store, reference);
   assert.deepEqual(errors, {});
   assert.equal(values.ownerEmail, "jamie@example.com");
+  assert.equal(values.ownerPassword, "a safe owner passphrase 2026");
   assert.equal(values.accentColor, "#0f766e");
 });
 
@@ -57,6 +60,46 @@ test("store input: every rule is enforced on untrusted data", () => {
     assert.ok(errors[field], field);
   }
   assert.ok(validateStoreBase(null, reference).errors.name, "non-object input is handled");
+  assert.ok(validateStoreBase({ ...store, ownerPassword: "short" }, reference).errors.ownerPassword);
+});
+
+test("store settings validate localization, currency, delivery and supported payment methods", () => {
+  const settings = {
+    ...store,
+    countryCode: "GB",
+    baseCurrency: "GBP",
+    timezone: "Europe/London",
+    languages: ["en", "ar"],
+    defaultLanguage: "en",
+    heroTitle: "Welcome",
+    deliveryFee: "4.50",
+    freeDeliveryThreshold: "80",
+    paymentMethods: { cash_on_delivery: true, bank_transfer: "true", online_card: true },
+    contactPhone: "+44 (20) 7946-0000",
+  };
+  const valid = validateStoreSettings(settings, reference);
+  assert.deepEqual(valid.errors, {});
+  assert.equal(valid.values.deliveryFeeMinor, 450n);
+  assert.equal(valid.values.freeDeliveryOverMinor, 8000n);
+  assert.equal(valid.values.contactPhone, "+442079460000");
+  assert.equal(valid.values.paymentMethods.bank_transfer, true);
+  assert.equal(valid.values.paymentMethods.online_card, false);
+
+  const invalid = validateStoreSettings({
+    ...settings,
+    countryCode: "ZZ",
+    baseCurrency: "XXX",
+    timezone: "Not/A_Timezone",
+    languages: [],
+    defaultLanguage: "fr",
+    deliveryFee: "-5",
+    paymentMethods: { cash_on_delivery: "yes", unknown_gateway: true },
+  }, reference);
+  for (const field of ["countryCode", "baseCurrency", "timezone", "languages", "defaultLanguage", "deliveryFee"]) {
+    assert.ok(invalid.errors[field], field);
+  }
+  assert.equal(invalid.values.paymentMethods.cash_on_delivery, false);
+  assert.equal("unknown_gateway" in invalid.values.paymentMethods, false);
 });
 
 test("product input: store-currency money, limits and statuses", () => {

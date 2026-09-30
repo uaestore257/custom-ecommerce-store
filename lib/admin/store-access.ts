@@ -4,23 +4,25 @@ import type { DbStoreStatus } from "./types";
 
 // ---------------------------------------------------------------
 // WHO MAY USE WHICH STORE'S ADMIN, AND HOW (pure rules — no database).
-// The server guard (to come: requireStoreAccess) looks up the facts —
+// The server guard (requireStoreAccess) looks up the facts —
 // the signed-in user, the store the Host names, the store in the route,
-// and the user's OWNER membership — and asks decideStoreAccess(). Nothing
+// and the user's membership role — and asks decideStoreAccess(). Nothing
 // the browser sends is a fact here: the host's store is resolved on the
 // server, and a route/action storeId only counts if it IS that store.
 //
 //   ADMIN_HOST  -> the platform owner only, every non-archived store,
 //                  full access. Store owners never sign in here.
-//   store host  -> only an OWNER of the store that host serves, and only
-//                  for that store (the route's store must be the host's).
-//                  Draft, active and paused: full access. Suspended:
+//   store host  -> a member of the store that host serves, and only for
+//                  that store. OWNER has full access; MANAGER has
+//                  operational access; STAFF is read-only. Suspended:
 //                  read-only. Archived: no access. The platform owner
 //                  does not use store hosts (admin-host-only).
 //   other host  -> nobody.
 // ---------------------------------------------------------------
 
 export type StoreAccess = "write" | "read" | "none";
+export type StoreMembershipRole = "OWNER" | "MANAGER" | "STAFF";
+export type StoreSection = "overview" | "products" | "categories" | "orders" | "messages" | "settings" | "team" | "customers";
 
 export type AdminHost = { kind: "admin" } | { kind: "store"; slug: string } | { kind: "other" };
 
@@ -46,7 +48,9 @@ export interface AccessFacts {
   hostStore: StoreFacts | null;
   /** The store the page or action is about (from the route), or null if it doesn't exist. */
   routeStore: StoreFacts | null;
-  /** Whether the user has an OWNER membership for routeStore. */
+  /** The authenticated user's membership role in routeStore, resolved by the server. */
+  membershipRole?: StoreMembershipRole | null;
+  /** Kept explicit so OWNER authorization retains its existing membership rule. */
   ownsRouteStore: boolean;
 }
 
@@ -59,8 +63,11 @@ export function decideStoreAccess(facts: AccessFacts): StoreAccess {
 
   // Store host: the route's store must be exactly the store this host serves.
   if (!hostStore || hostStore.archived || hostStore.id !== routeStore.id) return "none";
-  if (!facts.ownsRouteStore) return "none";
-  return routeStore.status === "SUSPENDED" ? "read" : "write";
+  const role = facts.membershipRole ?? (facts.ownsRouteStore ? "OWNER" : null);
+  if (role === "OWNER" && !facts.ownsRouteStore) return "none";
+  if (!role) return "none";
+  if (role === "STAFF" || routeStore.status === "SUSPENDED") return "read";
+  return "write";
 }
 
 /** Whether a sign-in may open a session on this host (the session hook). */
@@ -69,12 +76,32 @@ export function mayOpenSession(facts: {
   host: AdminHost;
   hostStore: StoreFacts | null;
   ownsHostStore: boolean;
+  membershipRole?: StoreMembershipRole | null;
 }): boolean {
   const { user, host, hostStore } = facts;
   if (!user || user.disabled) return false;
   if (host.kind === "admin") return user.isPlatformOwner;
   if (host.kind !== "store" || user.isPlatformOwner) return false;
-  return Boolean(hostStore && !hostStore.archived && facts.ownsHostStore);
+  const role = facts.membershipRole ?? (facts.ownsHostStore ? "OWNER" : null);
+  if (!hostStore || hostStore.archived || !role) return false;
+  return role !== "OWNER" || facts.ownsHostStore;
+}
+
+export function mayAccessStoreSection(role: StoreMembershipRole, section: StoreSection, platform = false): boolean {
+  if (platform || role === "OWNER") return true;
+  if (section === "overview") return true;
+  if (role === "MANAGER") {
+    return ["products", "categories", "orders", "messages", "team"].includes(section);
+  }
+  return section === "orders" || section === "messages";
+}
+
+export type StoreAction = "store-settings" | "team-management" | "products" | "categories" | "orders" | "messages";
+
+export function mayRunStoreAction(role: StoreMembershipRole, action: StoreAction, platform = false): boolean {
+  if (platform || role === "OWNER") return true;
+  if (role === "MANAGER") return action !== "store-settings";
+  return false;
 }
 
 export type ActionLevel = "platform-owner" | "store-owner";

@@ -22,6 +22,8 @@ import {
 import { LinkButton } from "@/components/ui";
 import { useDemoState } from "@/lib/demo-db";
 import type { AdminStoreSummary } from "@/lib/admin/types";
+import { mayAccessStoreSection, type StoreMembershipRole, type StoreSection } from "@/lib/admin/store-access";
+import { storeSettingsNav, storeTeamNav } from "@/lib/admin/store-navigation";
 import { SignOutButton } from "./SignOutButton";
 import { StoreSelector } from "./StoreSelector";
 
@@ -53,6 +55,35 @@ export function storeNav(storeId: string): NavItem[] {
   ];
 }
 
+export function storeNavForViewer(storeId: string, platform: boolean, role: StoreMembershipRole = "OWNER"): NavItem[] {
+  const items = storeNav(storeId)
+    .filter((item) => platform || item.label !== "Customers")
+    .filter((item) => {
+      const section: Partial<Record<NavItem["label"], StoreSection>> = {
+        Overview: "overview",
+        Products: "products",
+        Categories: "categories",
+        Orders: "orders",
+        Messages: "messages",
+        Customers: "customers",
+        "Store settings": "settings",
+      };
+      const allowedSection = section[item.label];
+      return platform || !allowedSection || mayAccessStoreSection(role, allowedSection);
+    })
+    .map((item) =>
+      !platform && role === "OWNER" && item.label === "Store settings"
+        ? { ...item, ...storeSettingsNav(platform, storeId) }
+        : item,
+    );
+  const team = storeTeamNav(platform, role);
+  if (team) {
+    const settingsIndex = items.findIndex((item) => item.label === "Store Settings");
+    items.splice(settingsIndex < 0 ? items.length : settingsIndex, 0, { ...team, icon: Users });
+  }
+  return items;
+}
+
 export function isNavActive(pathname: string, item: { href: string; exact?: boolean }) {
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
@@ -71,12 +102,14 @@ export function AdminShell({
   stores,
   user,
   platform,
+  role,
 }: {
   children: ReactNode;
   stores: ShellStore[];
   user: ShellUser;
   /** The platform owner (agency pages shown); false for a store owner, who sees only their store. */
   platform: boolean;
+  role: StoreMembershipRole | null;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
@@ -99,7 +132,7 @@ export function AdminShell({
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <SidebarContent stores={stores} platform={platform} />
+        <SidebarContent stores={stores} platform={platform} role={role} />
       </aside>
 
       {/* Mobile drawer */}
@@ -120,7 +153,7 @@ export function AdminShell({
             >
               <X className="h-5 w-5" aria-hidden />
             </button>
-            <SidebarContent stores={stores} platform={platform} />
+            <SidebarContent stores={stores} platform={platform} role={role} />
           </aside>
         </div>
       )}
@@ -133,12 +166,24 @@ export function AdminShell({
   );
 }
 
-function SidebarContent({ stores, platform }: { stores: ShellStore[]; platform: boolean }) {
+function SidebarContent({
+  stores,
+  platform,
+  role,
+}: {
+  stores: ShellStore[];
+  platform: boolean;
+  role: StoreMembershipRole | null;
+}) {
   const pathname = usePathname();
   const params = useParams<{ storeId?: string }>();
   // The agency name is still demo data (agency settings are not in the database yet).
   const state = useDemoState();
-  const selected = params.storeId ? (stores.find((s) => s.id === params.storeId) ?? null) : null;
+  const selected = params.storeId
+    ? (stores.find((s) => s.id === params.storeId) ?? null)
+    : !platform
+      ? (stores[0] ?? null)
+      : null;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -150,7 +195,7 @@ function SidebarContent({ stores, platform }: { stores: ShellStore[]; platform: 
           <span className="block truncate font-bold leading-tight">
             {state?.agency.agencyName ?? "Agency"}
           </span>
-          <span className="text-xs text-slate-500">Agency Admin</span>
+          <span className="text-xs text-slate-500">{platform ? "Agency Admin" : "Store Admin"}</span>
         </span>
       </Link>
 
@@ -165,7 +210,7 @@ function SidebarContent({ stores, platform }: { stores: ShellStore[]; platform: 
         <nav aria-label={`Store: ${selected.name}`} className="border-t border-slate-200 px-3 py-4">
           <p className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Selected store</p>
           <p className="truncate px-2 pb-2 pt-1 text-sm font-semibold text-teal-800">{selected.name}</p>
-          <NavList items={storeNav(selected.id)} pathname={pathname} />
+          <NavList items={storeNavForViewer(selected.id, platform, role ?? "OWNER")} pathname={pathname} />
         </nav>
       )}
 
@@ -234,7 +279,7 @@ function AdminHeader({
         >
           <Menu className="h-5 w-5" aria-hidden />
         </button>
-        <StoreSelector stores={stores} />
+        <StoreSelector stores={stores} platform={platform} />
         {platform && !onDashboard && (
           <LinkButton href="/admin/stores/new" size="sm" className="ml-auto shrink-0">
             <Plus className="h-4 w-4" aria-hidden />
@@ -242,7 +287,11 @@ function AdminHeader({
             <span className="sm:hidden">New</span>
           </LinkButton>
         )}
-        <div className={onDashboard || !platform ? "ml-auto" : undefined}>
+        <div className="ml-auto flex items-center gap-2">
+          <LinkButton href="/admin/account" size="sm" variant="secondary">
+            <Settings className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">Account</span>
+          </LinkButton>
           <SignOutButton email={user.email} />
         </div>
       </div>

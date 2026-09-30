@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Add product" };
 
 export default async function NewProductPage({ params }: PageProps<"/admin/stores/[storeId]/products/new">) {
   const { storeId } = await params;
-  const { db: client } = await requireStorePage(storeId);
+  const { db: client } = await requireStorePage(storeId, "products");
   const [store, categories] = await Promise.all([getProductStore(client, storeId), listAdminCategories(client, storeId)]);
   if (!store || !categories) notFound();
   return <ProductForm categories={categories} minorUnits={store.minorUnits} />;

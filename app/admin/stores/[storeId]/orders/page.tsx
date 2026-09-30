@@ -12,8 +12,8 @@ export const metadata: Metadata = { title: "Orders" };
 // store in the URL is read.
 export default async function OrdersPage({ params }: PageProps<"/admin/stores/[storeId]/orders">) {
   const { storeId } = await params;
-  const { db: client } = await requireStorePage(storeId);
+  const { db: client, grant } = await requireStorePage(storeId, "orders");
   const [store, orders] = await Promise.all([getAdminStore(client, storeId), listAdminOrders(client, storeId)]);
   if (!store || !orders) notFound();
-  return <DbOrdersList orders={orders} storeId={store.id} storeName={store.name} />;
+  return <DbOrdersList orders={orders} storeId={store.id} storeName={store.name} readOnly={grant.access === "read"} />;
 }

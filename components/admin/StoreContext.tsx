@@ -10,8 +10,9 @@ import { StoreLogo } from "@/components/StoreLogo";
 import { labelFor, STORE_TYPES } from "@/lib/config";
 import { findStore, getStoreData, useDemoState } from "@/lib/demo-db";
 import type { AdminStoreSummary } from "@/lib/admin/types";
+import type { StoreMembershipRole } from "@/lib/admin/store-access";
 import type { DemoState, Store, StoreData, StoreType } from "@/lib/types";
-import { isNavActive, storeNav } from "./AdminShell";
+import { isNavActive, storeNavForViewer } from "./AdminShell";
 
 // ---------------------------------------------------------------
 // The store every page under /admin/stores/[storeId] works on. It is
@@ -31,11 +32,15 @@ export function useAdminStore(): AdminStoreSummary {
 export function StoreContextLayout({
   store,
   readOnly = false,
+  platform,
+  role,
   children,
 }: {
   store: AdminStoreSummary;
   /** A suspended store, seen by its owner: nothing can be changed (the server refuses it too). */
   readOnly?: boolean;
+  platform: boolean;
+  role: StoreMembershipRole;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -61,7 +66,7 @@ export function StoreContextLayout({
         </div>
         <nav aria-label="Store sections" className="overflow-x-auto border-t border-slate-200">
           <ul className="flex min-w-max gap-1 px-2">
-            {storeNav(store.id).map((item) => {
+            {storeNavForViewer(store.id, platform, role).map((item) => {
               const active = isNavActive(pathname, item);
               return (
                 <li key={item.href}>

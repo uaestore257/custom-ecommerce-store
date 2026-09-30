@@ -1,8 +1,7 @@
 // ---------------------------------------------------------------
-// PASSWORD POLICY for admin accounts (platform owner now, store owners
-// later). Used by the platform-owner CLI before a password is handed to
-// Better Auth, which hashes it with scrypt. Pure function: no I/O and no
-// logging, so a password never ends up in a log line.
+// PASSWORD POLICY for platform-owner and Store Owner accounts. Used
+// before a password is handed to Better Auth, which hashes it with scrypt.
+// This is pure: no I/O or logging, so passwords never enter log lines.
 // ---------------------------------------------------------------
 
 export const PASSWORD_MIN_LENGTH = 12;

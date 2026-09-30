@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Products" };
 
 export default async function ProductsPage({ params }: PageProps<"/admin/stores/[storeId]/products">) {
   const { storeId } = await params;
-  const { db: client } = await requireStorePage(storeId);
+  const { db: client } = await requireStorePage(storeId, "products");
   const [products, categories] = await Promise.all([listAdminProducts(client, storeId), listAdminCategories(client, storeId)]);
   if (!products || !categories) notFound();
   return <ProductsListView products={products} categories={categories} />;

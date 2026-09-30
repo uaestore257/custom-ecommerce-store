@@ -4,8 +4,10 @@ import { test } from "node:test";
 import {
   adminHostOf,
   decideStoreAccess,
+  mayAccessStoreSection,
   mayOpenSession,
   mayRunAction,
+  mayRunStoreAction,
   type AccessFacts,
   type StoreFacts,
 } from "../../lib/admin/store-access";
@@ -32,6 +34,7 @@ const facts = (overrides: Partial<AccessFacts> = {}): AccessFacts => ({
   hostStore: A,
   routeStore: A,
   ownsRouteStore: true,
+  membershipRole: "OWNER",
   ...overrides,
 });
 
@@ -57,6 +60,16 @@ test("an owner has full access to their own draft, active or paused store on its
     const own = store("store-a", status);
     assert.equal(decideStoreAccess(facts({ hostStore: own, routeStore: own })), "write", status);
   }
+});
+
+test("Managers and Staff get only their own store access at their assigned level", () => {
+  for (const role of ["MANAGER", "STAFF"] as const) {
+    assert.equal(decideStoreAccess(facts({ membershipRole: role, ownsRouteStore: false })), role === "MANAGER" ? "write" : "read");
+    assert.equal(decideStoreAccess(facts({ membershipRole: role, routeStore: B, ownsRouteStore: false })), "none");
+    assert.equal(decideStoreAccess(facts({ membershipRole: role, host: { kind: "admin" }, ownsRouteStore: false })), "none");
+  }
+  assert.equal(decideStoreAccess(facts({ membershipRole: "MANAGER", routeStore: store("store-a", "SUSPENDED") })), "read");
+  assert.equal(decideStoreAccess(facts({ membershipRole: "STAFF", host: { kind: "store", slug: "b" }, hostStore: B, routeStore: B })), "read");
 });
 
 test("a suspended store's owner is read-only; an archived store's owner has no access", () => {
@@ -93,16 +106,29 @@ test("signed-out and disabled users get nothing anywhere", () => {
   }
 });
 
-test("sessions open only for the platform owner on the admin host, or an owner of a non-archived store on its host", () => {
+test("sessions open for store members on their own store host, or the platform owner on the admin host", () => {
   const s = (o: Partial<Parameters<typeof mayOpenSession>[0]>) =>
     mayOpenSession({ user: owner, host: { kind: "store", slug: "nest-and-oak" }, hostStore: A, ownsHostStore: true, ...o });
   assert.equal(s({}), true);
   assert.equal(s({ hostStore: store("store-a", "SUSPENDED") }), true, "suspended owners may sign in (read-only)");
   assert.equal(s({ hostStore: store("store-a", "ACTIVE", true) }), false, "archived");
   assert.equal(s({ ownsHostStore: false }), false);
+  assert.equal(s({ ownsHostStore: false, membershipRole: "MANAGER" }), true);
+  assert.equal(s({ ownsHostStore: false, membershipRole: "STAFF" }), true);
   assert.equal(s({ hostStore: null }), false);
+  assert.equal(s({ hostStore: store("store-a", "ACTIVE", true), membershipRole: "MANAGER" }), false);
   assert.equal(s({ host: { kind: "admin" } }), false, "owners don't sign in on the admin host");
   assert.equal(s({ user: platform, host: { kind: "admin" }, hostStore: null, ownsHostStore: false }), true);
+  assert.equal(
+    s({ user: owner, host: { kind: "admin" }, hostStore: null, ownsHostStore: false, membershipRole: "MANAGER" }),
+    false,
+    "Managers cannot sign in on the Platform Owner host",
+  );
+  assert.equal(
+    s({ user: owner, host: { kind: "admin" }, hostStore: null, ownsHostStore: false, membershipRole: "STAFF" }),
+    false,
+    "Staff cannot sign in on the Platform Owner host",
+  );
   assert.equal(s({ user: platform }), false, "platform owner doesn't sign in on store hosts");
   assert.equal(s({ host: { kind: "other" } }), false);
   assert.equal(s({ user: { isPlatformOwner: false, disabled: true } }), false);
@@ -118,4 +144,24 @@ test("platform-only actions need the platform owner on the admin host; owner act
   assert.equal(mayRunAction("store-owner", "write", { isPlatformOwner: false, host: storeHost }), true);
   assert.equal(mayRunAction("store-owner", "read", { isPlatformOwner: false, host: storeHost }), false, "suspended: every change refused");
   assert.equal(mayRunAction("store-owner", "none", { isPlatformOwner: false, host: storeHost }), false);
+});
+
+test("Manager and Staff section and action permissions do not extend to Owner controls", () => {
+  for (const section of ["products", "categories", "orders", "messages", "team"] as const) {
+    assert.equal(mayAccessStoreSection("MANAGER", section), true);
+  }
+  for (const section of ["settings", "customers"] as const) assert.equal(mayAccessStoreSection("MANAGER", section), false);
+  for (const section of ["overview", "orders", "messages"] as const) assert.equal(mayAccessStoreSection("STAFF", section), true);
+  for (const section of ["products", "categories", "settings", "team", "customers"] as const) {
+    assert.equal(mayAccessStoreSection("STAFF", section), false);
+  }
+
+  assert.equal(mayRunStoreAction("MANAGER", "products"), true);
+  assert.equal(mayRunStoreAction("MANAGER", "team-management"), true);
+  assert.equal(mayRunStoreAction("MANAGER", "store-settings"), false);
+  for (const action of ["products", "categories", "orders", "messages", "team-management", "store-settings"] as const) {
+    assert.equal(mayRunStoreAction("STAFF", action), false);
+  }
+  assert.equal(mayAccessStoreSection("STAFF", "customers", true), true, "platform navigation is unchanged");
+  assert.equal(mayRunStoreAction("STAFF", "store-settings", true), true, "platform store actions are unchanged");
 });

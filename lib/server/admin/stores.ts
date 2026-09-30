@@ -12,9 +12,12 @@ import {
   validateStoreOwner,
   validateStoreSettings,
   type CleanStoreBase,
+  type CleanStoreSettings,
 } from "@/lib/admin/validation";
 import type { StoreType } from "@/lib/types";
 import { recordAudit } from "../audit";
+import { getAuth } from "../auth/auth";
+import { hashCredentialPassword, saveCredentialPassword } from "../auth/credentials";
 import type { PlatformOwner } from "../auth/guards";
 import { archiveStore, restoreStore } from "../store-scope";
 import { fail, INVALID, letterLabels, NOT_FOUND, ok, toSlug, uniqueSlug, uniqueViolation, type Client } from "./common";
@@ -148,26 +151,6 @@ function initials(name: string) {
   return letters || null;
 }
 
-/**
- * Makes `email` the store's OWNER, creating the user if needed. An
- * existing user is NOT renamed: users are shared between stores, so one
- * store's settings must never change another store's data. (Phase 2b
- * replaces this with invitations and multiple owners.)
- */
-async function setOwner(tx: Prisma.TransactionClient, storeId: string, name: string, email: string) {
-  const user = await tx.user.upsert({ where: { email }, create: { email, name }, update: {} });
-  const current = await tx.storeMembership.findMany({ where: { storeId, role: "OWNER" } });
-  // Remove previous owners (ownership moves to the new email).
-  await tx.storeMembership.deleteMany({ where: { storeId, role: "OWNER", userId: { not: user.id } } });
-  if (!current.some((m) => m.userId === user.id)) {
-    await tx.storeMembership.upsert({
-      where: { userId_storeId: { userId: user.id, storeId } },
-      create: { userId: user.id, storeId, role: "OWNER" },
-      update: { role: "OWNER" },
-    });
-  }
-}
-
 /** Enables exactly `languages` (others are disabled, never deleted, to keep content). */
 async function setLanguages(tx: Prisma.TransactionClient, storeId: string, languages: string[]) {
   for (const languageCode of languages) {
@@ -201,10 +184,14 @@ export async function createAdminStore(
   const { values, errors } = validateStoreBase(input, reference);
   if (hasErrors(errors)) return fail(INVALID, errors);
   if (await slugTaken(client, values.slug)) return slugConflict();
+  if (await client.user.findUnique({ where: { email: values.ownerEmail }, select: { id: true } })) {
+    return fail(INVALID, { ownerEmail: "This email already has an account. Use a new email for this store owner." });
+  }
+  const ownerPasswordHash = await hashCredentialPassword(getAuth(), values.ownerPassword);
 
   try {
     const store = await client.$transaction(async (tx) => {
-      const created = await createStoreRecords(tx, values);
+      const created = await createStoreRecords(tx, values, ownerPasswordHash);
       await recordAudit(tx, {
         action: "store.create",
         actorUserId: actor.userId,
@@ -218,11 +205,14 @@ export async function createAdminStore(
     return ok({ id: store.id });
   } catch (error) {
     if (uniqueViolation(error)?.includes("slug")) return slugConflict();
+    if (uniqueViolation(error)?.includes("email")) {
+      return fail(INVALID, { ownerEmail: "This email already has an account. Use a new email for this store owner." });
+    }
     throw error;
   }
 }
 
-async function createStoreRecords(tx: Prisma.TransactionClient, v: CleanStoreBase) {
+async function createStoreRecords(tx: Prisma.TransactionClient, v: CleanStoreBase, ownerPasswordHash: string) {
   const store = await tx.store.create({
     data: {
       name: v.name,
@@ -242,7 +232,12 @@ async function createStoreRecords(tx: Prisma.TransactionClient, v: CleanStoreBas
   await tx.storeContentTranslation.create({
     data: { storeId: store.id, locale: v.defaultLanguage, heroTitle: `Welcome to ${v.name}` },
   });
-  await setOwner(tx, store.id, v.ownerName, v.ownerEmail);
+  const owner = await tx.user.create({
+    data: { email: v.ownerEmail, name: v.ownerName, emailVerified: false },
+    select: { id: true },
+  });
+  await saveCredentialPassword(tx, owner.id, ownerPasswordHash);
+  await tx.storeMembership.create({ data: { userId: owner.id, storeId: store.id, role: "OWNER" } });
 
   // Starter categories for the store type, like the demo, in the store's
   // default language. They are English words: only add them when English
@@ -293,63 +288,7 @@ export async function updateAdminStore(
   if (await slugTaken(client, values.slug, storeId)) return slugConflict();
 
   try {
-    await client.$transaction(async (tx) => {
-      await setLanguages(tx, storeId, values.languages);
-      await tx.store.update({
-        where: { id: storeId },
-        data: {
-          name: values.name,
-          slug: values.slug,
-          businessType: values.businessType,
-          countryCode: values.countryCode,
-          baseCurrency: values.baseCurrency,
-          timezone: values.timezone,
-          defaultLanguage: values.defaultLanguage,
-          accentColor: values.accentColor,
-          logoUrl: values.logoUrl,
-          contactEmail: values.contactEmail,
-          contactPhone: values.contactPhone,
-          businessAddress: values.contactAddress
-            ? { line1: values.contactAddress, countryCode: values.countryCode }
-            : Prisma.DbNull,
-        },
-      });
-      await tx.storeContentTranslation.upsert({
-        where: { storeId_locale: { storeId, locale: values.defaultLanguage } },
-        create: { storeId, locale: values.defaultLanguage, ...values.content },
-        update: values.content,
-      });
-      // Delivery: one domestic zone (the store's country) with one rate.
-      // This only stores the setting; no shipping is calculated here.
-      const zone =
-        (await tx.shippingZone.findFirst({ where: { storeId }, orderBy: { id: "asc" } })) ??
-        (await tx.shippingZone.create({ data: { storeId, name: "Domestic" } }));
-      await tx.shippingZoneCountry.deleteMany({ where: { zoneId: zone.id, storeId } });
-      await tx.shippingZoneCountry.create({ data: { storeId, zoneId: zone.id, countryCode: values.countryCode } });
-      const rate = await tx.shippingRate.findFirst({ where: { storeId, zoneId: zone.id }, orderBy: { id: "asc" } });
-      const rateData = {
-        priceMinor: values.deliveryFeeMinor,
-        freeOverMinor: values.freeDeliveryOverMinor,
-        currency: values.baseCurrency,
-      };
-      if (rate) await tx.shippingRate.update({ where: { id: rate.id }, data: rateData });
-      else await tx.shippingRate.create({ data: { storeId, zoneId: zone.id, name: "Standard delivery", ...rateData } });
-
-      for (const [position, method] of PAYMENT_METHOD_IDS.entries()) {
-        await tx.storePaymentMethod.upsert({
-          where: { storeId_method: { storeId, method } },
-          create: { storeId, method, position, enabled: values.paymentMethods[method] },
-          update: { enabled: values.paymentMethods[method] },
-        });
-      }
-      await recordAudit(tx, {
-        action: "store.update_settings",
-        actorUserId: actor.userId,
-        storeId,
-        targetType: "store",
-        targetId: storeId,
-      });
-    });
+    await persistStoreSettings(client, storeId, values, actor.userId);
   } catch (error) {
     if (uniqueViolation(error)?.includes("slug")) return slugConflict();
     throw error;
@@ -357,24 +296,188 @@ export async function updateAdminStore(
   return ok({ id: storeId }, "Settings saved.");
 }
 
+async function persistStoreSettings(client: PrismaClient, storeId: string, values: CleanStoreSettings, actorUserId: string) {
+  await client.$transaction(async (tx) => {
+    await setLanguages(tx, storeId, values.languages);
+    await tx.store.update({
+      where: { id: storeId },
+      data: {
+        name: values.name,
+        slug: values.slug,
+        businessType: values.businessType,
+        countryCode: values.countryCode,
+        baseCurrency: values.baseCurrency,
+        timezone: values.timezone,
+        defaultLanguage: values.defaultLanguage,
+        accentColor: values.accentColor,
+        logoUrl: values.logoUrl,
+        contactEmail: values.contactEmail,
+        contactPhone: values.contactPhone,
+        businessAddress: values.contactAddress
+          ? { line1: values.contactAddress, countryCode: values.countryCode }
+          : Prisma.DbNull,
+      },
+    });
+    await tx.storeContentTranslation.upsert({
+      where: { storeId_locale: { storeId, locale: values.defaultLanguage } },
+      create: { storeId, locale: values.defaultLanguage, ...values.content },
+      update: values.content,
+    });
+    const zone =
+      (await tx.shippingZone.findFirst({ where: { storeId }, orderBy: { id: "asc" } })) ??
+      (await tx.shippingZone.create({ data: { storeId, name: "Domestic" } }));
+    await tx.shippingZoneCountry.deleteMany({ where: { zoneId: zone.id, storeId } });
+    await tx.shippingZoneCountry.create({ data: { storeId, zoneId: zone.id, countryCode: values.countryCode } });
+    const rate = await tx.shippingRate.findFirst({ where: { storeId, zoneId: zone.id }, orderBy: { id: "asc" } });
+    const rateData = {
+      priceMinor: values.deliveryFeeMinor,
+      freeOverMinor: values.freeDeliveryOverMinor,
+      currency: values.baseCurrency,
+    };
+    if (rate) await tx.shippingRate.update({ where: { id: rate.id }, data: rateData });
+    else await tx.shippingRate.create({ data: { storeId, zoneId: zone.id, name: "Standard delivery", ...rateData } });
+
+    for (const [position, method] of PAYMENT_METHOD_IDS.entries()) {
+      await tx.storePaymentMethod.upsert({
+        where: { storeId_method: { storeId, method } },
+        create: { storeId, method, position, enabled: values.paymentMethods[method] },
+        update: { enabled: values.paymentMethods[method] },
+      });
+    }
+    await recordAudit(tx, {
+      action: "store.update_settings",
+      actorUserId,
+      storeId,
+      targetType: "store",
+      targetId: storeId,
+    });
+  });
+}
+
+/** Store Owners may edit configuration for the store already authorized by the request host. */
+export async function updateStoreOwnerSettings(
+  client: PrismaClient,
+  storeId: string,
+  actorUserId: string,
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  const existing = await getAdminStoreDetail(client, storeId);
+  if (!existing) return fail(NOT_FOUND.store);
+
+  const safeInput =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? { ...input, slug: existing.slug }
+      : { slug: existing.slug };
+  const reference = await getStoreReference(client);
+  const { values, errors } = validateStoreSettings(safeInput, reference);
+  if (existing.hasPrices && values.baseCurrency !== existing.baseCurrency) {
+    errors.baseCurrency = "The currency can't change while products or delivery rates have prices. Repricing is not supported yet.";
+  }
+  if (hasErrors(errors)) return fail(INVALID, errors);
+
+  await persistStoreSettings(client, storeId, values, actorUserId);
+  return ok({ id: storeId }, "Settings saved.");
+}
+
 /** Platform-only: replace the store's owner (the settings form no longer does this). */
-export async function setAdminStoreOwner(actor: PlatformOwner, client: PrismaClient, storeId: string, input: unknown) {
+export async function setAdminStoreOwner(
+  actor: PlatformOwner,
+  client: PrismaClient,
+  storeId: string,
+  input: unknown,
+) {
   const store = await client.store.findFirst({ where: { id: storeId, archivedAt: null }, select: { id: true } });
   if (!store) return fail(NOT_FOUND.store);
   const { values, errors } = validateStoreOwner(input);
   if (hasErrors(errors)) return fail(INVALID, errors);
-  await client.$transaction(async (tx) => {
-    await setOwner(tx, storeId, values.ownerName, values.ownerEmail);
-    const owner = await tx.user.findUniqueOrThrow({ where: { email: values.ownerEmail }, select: { id: true } });
-    await recordAudit(tx, {
-      action: "store.owner_change",
-      actorUserId: actor.userId,
-      storeId,
-      targetType: "user",
-      targetId: owner.id,
+  const passwordHash = values.ownerPassword ? await hashCredentialPassword(getAuth(), values.ownerPassword) : null;
+  try {
+    return await client.$transaction(async (tx) => {
+      const current = await tx.storeMembership.findFirst({
+        where: { storeId, role: "OWNER" },
+        select: { userId: true },
+      });
+      const selectedByEmail = await tx.user.findUnique({
+        where: { email: values.ownerEmail },
+        select: { id: true, email: true, isPlatformOwner: true, memberships: { where: { storeId: { not: storeId } }, select: { id: true }, take: 1 } },
+      });
+      const currentUser =
+        current && !selectedByEmail
+          ? await tx.user.findUnique({
+              where: { id: current.userId },
+              select: {
+                id: true,
+                email: true,
+                isPlatformOwner: true,
+                memberships: { where: { storeId: { not: storeId } }, select: { id: true }, take: 1 },
+              },
+            })
+          : null;
+      const canRetainCurrentUser = Boolean(currentUser && !currentUser.memberships.length);
+      const selected = selectedByEmail ?? (canRetainCurrentUser ? currentUser : null);
+      if (selected?.isPlatformOwner || selected?.memberships.length) {
+        return fail(INVALID, {
+          ownerEmail: "This account is already assigned elsewhere and cannot be used for this store.",
+        });
+      }
+
+      const sameOwner = Boolean(current && selected?.id === current.userId);
+      const emailChanged = selected?.email !== values.ownerEmail;
+      const credential = selected
+        ? await tx.account.findUnique({
+            where: { providerId_accountId: { providerId: "credential", accountId: selected.id } },
+            select: { id: true },
+          })
+        : null;
+      if (!passwordHash && (!sameOwner || !credential)) {
+        return fail(INVALID, { ownerPassword: "Set a password to provision this Store Owner account." });
+      }
+
+      const owner = selected
+        ? await tx.user.update({
+            where: { id: selected.id },
+            data: {
+              name: values.ownerName,
+              email: values.ownerEmail,
+              ...(selected.email !== values.ownerEmail ? { emailVerified: false } : {}),
+            },
+            select: { id: true },
+          })
+        : await tx.user.create({
+            data: { email: values.ownerEmail, name: values.ownerName, emailVerified: false },
+            select: { id: true },
+          });
+
+      await tx.storeMembership.deleteMany({ where: { storeId, role: "OWNER", userId: { not: owner.id } } });
+      await tx.storeMembership.upsert({
+        where: { userId_storeId: { userId: owner.id, storeId } },
+        create: { userId: owner.id, storeId, role: "OWNER" },
+        update: { role: "OWNER" },
+      });
+      if (passwordHash) {
+        await saveCredentialPassword(tx, owner.id, passwordHash);
+      }
+      if (passwordHash || emailChanged) {
+        await tx.session.deleteMany({ where: { userId: owner.id } });
+      }
+      if (current && current.userId !== owner.id) {
+        await tx.session.deleteMany({ where: { userId: current.userId } });
+      }
+
+      await recordAudit(tx, {
+        action: "store.owner_change",
+        actorUserId: actor.userId,
+        storeId,
+        targetType: "user",
+        targetId: owner.id,
+        metadata: { changedFields: ["name", "email", ...(passwordHash ? ["password"] : [])] },
+      });
+      return ok({ id: storeId }, "Store owner credentials saved.");
     });
-  });
-  return ok({ id: storeId }, "Store owner saved.");
+  } catch (error) {
+    if (uniqueViolation(error)?.includes("email")) return fail(INVALID, { ownerEmail: "This email is already in use." });
+    throw error;
+  }
 }
 
 /** Platform-only: draft / active / paused / suspended. Suspension keeps all data. */

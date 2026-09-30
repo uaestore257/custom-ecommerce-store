@@ -20,7 +20,12 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       ? (await listAdminStores(db)).map(({ id, name }) => ({ id, name }))
       : await db.store.findMany({ where: { id: viewer.store.id }, select: { id: true, name: true } });
   return (
-    <AdminShell stores={stores} user={{ name: viewer.user.name, email: viewer.user.email }} platform={viewer.kind === "platform"}>
+    <AdminShell
+      stores={stores}
+      user={{ name: viewer.user.name, email: viewer.user.email }}
+      platform={viewer.kind === "platform"}
+      role={viewer.kind === "store" ? viewer.role : null}
+    >
       {children}
     </AdminShell>
   );

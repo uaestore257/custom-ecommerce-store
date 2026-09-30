@@ -26,7 +26,17 @@ const ACTION_LABEL: Record<DbInquiryStatus, string> = {
   ARCHIVED: "Archive",
 };
 
-export function InquiryInbox({ storeId, storeName, inquiries }: { storeId: string; storeName: string; inquiries: AdminInquiry[] }) {
+export function InquiryInbox({
+  storeId,
+  storeName,
+  inquiries,
+  readOnly = false,
+}: {
+  storeId: string;
+  storeName: string;
+  inquiries: AdminInquiry[];
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const [showArchived, setShowArchived] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -97,7 +107,7 @@ export function InquiryInbox({ storeId, storeName, inquiries }: { storeId: strin
                   </span>
                 </div>
                 <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{inquiry.message}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
+                {!readOnly && <div className="mt-4 flex flex-wrap gap-2">
                   {nextInquiryStatuses(inquiry.status).map((to) => (
                     <button
                       key={to}
@@ -109,7 +119,7 @@ export function InquiryInbox({ storeId, storeName, inquiries }: { storeId: strin
                       {pendingId === inquiry.id ? "Saving…" : inquiry.status === "ARCHIVED" && to === "READ" ? "Move back to inbox" : ACTION_LABEL[to]}
                     </button>
                   ))}
-                </div>
+                </div>}
               </Card>
             </li>
           ))}

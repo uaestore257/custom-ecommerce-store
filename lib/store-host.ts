@@ -8,11 +8,9 @@ import { normalizeHost } from "./auth/constants";
 //   <slug>.<PLATFORM_ROOT_DOMAIN>   -> the store with that slug
 //   a host listed in STORE_DOMAINS  -> the store with the mapped slug
 //                                      (a client's own domain)
-//   ADMIN_HOST                      -> "platform": the platform owner's
-//                                      preview (store cookie, else the
-//                                      configured default)
-//   PLATFORM_ROOT_DOMAIN itself     -> "platform" too, outside production
-//                                      only (local development)
+//   ADMIN_HOST                      -> platform host
+//   PLATFORM_ROOT_DOMAIN itself     -> platform business website in local
+//                                      development; it does not name a store
 //   anything else                   -> unknown: no store is shown
 //
 // STORE_DOMAINS is a comma-separated list of host=slug pairs, e.g.
@@ -58,6 +56,17 @@ export function storeHostConfig(env: NodeJS.ProcessEnv = process.env): StoreHost
     customDomains: parseStoreDomains(env.STORE_DOMAINS),
     production: env.NODE_ENV === "production",
   };
+}
+
+/** The bare development root belongs to the platform website, not a store preview. */
+export function isPlatformBusinessHost(rawHost: string, env: NodeJS.ProcessEnv = process.env) {
+  const config = storeHostConfig(env);
+  return Boolean(
+    config.rootDomain &&
+      !config.production &&
+      hostname(normalizeHost(rawHost)) === config.rootDomain &&
+      normalizeHost(rawHost) !== config.adminHost,
+  );
 }
 
 export function matchStoreHost(rawHost: string, config: StoreHostConfig): StoreHostMatch {

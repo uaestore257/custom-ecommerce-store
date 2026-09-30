@@ -11,16 +11,21 @@ import { labelFor, paymentMethodLabel, STORE_TYPES } from "@/lib/config";
 import { formatDate } from "@/lib/format";
 import type { AdminStoreDetail, DbStoreStatus } from "@/lib/admin/types";
 import type { PaymentMethodId, StoreType } from "@/lib/types";
+import type { StoreMembershipRole } from "@/lib/admin/store-access";
 import { PreviewStorefrontButton } from "./PreviewStorefrontButton";
 
 export function StoreOverviewView({
   store,
   activeProducts,
   justCreated,
+  platform,
+  role,
 }: {
   store: AdminStoreDetail;
   activeProducts: number;
   justCreated: boolean;
+  platform: boolean;
+  role: StoreMembershipRole;
 }) {
   const [confirmPause, setConfirmPause] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,29 +47,42 @@ export function StoreOverviewView({
     <>
       <PageHeader
         title="Store overview"
-        breadcrumbs={[
-          { label: "Agency Admin", href: "/admin" },
-          { label: "Client stores", href: "/admin/stores" },
-          { label: store.name },
-        ]}
+        breadcrumbs={
+          platform
+            ? [
+                { label: "Agency Admin", href: "/admin" },
+                { label: "Client stores", href: "/admin/stores" },
+                { label: store.name },
+              ]
+            : [{ label: store.name }]
+        }
         actions={
           <>
-            <PreviewStorefrontButton store={store} />
-            <LinkButton href={`${base}/settings`} variant="secondary">
-              <Pencil className="h-4 w-4" aria-hidden />
-              Edit store
-            </LinkButton>
-            {store.status === "ACTIVE" ? (
-              <button type="button" disabled={pending} className={buttonClass("secondary")} onClick={() => setConfirmPause(true)}>
-                <Pause className="h-4 w-4" aria-hidden />
-                Pause store
-              </button>
-            ) : (
-              <button type="button" disabled={pending} className={buttonClass("primary")} onClick={() => changeStatus("ACTIVE")}>
-                <Play className="h-4 w-4" aria-hidden />
-                {pending ? "Saving…" : store.status === "SUSPENDED" ? "Reactivate store" : "Activate store"}
-              </button>
-            )}
+            {(platform || role === "OWNER") && <PreviewStorefrontButton store={store} />}
+            {platform ? (
+              <>
+                <LinkButton href={`${base}/settings`} variant="secondary">
+                  <Pencil className="h-4 w-4" aria-hidden />
+                  Edit store
+                </LinkButton>
+                {store.status === "ACTIVE" ? (
+                  <button type="button" disabled={pending} className={buttonClass("secondary")} onClick={() => setConfirmPause(true)}>
+                    <Pause className="h-4 w-4" aria-hidden />
+                    Pause store
+                  </button>
+                ) : (
+                  <button type="button" disabled={pending} className={buttonClass("primary")} onClick={() => changeStatus("ACTIVE")}>
+                    <Play className="h-4 w-4" aria-hidden />
+                    {pending ? "Saving…" : store.status === "SUSPENDED" ? "Reactivate store" : "Activate store"}
+                  </button>
+                )}
+              </>
+            ) : role === "OWNER" ? (
+              <LinkButton href="/admin/settings" variant="secondary">
+                <Pencil className="h-4 w-4" aria-hidden />
+                Store Settings
+              </LinkButton>
+            ) : null}
           </>
         }
       />
@@ -121,11 +139,24 @@ export function StoreOverviewView({
         </div>
 
         <nav aria-label="Manage this store" className="space-y-3">
-          <QuickLink href={`${base}/products`} icon={Package} title="Products" text={`${store.productCount} products`} />
-          <QuickLink href={`${base}/categories`} icon={Tags} title="Categories" text={`${store.categoryCount} categories`} />
-          <QuickLink href={`${base}/orders`} icon={Receipt} title="Orders" text="Demo data" />
-          <QuickLink href={`${base}/customers`} icon={Users} title="Customers" text="Demo data" />
-          <QuickLink href={`${base}/settings`} icon={Settings} title="Store settings" text="Branding, region, delivery, payments" />
+          {(platform || role === "OWNER" || role === "MANAGER") && (
+            <>
+              <QuickLink href={`${base}/products`} icon={Package} title="Products" text={`${store.productCount} products`} />
+              <QuickLink href={`${base}/categories`} icon={Tags} title="Categories" text={`${store.categoryCount} categories`} />
+            </>
+          )}
+          <QuickLink href={`${base}/orders`} icon={Receipt} title="Orders" text="Manage store orders" />
+          <QuickLink href={`${base}/messages`} icon={Users} title="Messages" text="Customer enquiries" />
+          {platform && <QuickLink href={`${base}/customers`} icon={Users} title="Customers" text="Demo data" />}
+          {platform && (
+            <QuickLink href={`${base}/settings`} icon={Settings} title="Store settings" text="Branding, region, delivery, payments" />
+          )}
+          {!platform && role === "OWNER" && (
+            <QuickLink href="/admin/settings" icon={Settings} title="Store Settings" text="Branding, region, delivery, payments" />
+          )}
+          {!platform && (role === "OWNER" || role === "MANAGER") && (
+            <QuickLink href="/admin/team" icon={Users} title="Team" text="Manage store memberships" />
+          )}
         </nav>
       </div>
 

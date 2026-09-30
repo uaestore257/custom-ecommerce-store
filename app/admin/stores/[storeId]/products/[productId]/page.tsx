@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Edit product" };
 
 export default async function EditProductPage({ params }: PageProps<"/admin/stores/[storeId]/products/[productId]">) {
   const { storeId, productId } = await params;
-  const { db: client } = await requireStorePage(storeId);
+  const { db: client } = await requireStorePage(storeId, "products");
   // Scoped by BOTH ids: a product of another store is "not found".
   const [store, product, categories] = await Promise.all([
     getProductStore(client, storeId),

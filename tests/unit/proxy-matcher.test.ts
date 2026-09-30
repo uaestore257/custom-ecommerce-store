@@ -50,6 +50,7 @@ test("only Next.js build assets and the favicon skip the proxy", () => {
 
 test("dotted paths get the same answers as any other: admin off ADMIN_HOST and stray actions are 404", () => {
   process.env.ADMIN_HOST = "admin.codexstore.com";
+  process.env.PLATFORM_ROOT_DOMAIN = "shops.test";
   const request = (url: string, headers: Record<string, string> = {}) =>
     new NextRequest(url, { headers: { host: "shop.example", ...headers } });
   assert.equal(proxyModule.proxy(request("https://shop.example/admin/stores/abc.def")).status, 404);
@@ -57,4 +58,48 @@ test("dotted paths get the same answers as any other: admin off ADMIN_HOST and s
   assert.equal(proxyModule.proxy(request("https://shop.example/products/x.js", { "next-action": "abc123" })).status, 404);
   // A plain dotted storefront path is simply passed through.
   assert.equal(proxyModule.proxy(request("https://shop.example/products/x.js")).headers.get("x-middleware-next"), "1");
+});
+
+test("store admin and sign-in routes are served only on recognized store hosts", () => {
+  process.env.ADMIN_HOST = "admin.localhost:3000";
+  process.env.PLATFORM_ROOT_DOMAIN = "localhost";
+  (process.env as Record<string, string | undefined>).NODE_ENV = "development";
+  const storeRequest = (path: string, headers: Record<string, string> = {}) =>
+    new NextRequest(`http://nest-and-oak.localhost:3000${path}`, {
+      headers: { host: "nest-and-oak.localhost:3000", ...headers },
+    });
+
+  const admin = proxyModule.proxy(storeRequest("/admin"));
+  assert.equal(admin.status, 307);
+  assert.equal(new URL(admin.headers.get("location")!).host, "nest-and-oak.localhost:3000");
+  assert.equal(new URL(admin.headers.get("location")!).pathname, "/login");
+  assert.equal(proxyModule.proxy(storeRequest("/login")).headers.get("x-middleware-next"), "1");
+  assert.equal(proxyModule.proxy(storeRequest("/api/auth/sign-in/email")).headers.get("x-middleware-next"), "1");
+  assert.equal(
+    proxyModule.proxy(storeRequest("/products", { "next-action": "store-action-id" })).headers.get("x-middleware-next"),
+    "1",
+    "store actions proceed to their independent server-side guards",
+  );
+
+  const unknown = new NextRequest("http://shop.example/admin", {
+    headers: { host: "shop.example" },
+  });
+  assert.equal(proxyModule.proxy(unknown).status, 404);
+});
+
+test("canonical root host serves business pages and admin root goes to the platform panel", () => {
+  process.env.ADMIN_HOST = "admin.localhost:3000";
+  process.env.PLATFORM_ROOT_DOMAIN = "localhost";
+  (process.env as Record<string, string | undefined>).NODE_ENV = "development";
+  const rootRequest = (path: string) =>
+    new NextRequest(`http://localhost:3000${path}`, { headers: { host: "localhost:3000" } });
+  for (const path of ["/", "/about", "/services", "/portfolio", "/contact"]) {
+    assert.equal(proxyModule.proxy(rootRequest(path)).headers.get("x-middleware-next"), "1", path);
+  }
+  assert.equal(proxyModule.proxy(rootRequest("/shop")).status, 404);
+
+  const adminRoot = new NextRequest("http://admin.localhost:3000/", {
+    headers: { host: "admin.localhost:3000" },
+  });
+  assert.equal(new URL(proxyModule.proxy(adminRoot).headers.get("location")!).pathname, "/admin");
 });

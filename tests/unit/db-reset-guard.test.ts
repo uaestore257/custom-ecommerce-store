@@ -37,7 +37,7 @@ test("production, remote hosts, real-looking names and missing or broken URLs ar
 
 test("npm run db:reset runs the guarded script, never `prisma migrate reset` directly", () => {
   const { scripts } = JSON.parse(readFileSync("package.json", "utf8"));
-  assert.equal(scripts["db:reset"], "tsx scripts/db-reset.ts");
+  assert.equal(scripts["db:reset"], "node scripts/db-command.mjs reset");
   const script = readFileSync("scripts/db-reset.ts", "utf8");
   const guard = script.indexOf("assertSafeToReset(process.env)");
   assert.ok(guard > 0, "the script calls the guard");

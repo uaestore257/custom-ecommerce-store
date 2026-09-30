@@ -7,10 +7,8 @@
 //   1. checks its arguments are plain strings (never trusts the client),
 //   2. checks the signed-in session on THIS host, never trusting the
 //      request body: requirePlatformOwner() for platform-only actions
-//      (the platform owner on ADMIN_HOST), requireStoreAccess(storeId,
-//      "write") for actions inside one store (the platform owner on
-//      ADMIN_HOST, or that exact store's OWNER on its own host; refused
-//      while the store is suspended),
+//      (the platform owner on ADMIN_HOST), role-scoped store guards for
+//      actions on the authenticated store host,
 //   3. delegates to the server-only data-access layer, which validates
 //      the input and scopes every product/category query by storeId,
 //   4. refreshes the admin pages.
@@ -21,11 +19,17 @@
 // ---------------------------------------------------------------
 import type { ActionResult } from "@/lib/admin/types";
 import { getDb } from "@/lib/server/db";
+import { getAuth } from "@/lib/server/auth/auth";
+import { updateOwnAccount } from "@/lib/server/auth/account";
 import {
   AccessDenied,
+  requireAdminViewer,
   requirePlatformOwner,
   requireStoreAccess,
+  mayRunStoreAction,
+  type StoreAction,
   type PlatformOwner,
+  type AdminViewer,
   type StoreAccessGrant,
 } from "@/lib/server/auth/guards";
 import {
@@ -44,8 +48,18 @@ import {
   setAdminStoreOwner,
   setAdminStoreStatus,
   updateAdminStore,
+  updateStoreOwnerSettings,
 } from "@/lib/server/admin/stores";
 import { requestRuntime } from "@/lib/server/request-runtime";
+import { isManagedStoreTeamRole } from "@/lib/admin/team";
+import {
+  createStoreInvitation,
+  revokeStoreInvitation,
+  revokeStoreTeamMember,
+  updateStoreTeamMemberRole,
+} from "@/lib/server/admin/team";
+import { getMailer } from "@/lib/server/mailer";
+import { hostContext } from "@/lib/server/auth/store-access";
 
 const GENERIC_ERROR = "Something went wrong while saving. Please try again.";
 const SIGNED_OUT: ActionResult<never> = { ok: false, error: "Your session has ended. Please sign in again." };
@@ -99,8 +113,31 @@ function asPlatformOwner<T>(label: string, work: (owner: PlatformOwner) => Promi
  * that store's OWNER on its own host. Refused (read-only) while the store
  * is suspended; the storeId must be the store the host serves.
  */
-function asStoreWriter<T>(label: string, storeId: string, work: (grant: StoreAccessGrant) => Promise<ActionResult<T>>) {
-  return guarded(label, () => requireStoreAccess(storeId, "write"), work);
+function asStoreWriter<T>(
+  label: string,
+  storeId: string,
+  action: StoreAction,
+  work: (grant: StoreAccessGrant) => Promise<ActionResult<T>>,
+) {
+  return guarded(label, () => requireStoreAccess(storeId, "write", action), work);
+}
+
+/** Store-team actions are limited to authorized OWNER/MANAGER users on the current store host. */
+function asCurrentStoreTeamManager<T>(
+  label: string,
+  work: (viewer: Extract<AdminViewer, { kind: "store" }>) => Promise<ActionResult<T>>,
+) {
+  return guarded(
+    label,
+    async () => {
+      const viewer = await requireAdminViewer();
+      if (viewer.kind !== "store") throw new AccessDenied("forbidden");
+      if (viewer.access !== "write") throw new AccessDenied("read-only");
+      if (!mayRunStoreAction(viewer.role, "team-management")) throw new AccessDenied("forbidden");
+      return viewer;
+    },
+    work,
+  );
 }
 
 // ---------- Stores (platform owner only) ----------
@@ -114,9 +151,22 @@ export async function updateStoreAction(storeId: unknown, input: unknown) {
   return asPlatformOwner("updateStore", (owner) => updateAdminStore(owner, getDb(), storeId, input));
 }
 
+export async function updateOwnStoreSettingsAction(storeId: unknown, input: unknown) {
+  if (!isId(storeId)) return badRequest;
+  return asStoreWriter("updateOwnStoreSettings", storeId, "store-settings", (grant) =>
+    updateStoreOwnerSettings(getDb(), storeId, grant.user.id, input),
+  );
+}
+
 export async function setStoreOwnerAction(storeId: unknown, input: unknown) {
   if (!isId(storeId)) return badRequest;
   return asPlatformOwner("setStoreOwner", (owner) => setAdminStoreOwner(owner, getDb(), storeId, input));
+}
+
+export async function updateMyAccountAction(input: unknown) {
+  return guarded("updateMyAccount", requireAdminViewer, (viewer) =>
+    updateOwnAccount(getAuth(), getDb(), viewer.user.id, input),
+  );
 }
 
 export async function setStoreStatusAction(storeId: unknown, status: unknown) {
@@ -138,40 +188,40 @@ export async function restoreStoreAction(storeId: unknown) {
 
 export async function createProductAction(storeId: unknown, input: unknown) {
   if (!isId(storeId)) return badRequest;
-  return asStoreWriter("createProduct", storeId, () => createAdminProduct(getDb(), storeId, input));
+  return asStoreWriter("createProduct", storeId, "products", () => createAdminProduct(getDb(), storeId, input));
 }
 
 export async function updateProductAction(storeId: unknown, productId: unknown, input: unknown) {
   if (!isId(storeId) || !isId(productId)) return badRequest;
-  return asStoreWriter("updateProduct", storeId, () => updateAdminProduct(getDb(), storeId, productId, input));
+  return asStoreWriter("updateProduct", storeId, "products", () => updateAdminProduct(getDb(), storeId, productId, input));
 }
 
 export async function deleteProductAction(storeId: unknown, productId: unknown) {
   if (!isId(storeId) || !isId(productId)) return badRequest;
-  return asStoreWriter("deleteProduct", storeId, () => deleteAdminProduct(getDb(), storeId, productId));
+  return asStoreWriter("deleteProduct", storeId, "products", () => deleteAdminProduct(getDb(), storeId, productId));
 }
 
 // ---------- Categories (one store: platform owner or that store's owner) ----------
 
 export async function createCategoryAction(storeId: unknown, input: unknown) {
   if (!isId(storeId)) return badRequest;
-  return asStoreWriter("createCategory", storeId, () => createAdminCategory(getDb(), storeId, input));
+  return asStoreWriter("createCategory", storeId, "categories", () => createAdminCategory(getDb(), storeId, input));
 }
 
 export async function updateCategoryAction(storeId: unknown, categoryId: unknown, input: unknown) {
   if (!isId(storeId) || !isId(categoryId)) return badRequest;
-  return asStoreWriter("updateCategory", storeId, () => updateAdminCategory(getDb(), storeId, categoryId, input));
+  return asStoreWriter("updateCategory", storeId, "categories", () => updateAdminCategory(getDb(), storeId, categoryId, input));
 }
 
 export async function moveCategoryAction(storeId: unknown, categoryId: unknown, direction: unknown) {
   if (!isId(storeId) || !isId(categoryId)) return badRequest;
-  return asStoreWriter("moveCategory", storeId, () => moveAdminCategory(getDb(), storeId, categoryId, direction));
+  return asStoreWriter("moveCategory", storeId, "categories", () => moveAdminCategory(getDb(), storeId, categoryId, direction));
 }
 
 export async function deleteCategoryAction(storeId: unknown, categoryId: unknown, moveProductsTo: unknown) {
   if (!isId(storeId) || !isId(categoryId)) return badRequest;
   if (moveProductsTo !== undefined && moveProductsTo !== null && !isId(moveProductsTo)) return badRequest;
-  return asStoreWriter("deleteCategory", storeId, () =>
+  return asStoreWriter("deleteCategory", storeId, "categories", () =>
     deleteAdminCategory(getDb(), storeId, categoryId, moveProductsTo ?? undefined),
   );
 }
@@ -182,17 +232,17 @@ export async function deleteCategoryAction(storeId: unknown, categoryId: unknown
 
 export async function setOrderStatusAction(storeId: unknown, orderId: unknown, from: unknown, to: unknown) {
   if (!isId(storeId) || !isId(orderId)) return badRequest;
-  return asStoreWriter("setOrderStatus", storeId, ({ actor }) => setAdminOrderStatus(actor, getDb(), storeId, orderId, from, to));
+  return asStoreWriter("setOrderStatus", storeId, "orders", ({ actor }) => setAdminOrderStatus(actor, getDb(), storeId, orderId, from, to));
 }
 
 export async function cancelOrderAction(storeId: unknown, orderId: unknown, from: unknown) {
   if (!isId(storeId) || !isId(orderId)) return badRequest;
-  return asStoreWriter("cancelOrder", storeId, ({ actor }) => cancelAdminOrder(actor, getDb(), storeId, orderId, from));
+  return asStoreWriter("cancelOrder", storeId, "orders", ({ actor }) => cancelAdminOrder(actor, getDb(), storeId, orderId, from));
 }
 
 export async function setOrderPaymentAction(storeId: unknown, orderId: unknown, from: unknown, to: unknown) {
   if (!isId(storeId) || !isId(orderId)) return badRequest;
-  return asStoreWriter("setOrderPayment", storeId, ({ actor }) => setAdminOrderPayment(actor, getDb(), storeId, orderId, from, to));
+  return asStoreWriter("setOrderPayment", storeId, "orders", ({ actor }) => setAdminOrderPayment(actor, getDb(), storeId, orderId, from, to));
 }
 
 // ---------- Contact messages (scoped to the route's store) ----------
@@ -201,5 +251,56 @@ export async function setOrderPaymentAction(storeId: unknown, orderId: unknown, 
 
 export async function setInquiryStatusAction(storeId: unknown, inquiryId: unknown, from: unknown, to: unknown) {
   if (!isId(storeId) || !isId(inquiryId)) return badRequest;
-  return asStoreWriter("setInquiryStatus", storeId, ({ actor }) => setAdminInquiryStatus(actor, getDb(), storeId, inquiryId, from, to));
+  return asStoreWriter("setInquiryStatus", storeId, "messages", ({ actor }) => setAdminInquiryStatus(actor, getDb(), storeId, inquiryId, from, to));
+}
+
+// ---------- Store team (current Store Owner's store only) ----------
+
+export async function updateStoreMemberRoleAction(memberId: unknown, role: unknown) {
+  if (!isId(memberId) || !isManagedStoreTeamRole(role)) return badRequest;
+  return asCurrentStoreTeamManager("updateStoreMemberRole", (viewer) =>
+    updateStoreTeamMemberRole(getDb(), viewer.store.id, viewer.user.id, memberId, role),
+  );
+}
+
+export async function revokeStoreMemberAction(memberId: unknown) {
+  if (!isId(memberId)) return badRequest;
+  return asCurrentStoreTeamManager("revokeStoreMember", (viewer) =>
+    revokeStoreTeamMember(getDb(), viewer.store.id, viewer.user.id, memberId),
+  );
+}
+
+export async function createStoreInvitationAction(email: unknown, role: unknown) {
+  if (typeof email !== "string" || !isManagedStoreTeamRole(role)) return badRequest;
+  return asCurrentStoreTeamManager("createStoreInvitation", async (viewer) => {
+    const db = getDb();
+    const headers = await requestRuntime().headers();
+    const rawHost = headers.get("host");
+    const { host, hostStore } = await hostContext(db, rawHost ?? "");
+    if (host.kind !== "store" || !hostStore || hostStore.id !== viewer.store.id) return FORBIDDEN;
+    if (!rawHost) return FORBIDDEN;
+    const store = await db.store.findUnique({
+      where: { id: viewer.store.id },
+      select: { name: true },
+    });
+    if (!store) return FORBIDDEN;
+    const protocol = process.env.NODE_ENV === "production" ? "https:" : "http:";
+    const acceptUrl = new URL("/accept-invitation", `${protocol}//${rawHost}`);
+    return createStoreInvitation(
+      db,
+      { storeId: viewer.store.id, actorUserId: viewer.user.id, email, role, storeName: store.name, acceptUrl: acceptUrl.toString() },
+      getMailer(),
+    );
+  });
+}
+
+export async function revokeStoreInvitationAction(invitationId: unknown) {
+  if (!isId(invitationId)) return badRequest;
+  return asCurrentStoreTeamManager("revokeStoreInvitation", (viewer) =>
+    revokeStoreInvitation(getDb(), {
+      storeId: viewer.store.id,
+      actorUserId: viewer.user.id,
+      invitationId,
+    }),
+  );
 }

@@ -232,10 +232,11 @@ so later migrations leave them in place (verified: a follow-up
   record returns `null`.
 * The `storeId` always comes from the route (e.g.
   `/admin/stores/[storeId]`), never from a request body.
-* Access checks: Phase 2a requires the platform owner
-  (`User.isPlatformOwner`, at most one) for the whole admin. Phase 2b adds
-  store owners (`StoreMembership` role `OWNER`). `MANAGER` and `STAFF` stay
-  in the enum but are not used for authorization.
+* Access checks: `User.isPlatformOwner` (at most one) is the
+  platform-level administrator. Store Owners authenticate with Better
+  Auth credentials in `Account` and require `StoreMembership` role `OWNER`
+  for the exact store resolved from the request hostname and route.
+  `MANAGER` and `STAFF` stay in the enum but are not used for authorization.
 * Customers belong to one store (`@@unique([storeId, email])`): the same
   person shopping at two stores is two separate customer records.
 
@@ -251,7 +252,8 @@ so later migrations leave them in place (verified: a follow-up
 
 ## Not in Phase 1 (to verify or build later)
 
-* Store-owner sign-in and store-level permissions (Phase 2b).
+* Email-based password recovery. Manager/Staff assignment, role-scoped access
+  and hashed, expiring store invitations are implemented.
 * Tax calculation and per-country legal requirements (which tax IDs,
   invoices and registrations each country needs) — to be verified per
   country; nothing here claims compliance.
@@ -268,13 +270,12 @@ so later migrations leave them in place (verified: a follow-up
 
 ## Commands
 
-```bash
-docker compose up -d     # local PostgreSQL 16 (or use your own)
-cp .env.example .env
-npm install              # also runs `prisma generate`
-npm run db:migrate       # apply migrations to the dev database
-npm run db:seed          # reference data + 3 demo stores (refuses production)
-npm run platform:create-owner   # your admin login (see authentication.md)
-npm run test:unit        # money, standards, auth pieces (no database needed)
-npm run test:db          # RESETS the test database, then runs DB tests
-```
+See the [Windows local development guide](local-development.md) for safe
+PostgreSQL setup and dependency installation. Verify `DATABASE_URL` points to
+the intended local database before running `npm run db:migrate` (schema
+changes) or `npm run db:seed` (data writes).
+
+`npm run test:unit` does not need a database. **`npm run test:db` resets the
+database in `TEST_DATABASE_URL` and deletes its existing data**; only use it
+with a disposable test database whose target has been verified. Do not use
+`npm run db:reset` for normal setup; it drops data in `DATABASE_URL`.

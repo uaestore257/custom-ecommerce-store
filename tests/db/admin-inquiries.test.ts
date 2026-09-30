@@ -25,6 +25,7 @@ async function makeStore() {
     status: "ACTIVE",
     ownerName: "Owner",
     ownerEmail: `owner-${uid()}@example.com`,
+    ownerPassword: "an inbox owner passphrase 2026",
     countryCode: "AE",
     baseCurrency: "AED",
     timezone: "Asia/Dubai",

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { createStoreAction, updateStoreAction } from "@/app/admin/actions";
+import { createStoreAction, updateOwnStoreSettingsAction, updateStoreAction } from "@/app/admin/actions";
 import { buttonClass, errorProps, Field, inputClass, Notice } from "@/components/ui";
 import { PAYMENT_METHODS, STORE_STATUSES, STORE_TYPES } from "@/lib/config";
 import { slugify } from "@/lib/format";
@@ -24,6 +24,8 @@ interface StoreFormValues {
   status: string;
   ownerName: string;
   ownerEmail: string;
+  ownerPassword: string;
+  ownerPasswordConfirm: string;
   countryCode: string;
   baseCurrency: string;
   timezone: string;
@@ -51,7 +53,7 @@ function initialValues(store?: AdminStoreDetail): StoreFormValues {
   const methods = Object.fromEntries(PAYMENT_METHOD_IDS.map((id) => [id, id === "cash_on_delivery"])) as Record<PaymentMethodId, boolean>;
   if (!store) {
     return {
-      name: "", businessType: "", status: "DRAFT", ownerName: "", ownerEmail: "",
+      name: "", businessType: "", status: "DRAFT", ownerName: "", ownerEmail: "", ownerPassword: "", ownerPasswordConfirm: "",
       countryCode: "", baseCurrency: "", timezone: "", defaultLanguage: "", languages: [],
       slug: "", accentColor: "#0f766e",
       logoUrl: "", deliveryFee: "", freeDeliveryThreshold: "", paymentMethods: methods,
@@ -61,7 +63,7 @@ function initialValues(store?: AdminStoreDetail): StoreFormValues {
   for (const m of store.paymentMethods) methods[m.method as PaymentMethodId] = m.enabled;
   return {
     name: store.name, businessType: store.businessType ?? "", status: store.status,
-    ownerName: store.ownerName, ownerEmail: store.ownerEmail,
+    ownerName: store.ownerName, ownerEmail: store.ownerEmail, ownerPassword: "", ownerPasswordConfirm: "",
     countryCode: store.countryCode, baseCurrency: store.baseCurrency, timezone: store.timezone,
     defaultLanguage: store.defaultLanguage, languages: store.languages,
     slug: store.slug, accentColor: store.accentColor ?? "#0f766e",
@@ -80,10 +82,12 @@ export function StoreForm({
   mode,
   store,
   reference,
+  readOnly = false,
 }: {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "owner-edit";
   store?: AdminStoreDetail;
   reference: ReferenceOptions;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [values, setValues] = useState(() => initialValues(store));
@@ -92,7 +96,8 @@ export function StoreForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
-  const isEdit = mode === "edit";
+  const isEdit = mode !== "create";
+  const isOwnerEdit = mode === "owner-edit";
   const currencyLocked = Boolean(isEdit && store?.hasPrices);
 
   // Lookup sets for the shared validators (the server has its own copy).
@@ -128,13 +133,23 @@ export function StoreForm({
     event.preventDefault();
     setFormError(null);
     const found = isEdit ? validateStoreSettings(values, lookup).errors : validateStoreBase(values, lookup).errors;
+    if (!isEdit && values.ownerPassword !== values.ownerPasswordConfirm) {
+      found.ownerPasswordConfirm = "The passwords don't match.";
+    }
     setErrors(found);
     if (hasErrors(found)) {
       document.getElementById(`store-${Object.keys(found)[0]}`)?.focus();
       return;
     }
     startTransition(async () => {
-      const result = isEdit && store ? await updateStoreAction(store.id, values) : await createStoreAction(values);
+      const submittedValues = values;
+      if (!isEdit) setValues((current) => ({ ...current, ownerPassword: "", ownerPasswordConfirm: "" }));
+      const result =
+        isOwnerEdit && store
+          ? await updateOwnStoreSettingsAction(store.id, submittedValues)
+          : isEdit && store
+            ? await updateStoreAction(store.id, submittedValues)
+            : await createStoreAction(submittedValues);
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {});
         setFormError(result.error);
@@ -148,14 +163,24 @@ export function StoreForm({
   const text = (
     key: keyof StoreFormValues,
     label: string,
-    opts: { required?: boolean; hint?: ReactNode; type?: string; placeholder?: string; className?: string; inputMode?: "decimal" } = {},
+    opts: {
+      required?: boolean;
+      hint?: ReactNode;
+      type?: string;
+      placeholder?: string;
+      className?: string;
+      inputMode?: "decimal";
+      autoComplete?: string;
+    } = {},
   ) => (
     <Field label={label} htmlFor={`store-${key}`} required={opts.required} error={errors[key]} hint={opts.hint} className={opts.className}>
       <input
         {...errorProps(`store-${key}`, errors[key])}
         type={opts.type ?? "text"}
+        autoComplete={opts.autoComplete}
         inputMode={opts.inputMode}
         placeholder={opts.placeholder}
+        disabled={isOwnerEdit && readOnly}
         value={values[key] as string}
         onChange={(e) => set(key, e.target.value as never)}
         className={inputClass(!!errors[key])}
@@ -173,7 +198,7 @@ export function StoreForm({
       <select
         {...errorProps(`store-${key}`, errors[key])}
         value={values[key] as string}
-        disabled={opts.disabled}
+        disabled={opts.disabled || (isOwnerEdit && readOnly)}
         onChange={(e) => set(key, e.target.value as never)}
         className={`${inputClass(!!errors[key])} disabled:bg-slate-100 disabled:text-slate-500`}
       >
@@ -197,12 +222,6 @@ export function StoreForm({
       <Section title="Store details" description="Basic information about this client store.">
         {text("name", "Store name", { required: true, placeholder: "e.g. Nest & Oak Home" })}
         {select("businessType", "Store category / type", STORE_TYPES, { placeholder: "Choose category…" })}
-        {/* Owner and status are set here only when creating a store. Afterwards
-            they have their own platform-only actions (owner card and status
-            controls below / on the overview), so saving settings never
-            changes them. */}
-        {!isEdit && text("ownerName", "Owner / contact name", { required: true })}
-        {!isEdit && text("ownerEmail", "Owner email", { required: true, type: "email" })}
         {!isEdit &&
           select(
             "status",
@@ -211,6 +230,18 @@ export function StoreForm({
             { hint: "Draft and paused stores are not open for business." },
           )}
       </Section>
+
+      {!isEdit && (
+        <Section
+          title="Store Owner"
+          description="Create the Store Owner's sign-in credentials. The password is hashed and never shown again."
+        >
+          {text("ownerName", "Owner name", { required: true })}
+          {text("ownerEmail", "Owner email", { required: true, type: "email" })}
+          {text("ownerPassword", "Owner password", { required: true, type: "password", autoComplete: "new-password" })}
+          {text("ownerPasswordConfirm", "Confirm password", { required: true, type: "password", autoComplete: "new-password" })}
+        </Section>
+      )}
 
       <Section title="Country, currency & time" description="Each store has its own settings; nothing is assumed for you.">
         {select("countryCode", "Country / region", reference.countries.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })), {
@@ -249,6 +280,7 @@ export function StoreForm({
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-teal-700"
+                  disabled={isOwnerEdit && readOnly}
                   checked={values.languages.includes(l.code)}
                   onChange={(e) => toggleLanguage(l.code, e.target.checked)}
                 />
@@ -269,18 +301,29 @@ export function StoreForm({
       </Section>
 
       <Section title="Branding & web address">
-        {text("slug", "Store slug", { required: true, hint: "Short unique name used in links, e.g. nest-and-oak." })}
+        {isOwnerEdit ? (
+          <Field label="Store URL" htmlFor="store-url">
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+              {store?.slug}.localhost:3000
+            </p>
+            <span className="mt-1 block text-xs text-slate-500">The store URL identifier can only be changed by the Platform Owner.</span>
+          </Field>
+        ) : (
+          text("slug", "Store slug", { required: true, hint: "Short unique name used in links, e.g. nest-and-oak." })
+        )}
         <Field label="Theme / accent colour" htmlFor="store-accentColor" required error={errors.accentColor}>
           <div className="flex gap-2">
             <input
               type="color"
               aria-label="Pick accent colour"
+              disabled={isOwnerEdit && readOnly}
               value={isHexColor(values.accentColor) ? values.accentColor : "#0f766e"}
               onChange={(e) => set("accentColor", e.target.value)}
               className="h-[42px] w-14 shrink-0 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
             />
             <input
               {...errorProps("store-accentColor", errors.accentColor)}
+              disabled={isOwnerEdit && readOnly}
               value={values.accentColor}
               onChange={(e) => set("accentColor", e.target.value)}
               className={inputClass(!!errors.accentColor)}
@@ -298,7 +341,7 @@ export function StoreForm({
 
       {isEdit && (
         <>
-          <Section title="Delivery" description={`Amounts in ${values.baseCurrency}. Saved as a setting; nothing is calculated yet.`}>
+          <Section title="Delivery" description={`One domestic delivery rate in ${values.baseCurrency}; the fee and optional free-delivery threshold are used at checkout.`}>
             {text("deliveryFee", "Delivery fee", { required: true, inputMode: "decimal", placeholder: "0" })}
             {text("freeDeliveryThreshold", "Free delivery over", { inputMode: "decimal", hint: "Leave empty for no free delivery." })}
           </Section>
@@ -316,8 +359,8 @@ export function StoreForm({
                       <input
                         type="checkbox"
                         className="mt-1 h-4 w-4 accent-teal-700"
+                        disabled={m.requiresProvider || (isOwnerEdit && readOnly)}
                         checked={m.requiresProvider ? false : values.paymentMethods[m.id]}
-                        disabled={m.requiresProvider}
                         onChange={(e) => set("paymentMethods", { ...values.paymentMethods, [m.id]: e.target.checked })}
                       />
                       <span>
@@ -345,10 +388,10 @@ export function StoreForm({
             {text("tagline", "Tagline", { className: "sm:col-span-2" })}
             {text("heroTitle", "Homepage headline", { required: true, className: "sm:col-span-2" })}
             <Field label="Homepage intro" htmlFor="store-heroText" error={errors.heroText} className="sm:col-span-2">
-              <textarea id="store-heroText" rows={2} value={values.heroText} onChange={(e) => set("heroText", e.target.value)} className={inputClass(!!errors.heroText)} />
+              <textarea id="store-heroText" rows={2} disabled={isOwnerEdit && readOnly} value={values.heroText} onChange={(e) => set("heroText", e.target.value)} className={inputClass(!!errors.heroText)} />
             </Field>
             <Field label="About page text" htmlFor="store-aboutText" error={errors.aboutText} className="sm:col-span-2" hint="Leave a blank line between paragraphs.">
-              <textarea id="store-aboutText" rows={5} value={values.aboutText} onChange={(e) => set("aboutText", e.target.value)} className={inputClass(!!errors.aboutText)} />
+              <textarea id="store-aboutText" rows={5} disabled={isOwnerEdit && readOnly} value={values.aboutText} onChange={(e) => set("aboutText", e.target.value)} className={inputClass(!!errors.aboutText)} />
             </Field>
             {text("contactEmail", "Public contact email", { type: "email" })}
             {text("contactPhone", "Public phone", { type: "tel", hint: "International format, e.g. +971 4 000 0000 or +1 415 555 0123." })}
@@ -366,13 +409,15 @@ export function StoreForm({
         <button
           type="button"
           className={buttonClass("secondary")}
-          onClick={() => router.push(isEdit && store ? `/admin/stores/${store.id}` : "/admin/stores")}
+          onClick={() => router.push(isOwnerEdit ? "/admin" : isEdit && store ? `/admin/stores/${store.id}` : "/admin/stores")}
         >
           Cancel
         </button>
-        <button type="submit" disabled={pending} className={buttonClass("primary")}>
-          {pending ? "Saving…" : isEdit ? "Save settings" : "Create store"}
-        </button>
+        {!readOnly && (
+          <button type="submit" disabled={pending} className={buttonClass("primary")}>
+            {pending ? "Saving…" : isEdit ? "Save settings" : "Create store"}
+          </button>
+        )}
       </div>
     </form>
   );

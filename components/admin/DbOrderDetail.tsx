@@ -4,7 +4,17 @@ import { formatDate } from "@/lib/format";
 import { OrderControls } from "./OrderControls";
 
 /** One order of the store, from the database, with its status and payment controls. */
-export function DbOrderDetail({ storeId, storeName, order }: { storeId: string; storeName: string; order: AdminOrderDetail }) {
+export function DbOrderDetail({
+  storeId,
+  storeName,
+  order,
+  readOnly = false,
+}: {
+  storeId: string;
+  storeName: string;
+  order: AdminOrderDetail;
+  readOnly?: boolean;
+}) {
   const base = `/admin/stores/${storeId}`;
   const { address } = order;
   const place = [address.city, address.region, address.countryCode].filter(Boolean).join(", ");
@@ -69,9 +79,7 @@ export function DbOrderDetail({ storeId, storeName, order }: { storeId: string; 
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <OrderControls storeId={storeId} order={order} />
-        </div>
+        {!readOnly && <div className="space-y-6"><OrderControls storeId={storeId} order={order} /></div>}
       </div>
     </>
   );

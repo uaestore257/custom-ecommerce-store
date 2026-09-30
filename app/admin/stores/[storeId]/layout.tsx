@@ -13,7 +13,12 @@ export default async function StoreLayout({ children, params }: LayoutProps<"/ad
   const store = await getAdminStore(db, storeId);
   if (!store) notFound();
   return (
-    <StoreContextLayout store={store} readOnly={grant.access === "read"}>
+    <StoreContextLayout
+      store={store}
+      readOnly={grant.access === "read"}
+      platform={grant.user.isPlatformOwner}
+      role={grant.role}
+    >
       {children}
     </StoreContextLayout>
   );

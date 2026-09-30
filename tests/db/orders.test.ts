@@ -35,6 +35,7 @@ async function makeStore(options: StoreOptions = {}) {
     status,
     ownerName: "Owner",
     ownerEmail: `owner-${uid()}@example.com`,
+    ownerPassword: "an orders test passphrase 2026",
     countryCode: country,
     baseCurrency: currency,
     timezone: tz,

@@ -8,6 +8,7 @@
 import { MoneyError, toMinorUnits } from "@/lib/money";
 import { isCountryCode, isCurrencyCode, isE164Phone, isLanguageTag, isTimeZone } from "@/lib/standards";
 import { isEmail, isHexColor, isHttpUrl, isSlug } from "@/lib/validation";
+import { passwordProblem } from "@/lib/auth/password-policy";
 import type { DbProductStatus, DbStoreStatus } from "./types";
 
 export type Errors = Record<string, string>;
@@ -105,6 +106,7 @@ export interface CleanStoreProfile {
 export interface CleanStoreOwner {
   ownerName: string;
   ownerEmail: string;
+  ownerPassword: string;
 }
 
 /** Everything needed to create a store. */
@@ -154,13 +156,21 @@ export function validateCommerceSettings(input: unknown, minorUnits: number) {
   return { values, errors: clean(errors) };
 }
 
-export function validateStoreOwner(input: unknown) {
+export function validateStoreOwner(input: unknown, options: { requirePassword?: boolean } = {}) {
   const raw = record(input);
   const errors: Errors = {};
-  const v: CleanStoreOwner = { ownerName: str(raw, "ownerName"), ownerEmail: str(raw, "ownerEmail").toLowerCase() };
+  const v: CleanStoreOwner = {
+    ownerName: str(raw, "ownerName"),
+    ownerEmail: str(raw, "ownerEmail").toLowerCase(),
+    ownerPassword: typeof raw.ownerPassword === "string" ? raw.ownerPassword : "",
+  };
   if (v.ownerName.length < 2) errors.ownerName = "Enter the owner or contact name.";
   else errors.ownerName = tooLong(v.ownerName, LIMITS.personName) as string;
   if (!isEmail(v.ownerEmail) || v.ownerEmail.length > LIMITS.email) errors.ownerEmail = "Enter a valid email address.";
+  if (options.requirePassword || v.ownerPassword) {
+    const problem = passwordProblem(v.ownerPassword, v.ownerEmail);
+    if (problem) errors.ownerPassword = problem;
+  }
   return { values: v, errors: clean(errors) };
 }
 
@@ -168,7 +178,7 @@ export function validateStoreOwner(input: unknown) {
 export function validateStoreBase(input: unknown, ref: StoreReference) {
   const raw = record(input);
   const profile = validateStoreProfile(input, ref);
-  const owner = validateStoreOwner(input);
+  const owner = validateStoreOwner(input, { requirePassword: true });
   const status = str(raw, "status") as DbStoreStatus;
   const errors: Errors = { ...profile.errors, ...owner.errors };
   if (!STORE_STATUS_VALUES.includes(status)) errors.status = "Choose a valid status.";

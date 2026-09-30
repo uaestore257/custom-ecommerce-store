@@ -1,12 +1,6 @@
 import "server-only";
-
-// ---------------------------------------------------------------
-// OUTGOING EMAIL. No email provider is connected yet, so getMailer()
-// returns null and nothing is sent. Connecting one means implementing
-// Mailer for it here (see docs/operations.md, "Email"), configured by
-// EMAIL_PROVIDER, EMAIL_FROM and the provider's own credentials — which,
-// like every secret, only ever live in the environment.
-// ---------------------------------------------------------------
+import nodemailer from "nodemailer";
+import { isEmail } from "@/lib/validation";
 
 export interface EmailMessage {
   to: string;
@@ -19,9 +13,43 @@ export interface Mailer {
   send(message: EmailMessage): Promise<void>;
 }
 
-/** The configured mailer, or null while no email provider is set up. */
+export function isEmailDeliveryConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  const provider = env.EMAIL_PROVIDER?.trim().toLowerCase();
+  const from = env.EMAIL_FROM?.trim() ?? "";
+  const host = env.SMTP_HOST?.trim() ?? "";
+  const port = Number(env.SMTP_PORT ?? "");
+  const secure = env.SMTP_SECURE === "true";
+  const user = env.SMTP_USER?.trim() ?? "";
+  const password = env.SMTP_PASSWORD ?? "";
+  const credentialsComplete = Boolean(user && password);
+  const credentialsEmpty = !user && !password;
+  const localHost = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(host.toLowerCase());
+
+  if (provider !== "smtp" || !isEmail(from) || !host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    return false;
+  }
+  if (Boolean(user) !== Boolean(password)) return false;
+  if (env.NODE_ENV === "production") return secure && credentialsComplete;
+  return secure || (localHost && credentialsEmpty);
+}
+
 export function getMailer(env: NodeJS.ProcessEnv = process.env): Mailer | null {
-  const provider = env.EMAIL_PROVIDER?.trim();
-  if (provider) console.warn(`[email] EMAIL_PROVIDER "${provider}" is not supported yet; no email is sent.`);
-  return null;
+  if (!isEmailDeliveryConfigured(env)) return null;
+
+  const transport = nodemailer.createTransport({
+    host: env.SMTP_HOST!.trim(),
+    port: Number(env.SMTP_PORT),
+    secure: env.SMTP_SECURE === "true" && Number(env.SMTP_PORT) === 465,
+    requireTLS: env.SMTP_SECURE === "true" && Number(env.SMTP_PORT) !== 465,
+    ...(env.SMTP_USER && env.SMTP_PASSWORD
+      ? { auth: { user: env.SMTP_USER.trim(), pass: env.SMTP_PASSWORD } }
+      : {}),
+  });
+  const from = env.EMAIL_FROM!.trim();
+
+  return {
+    async send(message) {
+      await transport.sendMail({ from, ...message });
+    },
+  };
 }

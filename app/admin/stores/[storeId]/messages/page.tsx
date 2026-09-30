@@ -12,8 +12,8 @@ export const metadata: Metadata = { title: "Messages" };
 // only the store in the URL is read.
 export default async function MessagesPage({ params }: PageProps<"/admin/stores/[storeId]/messages">) {
   const { storeId } = await params;
-  const { db: client } = await requireStorePage(storeId);
+  const { db: client, grant } = await requireStorePage(storeId, "messages");
   const [store, inquiries] = await Promise.all([getAdminStore(client, storeId), listAdminInquiries(client, storeId)]);
   if (!store || !inquiries) notFound();
-  return <InquiryInbox storeId={store.id} storeName={store.name} inquiries={inquiries} />;
+  return <InquiryInbox storeId={store.id} storeName={store.name} inquiries={inquiries} readOnly={grant.access === "read"} />;
 }

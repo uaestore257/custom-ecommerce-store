@@ -2,7 +2,7 @@
 // slug-to-store lookup is covered in tests/db/storefront-catalog.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { matchStoreHost, parseStoreDomains, storeHostConfig } from "../../lib/store-host";
+import { isPlatformBusinessHost, matchStoreHost, parseStoreDomains, storeHostConfig } from "../../lib/store-host";
 
 const config = (extra: Record<string, string> = {}) =>
   storeHostConfig({ ADMIN_HOST: "admin.shops.test", PLATFORM_ROOT_DOMAIN: "shops.test", NODE_ENV: "production", ...extra } as unknown as NodeJS.ProcessEnv);
@@ -34,6 +34,18 @@ test("the bare root domain is the platform host in development only", () => {
   const local = config({ PLATFORM_ROOT_DOMAIN: "localhost", NODE_ENV: "development" });
   assert.deepEqual(matchStoreHost("localhost:3000", local), { kind: "platform" });
   assert.deepEqual(matchStoreHost("nest-and-oak.localhost:3000", local), { kind: "store", slug: "nest-and-oak" });
+});
+
+test("the bare development root is the business site, distinct from store and admin hosts", () => {
+  const localEnv = {
+    ADMIN_HOST: "admin.localhost:3000",
+    PLATFORM_ROOT_DOMAIN: "localhost",
+    NODE_ENV: "development",
+  } as unknown as NodeJS.ProcessEnv;
+  assert.equal(isPlatformBusinessHost("localhost:3000", localEnv), true);
+  assert.equal(isPlatformBusinessHost("admin.localhost:3000", localEnv), false);
+  assert.equal(isPlatformBusinessHost("nest-and-oak.localhost:3000", localEnv), false);
+  assert.equal(isPlatformBusinessHost("localhost", { ...localEnv, NODE_ENV: "production" }), false);
 });
 
 test("unknown, nested, reserved, malformed or look-alike hosts name no store", () => {

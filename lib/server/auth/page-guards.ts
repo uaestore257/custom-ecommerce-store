@@ -5,9 +5,11 @@ import {
   requireAdminViewer,
   requirePlatformOwner,
   requireStoreAccess,
+  requireStoreSection,
   type AdminViewer,
   type PlatformOwner,
   type StoreAccessGrant,
+  type StoreSection,
 } from "./guards";
 
 // For pages and layouts: signed out -> /login; anyone without access ->
@@ -31,8 +33,8 @@ export function requirePlatformOwnerPage(): Promise<PlatformOwner> {
 }
 
 /** Pages inside one store: the platform owner on ADMIN_HOST, or that store's OWNER on its own host. */
-export function requireStoreAccessPage(storeId: string): Promise<StoreAccessGrant> {
-  return orRedirect(() => requireStoreAccess(storeId, "read"));
+export function requireStoreAccessPage(storeId: string, section?: StoreSection): Promise<StoreAccessGrant> {
+  return orRedirect(() => section ? requireStoreSection(storeId, section) : requireStoreAccess(storeId, "read"));
 }
 
 /** The admin layout: whoever may use the admin on this host. */

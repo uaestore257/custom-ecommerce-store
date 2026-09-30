@@ -8,6 +8,7 @@ import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
 
 export const BASE_URL = "http://admin.test.local";
 export const ADMIN_HOST = "admin.test.local";
+export const STORE_HOST = "nest-and-oak.test.local";
 export const OWNER_EMAIL = "platform-owner@test.example";
 export const OWNER_PASSWORD = "correct horse battery staple 42";
 
@@ -16,6 +17,7 @@ export function setTestAuthEnv() {
   process.env.BETTER_AUTH_SECRET = "test-secret-".padEnd(48, "x");
   process.env.BETTER_AUTH_URL = BASE_URL;
   process.env.ADMIN_HOST = ADMIN_HOST;
+  process.env.PLATFORM_ROOT_DOMAIN = "test.local";
   process.env.TRUSTED_IP_HEADER = "";
 }
 
@@ -29,10 +31,12 @@ export async function ensurePlatformOwner() {
 }
 
 export async function authRequest(path: string, body: unknown, headers: Record<string, string> = {}) {
+  const host = headers.host ?? ADMIN_HOST;
+  const origin = headers.origin ?? (host === ADMIN_HOST ? BASE_URL : `http://${host}`);
   return authHandler(
-    new Request(`${BASE_URL}/api/auth${path}`, {
+    new Request(`http://${host}/api/auth${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin: BASE_URL, host: ADMIN_HOST, ...headers },
+      headers: { "content-type": "application/json", origin, host, ...headers },
       body: JSON.stringify(body),
     }),
   );
@@ -48,18 +52,18 @@ export function cookieHeader(response: Response) {
 }
 
 /** Signs in over HTTP and returns the Cookie header. Clears rate limits first. */
-export async function signIn(email = OWNER_EMAIL, password = OWNER_PASSWORD) {
+export async function signIn(email = OWNER_EMAIL, password = OWNER_PASSWORD, host = ADMIN_HOST) {
   await getDb().rateLimit.deleteMany();
-  const response = await authRequest("/sign-in/email", { email, password });
+  const response = await authRequest("/sign-in/email", { email, password }, { host });
   if (!response.ok) throw new Error(`sign-in failed: ${response.status}`);
   return cookieHeader(response);
 }
 
 /** Makes guards and Server Actions see a request with this Cookie header (or none). */
-export function actAs(cookie: string | null) {
+export function actAs(cookie: string | null, host = ADMIN_HOST) {
   setRequestRuntimeForTests({
     async headers() {
-      const headers = new Headers({ host: ADMIN_HOST });
+      const headers = new Headers({ host });
       if (cookie) headers.set("cookie", cookie);
       return headers;
     },

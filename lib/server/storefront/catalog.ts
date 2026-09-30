@@ -4,7 +4,7 @@ import { cookies, headers } from "next/headers";
 import { DEFAULT_STOREFRONT_STORE_ID, PAYMENT_METHODS } from "@/lib/config";
 import { storeFormatLocale } from "@/lib/standards";
 import { isStoreIdCookieValue, STOREFRONT_STORE_COOKIE } from "@/lib/storefront-cookie";
-import { matchStoreHost, storeHostConfig } from "@/lib/store-host";
+import { isPlatformBusinessHost, matchStoreHost, storeHostConfig } from "@/lib/store-host";
 import type { StorefrontCatalog, StorefrontProduct, StorefrontStore } from "@/lib/storefront-types";
 import type { PaymentMethodId } from "@/lib/types";
 import type { Client } from "../admin/common";
@@ -23,9 +23,9 @@ import { storeScope } from "../store-scope";
 // browser.
 //
 // Which store to show comes from the request's hostname
-// (resolveStoreForHost, rules in lib/store-host.ts). Only the platform
-// host (ADMIN_HOST, and the bare root domain in development) still uses
-// the preview cookie plus a configured default (lib/storefront-cookie.ts).
+// (resolveStoreForHost, rules in lib/store-host.ts). The bare development
+// root is the business website, not a storefront. Only ADMIN_HOST may use
+// the platform preview cookie plus configured default.
 // ---------------------------------------------------------------
 
 const PUBLIC_STORE = { status: "ACTIVE", archivedAt: null } as const;
@@ -62,6 +62,7 @@ export async function resolveStoreForHost(
   previewCookie: unknown,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
+  if (isPlatformBusinessHost(host, env)) return null;
   const match = matchStoreHost(host, storeHostConfig(env));
   if (match.kind === "platform") return resolveStorefrontStoreId(client, previewCookie, DEFAULT_STOREFRONT_STORE_ID);
   if (match.kind === "unknown") return null;

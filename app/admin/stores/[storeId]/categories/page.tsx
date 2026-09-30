@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Categories" };
 
 export default async function CategoriesPage({ params }: PageProps<"/admin/stores/[storeId]/categories">) {
   const { storeId } = await params;
-  const categories = await listAdminCategories((await requireStorePage(storeId)).db, storeId);
+  const categories = await listAdminCategories((await requireStorePage(storeId, "categories")).db, storeId);
   if (!categories) notFound();
   return <CategoriesView categories={categories} />;
 }
