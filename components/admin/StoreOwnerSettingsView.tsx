@@ -1,21 +1,19 @@
 import { Notice, PageHeader } from "@/components/ui";
-import type { AdminStoreDetail, ReferenceOptions } from "@/lib/admin/types";
-import { StoreForm } from "./StoreForm";
+import type { AdminStorePaymentSettings } from "@/lib/admin/types";
+import { StorePaymentSettingsForm } from "./StorePaymentSettingsForm";
 
 export function StoreOwnerSettingsView({
   store,
-  reference,
   readOnly,
 }: {
-  store: AdminStoreDetail;
-  reference: ReferenceOptions;
+  store: AdminStorePaymentSettings;
   readOnly: boolean;
 }) {
   return (
     <>
       <PageHeader
         title="Store Settings"
-        description={`Manage settings for ${store.name}. Your store URL is ${store.slug}.localhost:3000.`}
+        description={`Manage payment methods for ${store.name}. Store profile and delivery options are managed elsewhere.`}
         breadcrumbs={[{ label: "Dashboard", href: "/admin" }, { label: "Store Settings" }]}
       />
       {readOnly && (
@@ -23,7 +21,7 @@ export function StoreOwnerSettingsView({
           This store is suspended. Settings are read-only until the Platform Owner reactivates it.
         </Notice>
       )}
-      <StoreForm key={store.id} mode="owner-edit" store={store} reference={reference} readOnly={readOnly} />
+      <StorePaymentSettingsForm key={store.id} store={store} readOnly={readOnly} />
     </>
   );
 }

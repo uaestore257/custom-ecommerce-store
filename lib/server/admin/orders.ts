@@ -104,8 +104,10 @@ export async function getAdminOrder(client: Client, storeId: string, orderId: st
   const locale = storeFormatLocale(store);
   const money = (minor: bigint) => formatMinorUnits(minor, order.currency, order.currencyRef.minorUnits, locale);
   const address = (order.shippingAddress ?? {}) as Record<string, unknown>;
+  const fulfillmentMethod = address.fulfillmentMethod === "PICKUP" ? "PICKUP" : "DELIVERY";
   return {
     ...toSummary(order, store, locale),
+    fulfillmentMethod,
     address: {
       recipientName: text(address.recipientName),
       line1: text(address.line1),

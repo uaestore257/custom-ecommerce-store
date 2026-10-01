@@ -1,13 +1,19 @@
 import "server-only";
 import { Prisma, type PrismaClient } from "@/lib/generated/prisma/client";
 import { DEFAULT_CATEGORIES } from "@/lib/config";
-import { fromMinorUnits } from "@/lib/money";
 import { storeFormatLocale } from "@/lib/standards";
-import type { ActionResult, AdminStoreDetail, AdminStoreSummary, DbStoreStatus } from "@/lib/admin/types";
+import type {
+  ActionResult,
+  AdminStoreDetail,
+  AdminStorePaymentSettings,
+  AdminStoreSummary,
+  DbStoreStatus,
+} from "@/lib/admin/types";
 import {
   hasErrors,
   PAYMENT_METHOD_IDS,
   PLATFORM_STORE_STATUS_VALUES,
+  validateStorePaymentMethods,
   validateStoreBase,
   validateStoreOwner,
   validateStoreSettings,
@@ -15,6 +21,9 @@ import {
   type CleanStoreSettings,
 } from "@/lib/admin/validation";
 import type { StoreType } from "@/lib/types";
+import { isProviderMarketSupported } from "@/lib/payments/rules";
+import { paymentCredentialsAvailable, unavailablePaymentCredentialResolver } from "../payments/credentials";
+import { validateOwnerPaymentSettings } from "@/lib/payments/validation";
 import { recordAudit } from "../audit";
 import { getAuth } from "../auth/auth";
 import { hashCredentialPassword, saveCredentialPassword } from "../auth/credentials";
@@ -95,19 +104,17 @@ export async function getAdminStoreDetail(client: Client, storeId: string): Prom
       languages: { where: { enabled: true }, select: { languageCode: true } },
       memberships: { where: { role: "OWNER" }, include: { user: true }, take: 1 },
       paymentMethods: { orderBy: { position: "asc" } },
-      shippingZones: { orderBy: { id: "asc" }, take: 1, include: { rates: { orderBy: { id: "asc" }, take: 1 } } },
-      _count: { select: { products: true, categories: true, variants: true, shippingRates: true } },
+      _count: { select: { products: true, categories: true, variants: true } },
     },
   });
   if (!store) return null;
   const content = await client.storeContentTranslation.findUnique({
     where: { storeId_locale: { storeId, locale: store.defaultLanguage } },
   });
-  const minor = store.currency.minorUnits;
-  const rate = store.shippingZones[0]?.rates[0];
   const address = (store.businessAddress ?? {}) as { line1?: string };
   const owner = store.memberships[0]?.user;
   const labels = await letterLabels(client);
+  const minor = store.currency.minorUnits;
 
   return {
     ...toSummary({ ...store, _count: { products: store._count.products } }, labels),
@@ -127,16 +134,92 @@ export async function getAdminStoreDetail(client: Client, storeId: string): Prom
       heroText: content?.heroText ?? "",
       aboutText: content?.aboutText ?? "",
     },
-    delivery: {
-      fee: rate ? fromMinorUnits(rate.priceMinor, minor) : "",
-      freeOver: rate?.freeOverMinor ? fromMinorUnits(rate.freeOverMinor, minor) : "",
-    },
     paymentMethods: PAYMENT_METHOD_IDS.map((method) => ({
       method,
       enabled: store.paymentMethods.find((m) => m.method === method)?.enabled ?? false,
     })),
     categoryCount: store._count.categories,
-    hasPrices: store._count.variants > 0 || store._count.shippingRates > 0,
+    hasPrices: store._count.variants > 0,
+  };
+}
+
+export async function getAdminStorePaymentSettings(
+  client: Client,
+  storeId: string,
+): Promise<AdminStorePaymentSettings | null> {
+  const store = await client.store.findFirst({
+    where: { id: storeId, archivedAt: null },
+    select: {
+      id: true,
+      name: true,
+      countryCode: true,
+      baseCurrency: true,
+      paymentMethods: { orderBy: { position: "asc" }, select: { method: true, enabled: true } },
+      paymentAccounts: {
+        where: { provider: { in: ["bank_transfer", "stripe_connect"] } },
+        select: { id: true, provider: true, mode: true, enabled: true, publicConfig: true, secretRef: true },
+      },
+    },
+  });
+  if (!store) return null;
+
+  const bankAccount = store.paymentAccounts.find((account) => account.provider === "bank_transfer");
+  const stripeAccount = store.paymentAccounts.find((account) => account.provider === "stripe_connect");
+  const bankConfig =
+    bankAccount?.publicConfig && typeof bankAccount.publicConfig === "object" && !Array.isArray(bankAccount.publicConfig)
+      ? (bankAccount.publicConfig as Record<string, unknown>)
+      : {};
+  const stripeConfig =
+    stripeAccount?.publicConfig &&
+    typeof stripeAccount.publicConfig === "object" &&
+    !Array.isArray(stripeAccount.publicConfig)
+      ? (stripeAccount.publicConfig as Record<string, unknown>)
+      : {};
+  const stripeMethod = store.paymentMethods.find((entry) => entry.method === "stripe_checkout");
+  const secretRef = stripeAccount?.secretRef ?? null;
+  const available = Boolean(
+    stripeAccount &&
+      secretRef &&
+      stripeAccount.enabled &&
+      stripeAccount.mode === "TEST" &&
+      stripeMethod?.enabled &&
+      isProviderMarketSupported("stripe_connect", store.countryCode, store.baseCurrency) &&
+      (await paymentCredentialsAvailable(unavailablePaymentCredentialResolver, {
+        secretRef,
+        provider: "stripe_connect",
+        storeId: store.id,
+        providerAccountId: stripeAccount.id,
+      })),
+  );
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+
+  return {
+    id: store.id,
+    name: store.name,
+    paymentMethods: [
+      ...PAYMENT_METHOD_IDS.map((method) => ({
+        method,
+        enabled: store.paymentMethods.find((entry) => entry.method === method)?.enabled ?? false,
+      })),
+      {
+        method: "cash_on_pickup",
+        enabled: store.paymentMethods.find((entry) => entry.method === "cash_on_pickup")?.enabled ?? false,
+      },
+    ],
+    bankTransfer: {
+      bankName: text(bankConfig.bankName),
+      accountName: text(bankConfig.accountName),
+      accountNumber: text(bankConfig.accountNumber),
+      iban: text(bankConfig.iban),
+      swiftCode: text(bankConfig.swiftCode),
+      instructions: text(bankConfig.instructions),
+    },
+    stripe: {
+      accountId: text(stripeConfig.accountId),
+      hasCredentialReference: Boolean(secretRef),
+      enabled: stripeMethod?.enabled ?? false,
+      available,
+    },
   };
 }
 
@@ -323,20 +406,6 @@ async function persistStoreSettings(client: PrismaClient, storeId: string, value
       create: { storeId, locale: values.defaultLanguage, ...values.content },
       update: values.content,
     });
-    const zone =
-      (await tx.shippingZone.findFirst({ where: { storeId }, orderBy: { id: "asc" } })) ??
-      (await tx.shippingZone.create({ data: { storeId, name: "Domestic" } }));
-    await tx.shippingZoneCountry.deleteMany({ where: { zoneId: zone.id, storeId } });
-    await tx.shippingZoneCountry.create({ data: { storeId, zoneId: zone.id, countryCode: values.countryCode } });
-    const rate = await tx.shippingRate.findFirst({ where: { storeId, zoneId: zone.id }, orderBy: { id: "asc" } });
-    const rateData = {
-      priceMinor: values.deliveryFeeMinor,
-      freeOverMinor: values.freeDeliveryOverMinor,
-      currency: values.baseCurrency,
-    };
-    if (rate) await tx.shippingRate.update({ where: { id: rate.id }, data: rateData });
-    else await tx.shippingRate.create({ data: { storeId, zoneId: zone.id, name: "Standard delivery", ...rateData } });
-
     for (const [position, method] of PAYMENT_METHOD_IDS.entries()) {
       await tx.storePaymentMethod.upsert({
         where: { storeId_method: { storeId, method } },
@@ -354,29 +423,134 @@ async function persistStoreSettings(client: PrismaClient, storeId: string, value
   });
 }
 
-/** Store Owners may edit configuration for the store already authorized by the request host. */
+/** Store Owners may change payment methods only for the store authorized by the request host. */
 export async function updateStoreOwnerSettings(
   client: PrismaClient,
   storeId: string,
   actorUserId: string,
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
-  const existing = await getAdminStoreDetail(client, storeId);
+  const existing = await client.store.findFirst({
+    where: { id: storeId, archivedAt: null },
+    select: { id: true, countryCode: true, baseCurrency: true },
+  });
   if (!existing) return fail(NOT_FOUND.store);
 
-  const safeInput =
-    input && typeof input === "object" && !Array.isArray(input)
-      ? { ...input, slug: existing.slug }
-      : { slug: existing.slug };
-  const reference = await getStoreReference(client);
-  const { values, errors } = validateStoreSettings(safeInput, reference);
-  if (existing.hasPrices && values.baseCurrency !== existing.baseCurrency) {
-    errors.baseCurrency = "The currency can't change while products or delivery rates have prices. Repricing is not supported yet.";
-  }
+  const { values, errors } = validateOwnerPaymentSettings(input, existing.countryCode, existing.baseCurrency);
   if (hasErrors(errors)) return fail(INVALID, errors);
 
-  await persistStoreSettings(client, storeId, values, actorUserId);
-  return ok({ id: storeId }, "Settings saved.");
+  await client.$transaction(async (tx) => {
+    const existingBank = await tx.paymentProviderAccount.findFirst({
+      where: { storeId, provider: "bank_transfer" },
+      select: { id: true },
+    });
+    let bankAccountId = existingBank?.id ?? null;
+    if (values.paymentMethods.bank_transfer) {
+      if (existingBank) {
+        await tx.paymentProviderAccount.update({
+          where: { id: existingBank.id },
+          data: { displayName: "Bank transfer", mode: "TEST", enabled: true, publicConfig: values.bankTransfer },
+        });
+        bankAccountId = existingBank.id;
+      } else {
+        const created = await tx.paymentProviderAccount.create({
+          data: {
+            storeId,
+            provider: "bank_transfer",
+            displayName: "Bank transfer",
+            mode: "TEST",
+            enabled: true,
+            publicConfig: values.bankTransfer,
+          },
+          select: { id: true },
+        });
+        bankAccountId = created.id;
+      }
+    } else if (existingBank) {
+      await tx.paymentProviderAccount.update({
+        where: { id: existingBank.id },
+        data: { enabled: false },
+      });
+    }
+
+    const currentStripe = await tx.paymentProviderAccount.findFirst({
+      where: { storeId, provider: "stripe_connect" },
+      select: { id: true, secretRef: true },
+    });
+    const secretRef = values.stripe.secretRef || currentStripe?.secretRef || null;
+    const stripeRequested = Boolean(values.stripe.accountId && secretRef);
+    let stripeAccountId: string | null = null;
+    if (stripeRequested) {
+      if (currentStripe) {
+        const account = await tx.paymentProviderAccount.update({
+          where: { id: currentStripe.id },
+          data: {
+            displayName: "Stripe Connect",
+            mode: "TEST",
+            enabled: true,
+            publicConfig: { accountId: values.stripe.accountId },
+            secretRef,
+          },
+          select: { id: true },
+        });
+        stripeAccountId = account.id;
+      } else {
+        const account = await tx.paymentProviderAccount.create({
+          data: {
+            storeId,
+            provider: "stripe_connect",
+            displayName: "Stripe Connect",
+            mode: "TEST",
+            enabled: true,
+            publicConfig: { accountId: values.stripe.accountId },
+            secretRef,
+          },
+          select: { id: true },
+        });
+        stripeAccountId = account.id;
+      }
+    } else if (currentStripe) {
+      await tx.paymentProviderAccount.update({
+        where: { id: currentStripe.id },
+        data: { enabled: false, mode: "TEST" },
+      });
+    }
+
+    const stripeAvailable =
+      values.stripe.enabled &&
+      stripeAccountId !== null &&
+      isProviderMarketSupported("stripe_connect", existing.countryCode, existing.baseCurrency) &&
+      (secretRef !== null &&
+        await paymentCredentialsAvailable(unavailablePaymentCredentialResolver, {
+        secretRef,
+        provider: "stripe_connect",
+        storeId,
+        providerAccountId: stripeAccountId,
+        }));
+
+    const ownerMethods = [
+      ["cash_on_delivery", values.paymentMethods.cash_on_delivery, null],
+      ["card_on_delivery", values.paymentMethods.card_on_delivery, null],
+      ["bank_transfer", values.paymentMethods.bank_transfer, bankAccountId],
+      ["cash_on_pickup", values.paymentMethods.cash_on_pickup, null],
+      ["stripe_checkout", stripeAvailable, stripeAccountId],
+    ] as const;
+    for (const [position, [method, enabled, providerAccountId]] of ownerMethods.entries()) {
+      await tx.storePaymentMethod.upsert({
+        where: { storeId_method: { storeId, method } },
+        create: { storeId, method, position, enabled, providerAccountId },
+        update: { enabled, providerAccountId },
+      });
+    }
+    await recordAudit(tx, {
+      action: "store.update_settings",
+      actorUserId,
+      storeId,
+      targetType: "store",
+      targetId: storeId,
+    });
+  });
+  return ok({ id: storeId }, "Payment settings saved.");
 }
 
 /** Platform-only: replace the store's owner (the settings form no longer does this). */

@@ -11,6 +11,7 @@ import {
   CHECKOUT_PAYMENT_METHODS,
   validateCheckoutFields,
   type CheckoutFieldErrors,
+  type CheckoutFulfillmentMethod,
   type CheckoutPaymentMethod,
   type PlacedOrder,
 } from "@/lib/checkout";
@@ -28,6 +29,7 @@ interface CheckoutForm {
   phone: string;
   address: string;
   city: string;
+  fulfillmentMethod: CheckoutFulfillmentMethod;
   paymentMethod: CheckoutPaymentMethod | "";
 }
 
@@ -37,6 +39,7 @@ const emptyForm: CheckoutForm = {
   phone: "",
   address: "",
   city: "",
+  fulfillmentMethod: "DELIVERY",
   paymentMethod: "",
 };
 
@@ -56,11 +59,14 @@ export function CheckoutView() {
   if (!view) return null;
   const { store, cart, cartLoaded } = view;
   const isUae = store.countryCode === "AE";
+  const fulfillmentMethod = cart.requiresPickup ? "PICKUP" : form.fulfillmentMethod;
 
-  // Phase 4: cash on delivery and bank transfer only (no payment provider).
   const paymentOptions = PAYMENT_METHODS.filter(
     (method): method is (typeof PAYMENT_METHODS)[number] & { id: CheckoutPaymentMethod } =>
-      (CHECKOUT_PAYMENT_METHODS as readonly string[]).includes(method.id) && store.paymentMethods.includes(method.id),
+      (CHECKOUT_PAYMENT_METHODS as readonly string[]).includes(method.id) &&
+      store.paymentMethods.includes(method.id) &&
+      (method.id !== "cash_on_delivery" || fulfillmentMethod === "DELIVERY") &&
+      (method.id !== "cash_on_pickup" || fulfillmentMethod === "PICKUP"),
   );
 
   if (placed) {
@@ -89,8 +95,7 @@ export function CheckoutView() {
   }
 
   // Only ACTIVE stores ever reach the storefront (the server filters them).
-  const deliveryReady = store.deliveryFeeMinor !== null;
-  const acceptingOrders = paymentOptions.length > 0 && deliveryReady;
+  const acceptingOrders = paymentOptions.length > 0;
   const cartChanged = hasCartChanges(cart);
   const canPlace = acceptingOrders && !checking && !cartChanged && !submitting;
 
@@ -110,7 +115,7 @@ export function CheckoutView() {
     event.preventDefault();
     if (!canPlace) return;
     // Instant feedback; the server checks everything again.
-    const found = validateCheckoutFields(form, store.countryCode);
+    const found = validateCheckoutFields({ ...form, fulfillmentMethod }, store.countryCode);
     setErrors(found);
     setServerError("");
     if (focusFirst(found)) return;
@@ -118,10 +123,11 @@ export function CheckoutView() {
     attemptKey.current ??= crypto.randomUUID();
     const request = {
       ...form,
+      fulfillmentMethod,
       storeId: store.id,
       idempotencyKey: attemptKey.current,
       // Only compared by the server (a difference refuses the order); never used as the price.
-      expectedTotalMinor: cart.totalMinor.toString(),
+      expectedTotalMinor: (cart.subtotalMinor + (fulfillmentMethod === "PICKUP" ? BigInt(0) : cart.deliveryMinor)).toString(),
       items: cart.lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
     };
     startSubmit(async () => {
@@ -129,6 +135,26 @@ export function CheckoutView() {
       if (result.ok) {
         attemptKey.current = null;
         clearCart();
+        if (result.checkout?.kind === "redirect") {
+          window.location.assign(result.checkout.url);
+          return;
+        }
+        if (result.checkout?.kind === "post") {
+          const redirectForm = document.createElement("form");
+          redirectForm.method = "POST";
+          redirectForm.action = result.checkout.action;
+          redirectForm.hidden = true;
+          for (const [name, value] of Object.entries(result.checkout.fields)) {
+            const field = document.createElement("input");
+            field.type = "hidden";
+            field.name = name;
+            field.value = value;
+            redirectForm.append(field);
+          }
+          document.body.append(redirectForm);
+          redirectForm.submit();
+          return;
+        }
         setPlaced(result.order);
         router.refresh();
         window.scrollTo({ top: 0 });
@@ -150,8 +176,9 @@ export function CheckoutView() {
       <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
 
       <Notice className="mt-6">
-        No payment is taken online and no card details are collected.
-        {paymentOptions.some((m) => m.id === "cash_on_delivery") && " Cash on delivery: pay the courier when your order arrives."}
+        Card details are never collected by this store.
+        {paymentOptions.some((m) => m.id === "cash_on_delivery") &&
+          " Cash on delivery: pay the courier when your order arrives."}
         {paymentOptions.some((m) => m.id === "bank_transfer") &&
           ` Bank transfer: ${store.name} will send you the transfer details after you order.`}{" "}
         Prices and stock are checked again when you place your order.
@@ -161,9 +188,9 @@ export function CheckoutView() {
         {checking ? "Checking current prices and stock…" : "Prices and stock checked with the store just now."}
       </p>
       <CartChangesNotice cart={cart} store={store} className="mt-4" />
-      {!deliveryReady && (
+      {cart.requiresPickup && (
         <Notice tone="warning" className="mt-4">
-          This store hasn&apos;t set up delivery yet, so orders can&apos;t be placed.
+          Your cart contains pickup-only products. Choose pickup at checkout; these products cannot be delivered.
         </Notice>
       )}
       {paymentOptions.length === 0 && (
@@ -216,9 +243,29 @@ export function CheckoutView() {
           </fieldset>
 
           <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
-            <legend className="px-1 text-lg font-semibold">
-              {isUae ? "UAE delivery address" : "Delivery address"}
-            </legend>
+            <legend className="px-1 text-lg font-semibold">Fulfillment</legend>
+            <div className="mt-2 space-y-3">
+              {([
+                ["DELIVERY", "Delivery"],
+                ["PICKUP", "Pickup at the store"],
+              ] as const).map(([method, label]) => (
+                <label key={method} className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+                  <input
+                    type="radio"
+                    name="fulfillmentMethod"
+                    value={method}
+                    checked={fulfillmentMethod === method}
+                    disabled={cart.requiresPickup && method === "DELIVERY"}
+                    onChange={() => update("fulfillmentMethod", method)}
+                    className="mt-1 accent-[var(--brand)]"
+                  />
+                  <span className="font-medium">{label}</span>
+                </label>
+              ))}
+            </div>
+            {fulfillmentMethod === "DELIVERY" && (
+            <>
+            <h2 className="mt-5 text-lg font-semibold">{isUae ? "UAE delivery address" : "Delivery address"}</h2>
             <div className="mt-2 grid gap-4 sm:grid-cols-2">
               <Field
                 label="Address"
@@ -264,6 +311,8 @@ export function CheckoutView() {
                 Country: <span className="font-medium text-slate-900">{store.countryName}</span>
               </div>
             </div>
+            </>
+            )}
           </fieldset>
 
           <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
@@ -322,7 +371,7 @@ export function CheckoutView() {
             ))}
           </ul>
           <div className="mt-4">
-            <CartTotals cart={cart} store={store} />
+            <CartTotals cart={cart} store={store} fulfillmentMethod={fulfillmentMethod} />
           </div>
           <button
             type="submit"
@@ -361,11 +410,25 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
             <>
               <strong>Payment: bank transfer — not paid yet.</strong>{" "}
               {paymentInstructions("bank_transfer", store.name, order.orderNumber)}
+              {order.paymentInfo?.map((item) => (
+                <span key={item.label} className="mt-1 block text-sm">
+                  <strong>{item.label.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}:</strong>{" "}
+                  {item.value}
+                </span>
+              ))}
+            </>
+          ) : order.paymentMethod === "cash_on_pickup" ? (
+            <>
+              <strong>Payment: pay on pickup — not paid yet.</strong> Pay in cash when you collect your order.
+            </>
+          ) : order.paymentMethod === "stripe_checkout" ? (
+            <>
+              <strong>Payment: Stripe Checkout.</strong> Complete payment in the hosted Stripe window.
             </>
           ) : (
             <>
-              <strong>Payment: cash on delivery — not paid yet.</strong> Please pay the courier when
-              your order is delivered.
+              <strong>Payment: cash on delivery — not paid yet.</strong>{" "}
+              Please pay the courier when your order is delivered.
             </>
           )}
         </Notice>
@@ -384,8 +447,14 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
             <dd className="font-medium tabular-nums">{money(order.subtotalMinor)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-slate-600">Delivery</dt>
-            <dd className="font-medium tabular-nums">{order.shippingMinor === "0" ? "Free" : money(order.shippingMinor)}</dd>
+            <dt className="text-slate-600">{order.fulfillmentMethod === "PICKUP" ? "Pickup" : "Delivery"}</dt>
+            <dd className="font-medium tabular-nums">
+              {order.fulfillmentMethod === "PICKUP"
+                ? "No delivery fee"
+                : order.shippingMinor === "0"
+                  ? "Free"
+                  : money(order.shippingMinor)}
+            </dd>
           </div>
           <div className="flex justify-between border-t border-slate-200 pt-3 text-base">
             <dt className="font-semibold">Total to pay</dt>
@@ -393,7 +462,7 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
           </div>
         </dl>
         <p className="mt-4 text-left text-sm text-slate-600">
-          Delivery to {order.deliveryTo} · Payment: {paymentMethodLabel(order.paymentMethod)} (unpaid)
+          {order.fulfillmentMethod === "PICKUP" ? "Pickup at the store" : `Delivery to ${order.deliveryTo}`} · Payment: {paymentMethodLabel(order.paymentMethod)} (unpaid)
         </p>
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">

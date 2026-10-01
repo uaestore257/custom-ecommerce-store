@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isIdempotencyKey, toE164Phone, validateCheckout, validateCheckoutFields } from "../../lib/checkout";
+import { calculateDeliveryMinor, isIdempotencyKey, toE164Phone, validateCheckout, validateCheckoutFields } from "../../lib/checkout";
 import { requestFingerprint } from "../../lib/server/orders";
 import { storeIdFromCookieHeader } from "../../lib/storefront-cookie";
 
@@ -10,6 +10,7 @@ const request = (overrides: Record<string, unknown> = {}) => ({
   storeId: "store-1",
   idempotencyKey: KEY,
   expectedTotalMinor: "12500",
+  fulfillmentMethod: "DELIVERY",
   items: [{ productId: "prod-b", quantity: 1 }, { productId: "prod-a", quantity: 2 }],
   name: "Jane Visitor",
   email: "Jane@Example.com",
@@ -46,8 +47,42 @@ test("price, total, stock and other unknown fields sent by the browser are never
   if (!result.ok) return;
   assert.deepEqual(result.values.items, [{ productId: "prod-a", quantity: 1 }]);
   assert.deepEqual(Object.keys(result.values).sort(), [
-    "address", "customer", "expectedTotalMinor", "idempotencyKey", "items", "paymentMethod", "storeId",
+    "address", "customer", "expectedTotalMinor", "fulfillmentMethod", "idempotencyKey", "items", "paymentMethod", "storeId",
   ]);
+});
+
+test("delivery totals sum product fees by quantity, exclude free delivery, and reject pickup-only delivery", () => {
+  const delivery = calculateDeliveryMinor([
+    { deliveryFeeMinor: 100n, freeDelivery: false, pickupOnly: false, quantity: 2 },
+    { deliveryFeeMinor: 50n, freeDelivery: false, pickupOnly: false, quantity: 1 },
+    { deliveryFeeMinor: 0n, freeDelivery: true, pickupOnly: false, quantity: 3 },
+  ], "DELIVERY");
+  assert.deepEqual(delivery, { ok: true, deliveryMinor: 250n });
+  assert.deepEqual(
+    calculateDeliveryMinor([{ deliveryFeeMinor: 0n, freeDelivery: false, pickupOnly: true, quantity: 1 }], "DELIVERY"),
+    { ok: false, reason: "pickup-required" },
+  );
+  assert.deepEqual(
+    calculateDeliveryMinor([{ deliveryFeeMinor: 0n, freeDelivery: false, pickupOnly: true, quantity: 1 }], "PICKUP"),
+    { ok: true, deliveryMinor: 0n },
+  );
+  assert.deepEqual(
+    calculateDeliveryMinor([{ deliveryFeeMinor: 0n, freeDelivery: true, pickupOnly: true, quantity: 1 }], "PICKUP"),
+    { ok: false, reason: "invalid-product" },
+  );
+});
+
+test("pickup checkout does not require or retain a delivery address", () => {
+  const result = validateCheckout(
+    request({ fulfillmentMethod: "PICKUP", paymentMethod: "cash_on_pickup", address: "", city: "" }),
+    "AE",
+  );
+  assert.ok(result.ok);
+  if (result.ok) {
+    assert.equal(result.values.fulfillmentMethod, "PICKUP");
+    assert.equal(result.values.address, null);
+    assert.equal(result.values.paymentMethod, "cash_on_pickup");
+  }
 });
 
 test("duplicate lines are merged; the merged quantity is still capped", () => {

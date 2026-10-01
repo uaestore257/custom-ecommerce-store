@@ -8,7 +8,7 @@ import { EmptyState, LoadingState } from "@/components/EmptyState";
 import { ProductImage } from "@/components/ProductImage";
 import { buttonClass, LinkButton } from "@/components/ui";
 import { clearCart, removeFromCart, setCartQuantity, useStorefront } from "@/lib/storefront";
-import { categoryNameOf, formatStoreMoney } from "@/lib/storefront-cart";
+import { categoryNameOf, formatStoreMoney, productDeliveryDescription } from "@/lib/storefront-cart";
 import { QuantitySelector } from "./CartControls";
 import { CartChangesNotice, CartLineChange, NOT_RESERVED_NOTE, useCatalogRefreshOnOpen } from "./CartChanges";
 import { CartTotals } from "./OrderSummary";
@@ -72,6 +72,7 @@ export function CartView() {
                             <p className="mt-1 text-sm text-slate-600">
                               {formatStoreMoney(store, product.priceMinor)} each
                             </p>
+                            <p className="text-sm text-slate-600">{productDeliveryDescription(product, store)}</p>
                             <CartLineChange line={line} store={store} />
                           </div>
                           <div className="flex flex-wrap items-center justify-between gap-3 sm:flex-col sm:items-end">

@@ -19,15 +19,11 @@ interface StoreOptions {
   country?: string;
   currency?: string;
   tz?: string;
-  delivery?: { priceMinor: bigint; freeOverMinor: bigint | null } | null;
   bankTransfer?: boolean;
 }
 
-const AED_DELIVERY = { priceMinor: BigInt(2500), freeOverMinor: BigInt(50000) };
-
 async function makeStore(options: StoreOptions = {}) {
   const { status = "ACTIVE", country = "AE", currency = "AED", tz = "Asia/Dubai", bankTransfer = true } = options;
-  const delivery = options.delivery === undefined ? AED_DELIVERY : options.delivery;
   const result = await createAdminStore(await testActor(db), db, {
     name: `Orders ${uid()}`,
     slug: `orders-${uid()}`,
@@ -45,17 +41,27 @@ async function makeStore(options: StoreOptions = {}) {
   });
   assert.ok(result.ok, JSON.stringify(result));
   const storeId = result.data.id;
-  if (delivery) {
-    const zone = await db.shippingZone.create({ data: { storeId, name: "Domestic" } });
-    await db.shippingRate.create({ data: { storeId, zoneId: zone.id, name: "Standard", currency, ...delivery } });
-  }
   if (bankTransfer) {
     await db.storePaymentMethod.update({ where: { storeId_method: { storeId, method: "bank_transfer" } }, data: { enabled: true } });
   }
   return storeId;
 }
 
-async function makeProduct(storeId: string, { price = "100.00", stock = "5", status = "ACTIVE" } = {}) {
+async function makeProduct(storeId: string, {
+  price = "100.00",
+  stock = "5",
+  status = "ACTIVE",
+  deliveryFee = "12.50",
+  freeDelivery = false,
+  pickupOnly = false,
+}: {
+  price?: string;
+  stock?: string;
+  status?: "ACTIVE" | "DRAFT" | "ARCHIVED";
+  deliveryFee?: string;
+  freeDelivery?: boolean;
+  pickupOnly?: boolean;
+} = {}) {
   const categoryId = (await listAdminCategories(db, storeId))![0].id;
   const result = await createAdminProduct(db, storeId, {
     name: `Chair ${uid()}`,
@@ -64,6 +70,9 @@ async function makeProduct(storeId: string, { price = "100.00", stock = "5", sta
     description: "A sturdy chair for testing orders.",
     price,
     compareAtPrice: "",
+    deliveryFee,
+    freeDelivery,
+    pickupOnly,
     imageUrl: "",
     stock,
     status,
@@ -89,6 +98,7 @@ function orderInput(
     storeId,
     idempotencyKey: randomUUID(),
     expectedTotalMinor,
+    fulfillmentMethod: "DELIVERY",
     items,
     name: "Jane Visitor",
     email: `Jane-${uid()}@Example.com`,
@@ -119,7 +129,7 @@ before(async () => {
 
 test("cash on delivery: a real, unpaid, pending order at database prices, stock reduced", async () => {
   const store = await makeStore();
-  const p = await makeProduct(store, { price: "100.00", stock: "5" });
+  const p = await makeProduct(store, { price: "100.00", stock: "5", deliveryFee: "12.50" });
   const before = await nextNumber(store);
   const input = orderInput(store, [{ productId: p.id, quantity: 2 }], "22500");
 
@@ -144,6 +154,7 @@ test("cash on delivery: a real, unpaid, pending order at database prices, stock 
   assert.equal(order.customerPhone, "+971501234567");
   assert.deepEqual(order.shippingAddress, {
     recipientName: "Jane Visitor",
+    fulfillmentMethod: "DELIVERY",
     line1: "Villa 12, Example Street",
     city: "Dubai",
     region: "Dubai",
@@ -171,25 +182,26 @@ test("bank transfer: placed as pending and unpaid — never marked paid", async 
   assert.equal(order.status, "PENDING");
 });
 
-test("free delivery at the threshold, and exact 3-decimal (KWD) totals", async () => {
+test("free delivery is product-level, and exact 3-decimal (KWD) totals use product fees", async () => {
   const aed = await makeStore();
-  const big = await makeProduct(aed, { price: "250.00" });
+  const big = await makeProduct(aed, { price: "250.00", freeDelivery: true, deliveryFee: "0" });
   const free = await placeOrder(db, aed, orderInput(aed, [{ productId: big.id, quantity: 2 }], "50000"), ip());
   assert.ok(free.ok && free.order.shippingMinor === "0" && free.order.totalMinor === "50000", JSON.stringify(free));
 
-  const kwd = await makeStore({ country: "KW", currency: "KWD", tz: "Asia/Kuwait", delivery: { priceMinor: BigInt(1500), freeOverMinor: null } });
-  const lamp = await makeProduct(kwd, { price: "12.345" });
+  const kwd = await makeStore({ country: "KW", currency: "KWD", tz: "Asia/Kuwait" });
+  const lamp = await makeProduct(kwd, { price: "12.345", deliveryFee: "1.500" });
   const result = await placeOrder(
     db,
     kwd,
-    orderInput(kwd, [{ productId: lamp.id, quantity: 3 }], "38535", { city: "Kuwait City", phone: "+965 5000 0000" }),
+    orderInput(kwd, [{ productId: lamp.id, quantity: 3 }], "41535", { city: "Kuwait City", phone: "+965 5000 0000" }),
     ip(),
   );
   assert.ok(result.ok, JSON.stringify(result));
   const order = await db.order.findFirstOrThrow({ where: { storeId: kwd } });
   assert.equal(order.currency, "KWD");
   assert.equal(order.subtotalMinor, BigInt(37035));
-  assert.equal(order.totalMinor, BigInt(38535));
+  assert.equal(order.shippingMinor, BigInt(4500));
+  assert.equal(order.totalMinor, BigInt(41535));
 });
 
 // ---------- Tampering ----------
@@ -265,12 +277,7 @@ test("a paused, suspended, draft or archived store accepts no orders", async () 
   }
 });
 
-test("no delivery rate, a disabled method or an out-of-scope method is refused", async () => {
-  const noDelivery = await makeStore({ delivery: null });
-  const p1 = await makeProduct(noDelivery);
-  const r1 = await placeOrder(db, noDelivery, orderInput(noDelivery, [{ productId: p1.id, quantity: 1 }], "10000"), ip());
-  assert.ok(!r1.ok && r1.error === ORDER_MESSAGES.noDelivery, JSON.stringify(r1));
-
+test("a disabled payment method or an out-of-scope method is refused", async () => {
   const noBank = await makeStore({ bankTransfer: false });
   const p2 = await makeProduct(noBank);
   const r2 = await placeOrder(db, noBank, orderInput(noBank, [{ productId: p2.id, quantity: 1 }], "12500", { paymentMethod: "bank_transfer" }), ip());
@@ -285,10 +292,42 @@ test("no delivery rate, a disabled method or an out-of-scope method is refused",
     assert.equal(r.ok, false, method);
     if (!r.ok) assert.ok(r.fieldErrors?.paymentMethod, method);
   }
-  for (const [store, p] of [[noDelivery, p1], [noBank, p2], [withCard, p3]] as const) {
+  for (const [store, p] of [[noBank, p2], [withCard, p3]] as const) {
     assert.equal(await stockOf(p.variantId), 5);
     assert.equal(await orderCount(store), 0);
   }
+});
+
+test("pickup-only products refuse delivery and can be ordered with pickup", async () => {
+  const store = await makeStore();
+  const product = await makeProduct(store, { pickupOnly: true, deliveryFee: "0" });
+  const refused = await placeOrder(
+    db,
+    store,
+    orderInput(store, [{ productId: product.id, quantity: 1 }], "10000"),
+    ip(),
+  );
+  assert.ok(!refused.ok && refused.error === ORDER_MESSAGES.pickupOnly, JSON.stringify(refused));
+  assert.equal(await orderCount(store), 0);
+
+  const pickup = await placeOrder(
+    db,
+    store,
+    orderInput(store, [{ productId: product.id, quantity: 1 }], "10000", {
+      fulfillmentMethod: "PICKUP",
+      address: "",
+      city: "",
+    }),
+    ip(),
+  );
+  assert.ok(pickup.ok, JSON.stringify(pickup));
+  if (pickup.ok) {
+    assert.equal(pickup.order.fulfillmentMethod, "PICKUP");
+    assert.equal(pickup.order.shippingMinor, "0");
+    assert.equal(pickup.order.deliveryTo, "Store pickup");
+  }
+  const order = await db.order.findFirstOrThrow({ where: { storeId: store } });
+  assert.deepEqual(order.shippingAddress, { fulfillmentMethod: "PICKUP" });
 });
 
 test("draft, archived, deleted and unknown products are refused", async () => {
@@ -317,7 +356,7 @@ test("insufficient stock is refused and nothing changes", async () => {
   const store = await makeStore();
   const p = await makeProduct(store, { stock: "2" });
   const before = await snapshot(store, [p.variantId]);
-  const result = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 3 }], "32500"), ip());
+  const result = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 3 }], "33750"), ip());
   assert.ok(!result.ok && result.error === ORDER_MESSAGES.stock, JSON.stringify(result));
   assert.deepEqual(await snapshot(store, [p.variantId]), before);
 });

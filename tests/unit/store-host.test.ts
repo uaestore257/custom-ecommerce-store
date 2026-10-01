@@ -2,7 +2,13 @@
 // slug-to-store lookup is covered in tests/db/storefront-catalog.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isPlatformBusinessHost, matchStoreHost, parseStoreDomains, storeHostConfig } from "../../lib/store-host";
+import {
+  isPlatformBusinessHost,
+  matchStoreHost,
+  parseStoreDomains,
+  storefrontUrlForSlug,
+  storeHostConfig,
+} from "../../lib/store-host";
 
 const config = (extra: Record<string, string> = {}) =>
   storeHostConfig({ ADMIN_HOST: "admin.shops.test", PLATFORM_ROOT_DOMAIN: "shops.test", NODE_ENV: "production", ...extra } as unknown as NodeJS.ProcessEnv);
@@ -11,6 +17,23 @@ test("a store's subdomain of the platform root domain names that store", () => {
   assert.deepEqual(matchStoreHost("nest-and-oak.shops.test", config()), { kind: "store", slug: "nest-and-oak" });
   assert.deepEqual(matchStoreHost("Nest-And-Oak.Shops.Test.", config()), { kind: "store", slug: "nest-and-oak" }, "case and trailing dot");
   assert.deepEqual(matchStoreHost("nest-and-oak.shops.test:3000", config()), { kind: "store", slug: "nest-and-oak" }, "port ignored");
+});
+
+test("storefront preview URLs use the selected store's resolved host and preserve app origin", () => {
+  const localConfig = config({
+    ADMIN_HOST: "admin.localhost:3000",
+    PLATFORM_ROOT_DOMAIN: "localhost",
+    NODE_ENV: "development",
+  });
+  const preview = storefrontUrlForSlug("store-a", "http://admin.localhost:3001/admin", localConfig);
+  assert.equal(preview, "http://store-a.localhost:3001/");
+  assert.deepEqual(matchStoreHost(new URL(preview!).host, localConfig), { kind: "store", slug: "store-a" });
+
+  const mappedConfig = config({ STORE_DOMAINS: "shop.client.test=store-a" });
+  assert.equal(
+    storefrontUrlForSlug("store-a", "https://admin.shops.test/admin", mappedConfig),
+    "https://shop.client.test/",
+  );
 });
 
 test("a mapped custom domain names its store, and wins over everything but the admin host", () => {

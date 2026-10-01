@@ -15,9 +15,39 @@ import { isE164Phone } from "./standards";
 import { isStoreIdCookieValue } from "./storefront-cookie";
 import { isEmail, isUaePhone } from "./validation";
 
-/** The only payment methods an order can use in this phase (no payment provider). */
-export const CHECKOUT_PAYMENT_METHODS = ["cash_on_delivery", "bank_transfer"] as const;
+/** Methods supported by the checkout core; unavailable providers are filtered server-side. */
+export const CHECKOUT_PAYMENT_METHODS = [
+  "cash_on_delivery",
+  "bank_transfer",
+  "cash_on_pickup",
+  "stripe_checkout",
+  "jazzcash",
+  "easypaisa",
+] as const;
 export type CheckoutPaymentMethod = (typeof CHECKOUT_PAYMENT_METHODS)[number];
+export type CheckoutFulfillmentMethod = "DELIVERY" | "PICKUP";
+
+export function calculateDeliveryMinor(
+  products: readonly { deliveryFeeMinor: bigint; freeDelivery: boolean; pickupOnly: boolean; quantity: number }[],
+  fulfillmentMethod: CheckoutFulfillmentMethod,
+): { ok: true; deliveryMinor: bigint } | { ok: false; reason: "pickup-required" | "invalid-product" } {
+  if (products.some((product) => product.freeDelivery && product.pickupOnly)) {
+    return { ok: false, reason: "invalid-product" };
+  }
+  if (fulfillmentMethod === "PICKUP") return { ok: true, deliveryMinor: BigInt(0) };
+  if (products.some((product) => product.pickupOnly)) return { ok: false, reason: "pickup-required" };
+  return {
+    ok: true,
+    deliveryMinor: products.reduce(
+      (sum, product) =>
+        sum +
+        (product.freeDelivery
+          ? BigInt(0)
+          : product.deliveryFeeMinor * BigInt(product.quantity)),
+      BigInt(0),
+    ),
+  };
+}
 
 export const CHECKOUT_LIMITS = {
   name: 80,
@@ -28,17 +58,18 @@ export const CHECKOUT_LIMITS = {
   maxQuantity: 999,
 } as const;
 
-export type CheckoutField = "name" | "email" | "phone" | "address" | "city" | "paymentMethod";
+export type CheckoutField = "name" | "email" | "phone" | "address" | "city" | "fulfillmentMethod" | "paymentMethod";
 export type CheckoutFieldErrors = Partial<Record<CheckoutField, string>>;
 
 export interface CleanCheckout {
   storeId: string;
   idempotencyKey: string;
   expectedTotalMinor: bigint;
+  fulfillmentMethod: CheckoutFulfillmentMethod;
   /** One line per product, sorted by product id. */
   items: { productId: string; quantity: number }[];
   customer: { name: string; email: string; phone: string };
-  address: { line1: string; city: string; region: string | null };
+  address: { line1: string; city: string; region: string | null } | null;
   paymentMethod: CheckoutPaymentMethod;
 }
 
@@ -102,6 +133,8 @@ export function validateCheckoutFields(input: unknown, countryCode: string): Che
   const address = str(raw, "address");
   const city = str(raw, "city");
   const isUae = countryCode === "AE";
+  const fulfillmentMethod = str(raw, "fulfillmentMethod");
+  const pickup = fulfillmentMethod === "PICKUP";
 
   if (name.length < 2) errors.name = "Please enter your full name.";
   else if (name.length > CHECKOUT_LIMITS.name) errors.name = `Keep this under ${CHECKOUT_LIMITS.name} characters.`;
@@ -112,14 +145,21 @@ export function validateCheckoutFields(input: unknown, countryCode: string): Che
       ? "Please enter a UAE phone number, e.g. 050 123 4567."
       : "Please enter your phone number with the country code, e.g. +44 20 7946 0000.";
   }
-  if (address.length < 5) errors.address = "Please enter your delivery address.";
-  else if (address.length > CHECKOUT_LIMITS.address) errors.address = `Keep this under ${CHECKOUT_LIMITS.address} characters.`;
-  if (isUae) {
+  if (fulfillmentMethod !== "DELIVERY" && fulfillmentMethod !== "PICKUP") {
+    errors.fulfillmentMethod = "Choose delivery or pickup.";
+  }
+  if (!pickup && address.length < 5) errors.address = "Please enter your delivery address.";
+  else if (!pickup && address.length > CHECKOUT_LIMITS.address) errors.address = `Keep this under ${CHECKOUT_LIMITS.address} characters.`;
+  if (!pickup && isUae) {
     if (!(UAE_EMIRATES as readonly string[]).includes(city)) errors.city = "Please choose your emirate.";
-  } else if (!city) errors.city = "Please enter your city.";
-  else if (city.length > CHECKOUT_LIMITS.city) errors.city = `Keep this under ${CHECKOUT_LIMITS.city} characters.`;
+  } else if (!pickup && !city) errors.city = "Please enter your city.";
+  else if (!pickup && city.length > CHECKOUT_LIMITS.city) errors.city = `Keep this under ${CHECKOUT_LIMITS.city} characters.`;
   if (!(CHECKOUT_PAYMENT_METHODS as readonly string[]).includes(str(raw, "paymentMethod"))) {
     errors.paymentMethod = "Please choose a payment method.";
+  } else if (fulfillmentMethod === "PICKUP" && str(raw, "paymentMethod") === "cash_on_delivery") {
+    errors.paymentMethod = "Choose Pay on pickup for pickup orders.";
+  } else if (fulfillmentMethod === "DELIVERY" && str(raw, "paymentMethod") === "cash_on_pickup") {
+    errors.paymentMethod = "Pay on pickup is only available for pickup orders.";
   }
   return errors;
 }
@@ -152,13 +192,17 @@ export function validateCheckout(input: unknown, countryCode: string): CheckoutV
       storeId: raw.storeId,
       idempotencyKey: raw.idempotencyKey,
       expectedTotalMinor: BigInt(expected),
+      fulfillmentMethod: str(raw, "fulfillmentMethod") as CheckoutFulfillmentMethod,
       items,
       customer: {
         name: str(raw, "name"),
         email: str(raw, "email").toLowerCase(),
         phone: toE164Phone(str(raw, "phone"), countryCode)!,
       },
-      address: { line1: str(raw, "address"), city, region: countryCode === "AE" ? city : null },
+      address:
+        str(raw, "fulfillmentMethod") === "PICKUP"
+          ? null
+          : { line1: str(raw, "address"), city, region: countryCode === "AE" ? city : null },
       paymentMethod: str(raw, "paymentMethod") as CheckoutPaymentMethod,
     },
   };
@@ -169,19 +213,26 @@ export function validateCheckout(input: unknown, countryCode: string): CheckoutV
 /** A placed order, as the confirmation screen shows it. Money as minor-unit strings. */
 export interface PlacedOrder {
   orderNumber: string;
+  paymentTransactionId?: string;
   status: "PENDING";
   paymentStatus: "UNPAID";
   paymentMethod: CheckoutPaymentMethod;
+  fulfillmentMethod: CheckoutFulfillmentMethod;
   currency: string;
   lines: { name: string; quantity: number; lineTotalMinor: string }[];
   subtotalMinor: string;
   shippingMinor: string;
   totalMinor: string;
   deliveryTo: string;
+  paymentInfo?: { label: string; value: string }[];
 }
 
+export type ProviderCheckoutRedirect =
+  | { kind: "redirect"; url: string }
+  | { kind: "post"; action: string; fields: Record<string, string> };
+
 export type PlaceOrderResult =
-  | { ok: true; order: PlacedOrder; duplicate: boolean }
+  | { ok: true; order: PlacedOrder; duplicate: boolean; checkout?: ProviderCheckoutRedirect }
   | {
       ok: false;
       error: string;

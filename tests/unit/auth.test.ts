@@ -151,14 +151,16 @@ test("every admin page and layout checks access itself, with the guard that fits
   ]);
   const platformOnlyStorePages = new Set([
     join("app", "admin", "stores", "[storeId]", "settings", "page.tsx"),
-    join("app", "admin", "stores", "[storeId]", "customers", "page.tsx"),
   ]);
+  const storeCustomerPage = join("app", "admin", "stores", "[storeId]", "customers", "page.tsx");
   for (const file of entries) {
     const source = readFileSync(file, "utf8");
     if (viewer.has(file)) {
       assert.match(source, /await requireAdminViewer\(\)/, `${file} must call requireAdminViewer()`);
+    } else if (file === storeCustomerPage) {
+      assert.match(source, /await requireStorePage\(storeId,\s*"customers"\)/, `${file} must guard the Customers section`);
     } else if (platformOnlyStorePages.has(file)) {
-      assert.match(source, /await requireAdminPage\(\)/, `${file} must stay Platform-Owner-only`);
+      assert.match(source, /await requireAdminPage\(\)/, `${file} must remain platform-only`);
     } else if (/[\\/]stores[\\/]\[storeId\][\\/]/.test(file)) {
       // Inside one store: the platform owner, or that store's OWNER on its own host.
       assert.match(source, /await requireStorePage\(storeId/, `${file} must call requireStorePage(storeId)`);

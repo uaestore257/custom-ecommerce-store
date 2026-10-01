@@ -57,7 +57,6 @@ export function storeNav(storeId: string): NavItem[] {
 
 export function storeNavForViewer(storeId: string, platform: boolean, role: StoreMembershipRole = "OWNER"): NavItem[] {
   const items = storeNav(storeId)
-    .filter((item) => platform || item.label !== "Customers")
     .filter((item) => {
       const section: Partial<Record<NavItem["label"], StoreSection>> = {
         Overview: "overview",

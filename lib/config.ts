@@ -58,6 +58,7 @@ export const ORDER_STATUSES: { value: OrderStatus; label: string }[] = [
 export const CURRENCIES: { value: CurrencyCode; label: string }[] = [
   { value: "AED", label: "AED — UAE Dirham" },
   { value: "SAR", label: "SAR — Saudi Riyal" },
+  { value: "PKR", label: "PKR — Pakistani Rupee" },
   { value: "USD", label: "USD — US Dollar" },
   { value: "EUR", label: "EUR — Euro" },
   { value: "GBP", label: "GBP — British Pound" },
@@ -114,6 +115,30 @@ export const PAYMENT_METHODS: {
     id: "online_card",
     label: "Online card payment",
     description: "Needs a payment provider (not connected in this demo).",
+    requiresProvider: true,
+  },
+  {
+    id: "cash_on_pickup",
+    label: "Pay on pickup",
+    description: "Customer pays in person when collecting the order.",
+    requiresProvider: false,
+  },
+  {
+    id: "stripe_checkout",
+    label: "Card (Stripe Checkout)",
+    description: "Hosted card payment for UAE stores.",
+    requiresProvider: true,
+  },
+  {
+    id: "jazzcash",
+    label: "JazzCash",
+    description: "Hosted payment for Pakistan stores.",
+    requiresProvider: true,
+  },
+  {
+    id: "easypaisa",
+    label: "Easypaisa",
+    description: "Hosted payment for Pakistan stores.",
     requiresProvider: true,
   },
 ];

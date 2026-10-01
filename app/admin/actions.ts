@@ -151,10 +151,16 @@ export async function updateStoreAction(storeId: unknown, input: unknown) {
   return asPlatformOwner("updateStore", (owner) => updateAdminStore(owner, getDb(), storeId, input));
 }
 
-export async function updateOwnStoreSettingsAction(storeId: unknown, input: unknown) {
-  if (!isId(storeId)) return badRequest;
-  return asStoreWriter("updateOwnStoreSettings", storeId, "store-settings", (grant) =>
-    updateStoreOwnerSettings(getDb(), storeId, grant.user.id, input),
+export async function updateOwnStoreSettingsAction(input: unknown) {
+  return guarded(
+    "updateOwnStoreSettings",
+    async () => {
+      const viewer = await requireAdminViewer();
+      if (viewer.kind !== "store" || viewer.role !== "OWNER") throw new AccessDenied("forbidden");
+      if (viewer.access !== "write") throw new AccessDenied("read-only");
+      return viewer;
+    },
+    (viewer) => updateStoreOwnerSettings(getDb(), viewer.store.id, viewer.user.id, input),
   );
 }
 

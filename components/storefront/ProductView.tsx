@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ProductImage } from "@/components/ProductImage";
 import { Breadcrumbs } from "@/components/ui";
 import { useStorefront } from "@/lib/storefront";
-import { categoryNameOf, formatStoreMoney, isProductOnSale } from "@/lib/storefront-cart";
+import { categoryNameOf, formatStoreMoney, isProductOnSale, productDeliveryDescription } from "@/lib/storefront-cart";
 import type { StorefrontProduct } from "@/lib/storefront-types";
 import { AddToCartButton, QuantitySelector } from "./CartControls";
 import { PRODUCT_GRID, ProductCard } from "./ProductCard";
@@ -25,7 +25,12 @@ export function ProductView({ product }: { product: StorefrontProduct }) {
   // it so the page and the cart can never show different prices or stock.
   const catalogCopy = view?.products.find((p) => p.id === product.id);
   const catalogIsStale =
-    !catalogCopy || catalogCopy.priceMinor !== product.priceMinor || catalogCopy.stock !== product.stock;
+    !catalogCopy ||
+    catalogCopy.priceMinor !== product.priceMinor ||
+    catalogCopy.stock !== product.stock ||
+    catalogCopy.deliveryFeeMinor !== product.deliveryFeeMinor ||
+    catalogCopy.freeDelivery !== product.freeDelivery ||
+    catalogCopy.pickupOnly !== product.pickupOnly;
   useEffect(() => {
     if (catalogIsStale) router.refresh();
   }, [catalogIsStale, router]);
@@ -91,6 +96,7 @@ export function ProductView({ product }: { product: StorefrontProduct }) {
               </>
             )}
           </div>
+          <p className="mt-2 text-sm font-medium text-slate-700">{productDeliveryDescription(product, store)}</p>
           {product.description && (
             <p className="mt-4 whitespace-pre-line leading-relaxed text-slate-600 sm:mt-6">{product.description}</p>
           )}

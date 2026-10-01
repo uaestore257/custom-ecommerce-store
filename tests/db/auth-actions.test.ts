@@ -76,7 +76,7 @@ interface Target {
 const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise<ActionResult<unknown>>> => ({
   createStoreAction: () => actions.createStoreAction(newStore()),
   updateStoreAction: () => actions.updateStoreAction(t.storeId, { name: "Hijacked", status: "ACTIVE" }),
-  updateOwnStoreSettingsAction: () => actions.updateOwnStoreSettingsAction(t.storeId, {}),
+  updateOwnStoreSettingsAction: () => actions.updateOwnStoreSettingsAction({}),
   setStoreOwnerAction: () => actions.setStoreOwnerAction(t.storeId, { ownerName: "Crafted", ownerEmail: `crafted-owner-${uid()}@example.com` }),
   setStoreStatusAction: () => actions.setStoreStatusAction(t.storeId, "SUSPENDED"),
   archiveStoreAction: () => actions.archiveStoreAction(t.storeId),
@@ -480,7 +480,7 @@ test("Manager and Staff sessions stay store-scoped and respect their role limits
       await actions.setInquiryStatusAction("store-b", "missing-message", "NEW", "READ"),
       { ok: false, error: FORBIDDEN },
     );
-    assert.deepEqual(await actions.updateOwnStoreSettingsAction("store-a", {}), { ok: false, error: FORBIDDEN });
+    assert.deepEqual(await actions.updateOwnStoreSettingsAction({}), { ok: false, error: FORBIDDEN });
     assert.deepEqual(await actions.createStoreAction(newStore()), { ok: false, error: FORBIDDEN });
     assert.equal((await actions.updateStoreMemberRoleAction(ownerMembership.id, "STAFF")).ok, false);
     assert.equal((await actions.revokeStoreMemberAction(ownerMembership.id)).ok, false);
@@ -525,7 +525,10 @@ test("Store Owner settings update only the owner store and ignore slug, role and
   const created = await actions.createStoreAction(input);
   assert.ok(created.ok, JSON.stringify(created));
   const storeId = created.data.id;
-  const store = await db.store.findUniqueOrThrow({ where: { id: storeId }, select: { slug: true, status: true } });
+  const store = await db.store.findUniqueOrThrow({
+    where: { id: storeId },
+    select: { slug: true, status: true, countryCode: true, baseCurrency: true, timezone: true, defaultLanguage: true },
+  });
   const host = `${store.slug}.test.local`;
   let storeOwnerId = "";
 
@@ -536,45 +539,37 @@ test("Store Owner settings update only the owner store and ignore slug, role and
     actAs(cookie, host);
 
     const settings = {
+      paymentMethods: { cash_on_delivery: true, card_on_delivery: false, bank_transfer: true, cash_on_pickup: true },
+      bankTransfer: {
+        bankName: "Local Bank",
+        accountName: "Nest and Oak",
+        accountNumber: "123456789",
+        iban: "",
+        swiftCode: "",
+        instructions: "Use the order number as the payment reference.",
+      },
+      stripe: { enabled: true, accountId: "acct_12345678", secretRef: "vault:store-a/stripe/test" },
       name: "Owner Updated Store",
       slug: "attempted-slug-change",
       status: "ACTIVE",
-      businessType: "electronics",
-      countryCode: "GB",
-      baseCurrency: "GBP",
-      timezone: "Europe/London",
-      defaultLanguage: "en",
-      languages: ["en"],
-      accentColor: "#abcdef",
-      heroTitle: "A new welcome",
-      heroText: "Updated by the store owner.",
-      aboutText: "",
-      tagline: "Owner managed",
-      deliveryFee: "4.50",
-      freeDeliveryThreshold: "80",
-      paymentMethods: { cash_on_delivery: false, card_on_delivery: false, bank_transfer: true, online_card: true },
-      contactEmail: "store@example.com",
-      contactPhone: "",
-      contactAddress: "1 Store Street",
-      ownerName: "Must not change",
       ownerEmail: "must-not-change@example.com",
       role: "STAFF",
       isPlatformOwner: true,
     };
-    const result = await actions.updateOwnStoreSettingsAction(storeId, settings);
+    const result = await actions.updateOwnStoreSettingsAction(settings);
     assert.ok(result.ok, JSON.stringify(result));
 
     const updated = await db.store.findUniqueOrThrow({
       where: { id: storeId },
       include: { memberships: { include: { user: true } }, paymentMethods: true },
     });
-    assert.equal(updated.name, settings.name);
+    assert.equal(updated.name, input.name, "store owner cannot change the store name");
     assert.equal(updated.slug, store.slug, "store owner cannot change hostname slug");
     assert.equal(updated.status, store.status, "store owner cannot change lifecycle status");
-    assert.equal(updated.countryCode, settings.countryCode);
-    assert.equal(updated.baseCurrency, settings.baseCurrency);
-    assert.equal(updated.timezone, settings.timezone);
-    assert.equal(updated.defaultLanguage, settings.defaultLanguage);
+    assert.equal(updated.countryCode, store.countryCode, "payment settings cannot alter the country");
+    assert.equal(updated.baseCurrency, store.baseCurrency, "payment settings cannot alter the currency");
+    assert.equal(updated.timezone, store.timezone, "payment settings cannot alter the timezone");
+    assert.equal(updated.defaultLanguage, store.defaultLanguage, "payment settings cannot alter the language");
     assert.equal(updated.memberships.length, 1);
     assert.equal(updated.memberships[0].role, "OWNER", "submitted role cannot change membership");
     assert.equal(updated.memberships[0].user.id, storeOwnerId);
@@ -582,23 +577,28 @@ test("Store Owner settings update only the owner store and ignore slug, role and
     assert.equal(updated.memberships[0].user.isPlatformOwner, false);
     assert.equal(updated.paymentMethods.find(({ method }) => method === "bank_transfer")?.enabled, true);
     assert.equal(updated.paymentMethods.find(({ method }) => method === "online_card")?.enabled, false);
+    assert.equal(updated.paymentMethods.find(({ method }) => method === "cash_on_pickup")?.enabled, true);
+    const bankAccount = await db.paymentProviderAccount.findFirstOrThrow({ where: { storeId, provider: "bank_transfer" } });
+    assert.equal((bankAccount.publicConfig as { bankName: string }).bankName, "Local Bank");
+    const stripeAccount = await db.paymentProviderAccount.findFirstOrThrow({ where: { storeId, provider: "stripe_connect" } });
+    assert.equal(stripeAccount.secretRef, "vault:store-a/stripe/test");
+    assert.equal(stripeAccount.mode, "TEST");
+    assert.equal(updated.paymentMethods.find(({ method }) => method === "stripe_checkout")?.enabled, false);
 
     const otherStoreBefore = await db.store.findUniqueOrThrow({ where: { id: "store-b" }, select: { name: true } });
-    assert.deepEqual(
-      await actions.updateOwnStoreSettingsAction("store-b", { ...settings, name: "Cross-store attempt" }),
-      { ok: false, error: FORBIDDEN },
-    );
+    const crossStoreAttempt = await actions.updateOwnStoreSettingsAction({ ...settings, storeId: "store-b" });
+    assert.ok(crossStoreAttempt.ok, "store identity is derived from the authenticated host");
     assert.equal((await db.store.findUniqueOrThrow({ where: { id: "store-b" }, select: { name: true } })).name, otherStoreBefore.name);
 
     await db.storeMembership.update({
       where: { userId_storeId: { userId: storeOwnerId, storeId } },
       data: { role: "MANAGER" },
     });
-    assert.deepEqual(await actions.updateOwnStoreSettingsAction(storeId, { ...settings, name: "Manager attempt" }), {
+    assert.deepEqual(await actions.updateOwnStoreSettingsAction(settings), {
       ok: false,
       error: FORBIDDEN,
     });
-    assert.equal((await db.store.findUniqueOrThrow({ where: { id: storeId }, select: { name: true } })).name, settings.name);
+    assert.equal((await db.store.findUniqueOrThrow({ where: { id: storeId }, select: { name: true } })).name, input.name);
   } finally {
     setRequestRuntimeForTests(null);
     await db.store.delete({ where: { id: storeId } });
@@ -673,7 +673,7 @@ test("settings can't change status, owner, or another store through smuggled fie
   const result = await actions.updateStoreAction(id, {
     name: "Renamed Store", slug: detail.slug, businessType: "furniture", countryCode: "GB", baseCurrency: "GBP",
     timezone: "Europe/London", defaultLanguage: "en", languages: ["en"], accentColor: "#123456",
-    heroTitle: "Hello", deliveryFee: "0",
+    heroTitle: "Hello",
     // Smuggled:
     status: "ACTIVE", ownerEmail: "mallory@example.com", ownerName: "Mallory", storeId: "store-b", isPlatformOwner: true, role: "OWNER",
   });

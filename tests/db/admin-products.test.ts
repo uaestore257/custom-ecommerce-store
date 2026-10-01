@@ -63,6 +63,9 @@ const productInput = (categoryId: string, overrides: Record<string, unknown> = {
   expectedStock: "5",
   status: "ACTIVE",
   featured: false,
+  deliveryFee: "0",
+  freeDelivery: false,
+  pickupOnly: false,
   ...overrides,
 });
 
@@ -87,6 +90,9 @@ test("product creation associates the product with the selected store", async ()
   assert.equal(row.variants[0].isDefault, true);
   assert.equal(row.variants[0].currency, "GBP");
   assert.equal(row.variants[0].priceMinor, 12950n);
+  assert.equal(row.deliveryFeeMinor, 0n);
+  assert.equal(row.freeDelivery, false);
+  assert.equal(row.pickupOnly, false);
   assert.equal(row.translations[0].locale, "en");
   assert.equal(row.translations[0].slug, "store-a-table");
 });
@@ -122,6 +128,7 @@ test("product update succeeds within its own store", async () => {
     status: "DRAFT",
     featured: true,
     imageUrl: "https://images.example.com/table.jpg",
+    deliveryFee: "4.25",
   }));
   assert.ok(result.ok, JSON.stringify(result));
   const p = (await getAdminProduct(db, storeA, productA))!;
@@ -133,6 +140,29 @@ test("product update succeeds within its own store", async () => {
   assert.equal(p.status, "DRAFT");
   assert.equal(p.featured, true);
   assert.equal(p.imageUrl, "https://images.example.com/table.jpg");
+  assert.equal(p.deliveryFee, "4.25");
+  assert.equal(p.deliveryFeeDisplay.includes("4.25"), true);
+  assert.equal(p.freeDelivery, false);
+  assert.equal(p.pickupOnly, false);
+});
+
+test("product free delivery and pickup-only choices persist without a fee", async () => {
+  const free = await createAdminProduct(db, storeA, productInput(categoryA, {
+    freeDelivery: true,
+    deliveryFee: "0",
+  }));
+  const pickup = await createAdminProduct(db, storeA, productInput(categoryA, {
+    pickupOnly: true,
+    deliveryFee: "0",
+  }));
+  assert.ok(free.ok && pickup.ok);
+  if (!free.ok || !pickup.ok) return;
+  const freeProduct = await getAdminProduct(db, storeA, free.data.id);
+  const pickupProduct = await getAdminProduct(db, storeA, pickup.data.id);
+  assert.equal(freeProduct?.freeDelivery, true);
+  assert.equal(freeProduct?.deliveryFee, "0.00");
+  assert.equal(pickupProduct?.pickupOnly, true);
+  assert.equal(pickupProduct?.deliveryFee, "0.00");
 });
 
 test("invalid product input is rejected", async () => {

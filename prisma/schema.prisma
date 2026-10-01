@@ -71,6 +71,14 @@ enum PaymentStatus {
   PAID
 }
 
+enum PaymentTransactionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 enum InquiryStatus {
   NEW
   READ
@@ -100,6 +108,7 @@ model Currency {
 
   stores Store[]
   orders Order[]
+  paymentTransactions PaymentTransaction[]
 }
 
 /// BCP 47 language tag, with its writing direction (Arabic = RTL).
@@ -336,6 +345,8 @@ model Store {
   shippingRates   ShippingRate[]
   paymentAccounts PaymentProviderAccount[]
   paymentMethods  StorePaymentMethod[]
+  paymentTransactions PaymentTransaction[]
+  paymentWebhookEvents PaymentWebhookEvent[]
   auditEvents     AuditEvent[]
   inquiries       Inquiry[]
 
@@ -416,6 +427,9 @@ model Product {
   categoryId String?
   status     ProductStatus @default(DRAFT)
   featured   Boolean       @default(false)
+  deliveryFeeMinor BigInt  @default(0)
+  freeDelivery     Boolean @default(false)
+  pickupOnly       Boolean @default(false)
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -571,6 +585,7 @@ model Order {
   // Composite: the customer must belong to the SAME store.
   customer    Customer?   @relation(fields: [customerId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
   items       OrderItem[]
+  paymentTransactions PaymentTransaction[]
 
   @@unique([storeId, number])
   @@unique([id, storeId, currency])
@@ -706,6 +721,8 @@ model PaymentProviderAccount {
 
   store   Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   methods StorePaymentMethod[]
+  transactions PaymentTransaction[]
+  webhookEvents PaymentWebhookEvent[]
 
   @@unique([id, storeId])
 }
@@ -723,4 +740,54 @@ model StorePaymentMethod {
   providerAccount PaymentProviderAccount? @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
 
   @@unique([storeId, method])
+}
+
+/// One store-scoped payment attempt. Provider secrets and callback payloads
+/// are never persisted here; provider references are non-secret identifiers.
+model PaymentTransaction {
+  id                String                   @id @default(cuid())
+  storeId           String
+  orderId           String
+  currency          String                   @db.Char(3)
+  providerAccountId String?
+  method            String
+  amountMinor       BigInt
+  status            PaymentTransactionStatus @default(PENDING)
+  idempotencyKey    String                   @db.VarChar(64)
+  providerReference String?                  @db.VarChar(255)
+  failureCode       String?                  @db.VarChar(80)
+  settledAt         DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  store           Store                  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order                  @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Cascade, onUpdate: Restrict)
+  currencyRef     Currency               @relation(fields: [currency], references: [code])
+  providerAccount PaymentProviderAccount? @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
+  webhookEvents  PaymentWebhookEvent[]
+
+  @@unique([storeId, idempotencyKey])
+  @@unique([id, storeId])
+  @@unique([providerAccountId, providerReference])
+  @@index([storeId, orderId, createdAt])
+}
+
+/// A signed provider event is recorded only after it has been authenticated;
+/// the unique provider event ID makes retries idempotent without retaining raw payloads.
+model PaymentWebhookEvent {
+  id                String   @id @default(cuid())
+  storeId           String
+  providerAccountId String
+  transactionId     String?
+  eventId           String   @db.VarChar(255)
+  eventType         String   @db.VarChar(120)
+  processedAt       DateTime?
+  createdAt         DateTime @default(now())
+
+  store           Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  providerAccount PaymentProviderAccount @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  transaction     PaymentTransaction? @relation(fields: [transactionId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([providerAccountId, eventId])
+  @@index([storeId, createdAt])
 }

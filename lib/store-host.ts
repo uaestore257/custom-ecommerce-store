@@ -89,3 +89,24 @@ export function matchStoreHost(rawHost: string, config: StoreHostConfig): StoreH
   }
   return { kind: "unknown" };
 }
+
+/** Absolute storefront homepage URL for a store slug, using the same host mapping as requests. */
+export function storefrontUrlForSlug(slug: string, baseUrl: string, config: StoreHostConfig): string | null {
+  if (!SLUG.test(slug)) return null;
+
+  const customHost = [...config.customDomains].find(([, mappedSlug]) => mappedSlug === slug)?.[0];
+  const storefrontHost = customHost ?? (config.rootDomain ? `${slug}.${config.rootDomain}` : null);
+  if (!storefrontHost) return null;
+
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.hostname = storefrontHost;
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}

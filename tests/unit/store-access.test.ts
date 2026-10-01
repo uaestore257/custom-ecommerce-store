@@ -147,6 +147,7 @@ test("platform-only actions need the platform owner on the admin host; owner act
 });
 
 test("Manager and Staff section and action permissions do not extend to Owner controls", () => {
+  assert.equal(mayAccessStoreSection("OWNER", "customers"), true);
   for (const section of ["products", "categories", "orders", "messages", "team"] as const) {
     assert.equal(mayAccessStoreSection("MANAGER", section), true);
   }

@@ -10,6 +10,7 @@ import {
   restoreAdminStore,
   setAdminStoreStatus,
   updateAdminStore,
+  updateStoreOwnerSettings,
 } from "../../lib/server/admin/stores";
 import type { PlatformOwner } from "../../lib/server/auth/guards";
 import { getAuth } from "../../lib/server/auth/auth";
@@ -56,7 +57,7 @@ async function settingsFor(storeId: string, overrides: Record<string, unknown> =
     languages: d.languages, accentColor: d.accentColor ?? "#0f766e", logoUrl: d.logoUrl ?? "",
     contactEmail: d.contactEmail, contactPhone: d.contactPhone, contactAddress: d.contactAddress,
     tagline: d.content.tagline, heroTitle: d.content.heroTitle || "Welcome", heroText: d.content.heroText,
-    aboutText: d.content.aboutText, deliveryFee: d.delivery.fee || "0", freeDeliveryThreshold: d.delivery.freeOver,
+    aboutText: d.content.aboutText,
     paymentMethods: Object.fromEntries(d.paymentMethods.map((m) => [m.method, m.enabled])),
     ...overrides,
   };
@@ -172,8 +173,6 @@ test("updating a store persists supported changes", async () => {
     languages: ["en", "ar"],
     contactPhone: "+1 (415) 555-0123",
     tagline: "Furniture for every room",
-    deliveryFee: "12.50",
-    freeDeliveryThreshold: "200",
     paymentMethods: { cash_on_delivery: true, bank_transfer: true, online_card: true },
   }));
   assert.ok(result.ok, JSON.stringify(result));
@@ -184,11 +183,36 @@ test("updating a store persists supported changes", async () => {
   assert.deepEqual([...d.languages].sort(), ["ar", "en"]);
   assert.equal(d.contactPhone, "+14155550123");
   assert.equal(d.content.tagline, "Furniture for every room");
-  assert.equal(d.delivery.fee, "12.50");
-  assert.equal(d.delivery.freeOver, "200.00");
   const methods = Object.fromEntries(d.paymentMethods.map((m) => [m.method, m.enabled]));
   assert.equal(methods.bank_transfer, true);
   assert.equal(methods.online_card, false, "online card stays off: no payment provider");
+});
+
+test("Store Owner settings can change payment methods only", async () => {
+  const created = await createAdminStore(actor, db, newStore({ name: "Payment settings test" }));
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const before = (await getAdminStoreDetail(db, created.data.id))!;
+  const result = await updateStoreOwnerSettings(db, created.data.id, actor.userId, {
+    paymentMethods: { cash_on_delivery: false, card_on_delivery: true, bank_transfer: true, online_card: true },
+    name: "Attempted name change",
+    slug: "attempted-slug",
+    status: "ACTIVE",
+    ownerEmail: "attacker@example.com",
+    contactAddress: "Attempted profile change",
+  });
+  assert.ok(result.ok, JSON.stringify(result));
+  const after = (await getAdminStoreDetail(db, created.data.id))!;
+  assert.equal(after.name, before.name);
+  assert.equal(after.slug, before.slug);
+  assert.equal(after.status, before.status);
+  assert.equal(after.ownerEmail, before.ownerEmail);
+  assert.equal(after.contactAddress, before.contactAddress);
+  const methods = Object.fromEntries(after.paymentMethods.map(({ method, enabled }) => [method, enabled]));
+  assert.equal(methods.cash_on_delivery, false);
+  assert.equal(methods.card_on_delivery, true);
+  assert.equal(methods.bank_transfer, true);
+  assert.equal(methods.online_card, false);
 });
 
 test("the currency can't change once prices exist", async () => {

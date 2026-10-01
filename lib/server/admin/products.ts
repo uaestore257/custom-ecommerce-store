@@ -57,8 +57,12 @@ function toAdminProduct(row: ProductRow, store: ProductStore): AdminProduct {
     categoryName: category?.name ?? "Uncategorised",
     price: variant ? fromMinorUnits(variant.priceMinor, store.minorUnits) : "",
     compareAtPrice: variant?.compareAtMinor ? fromMinorUnits(variant.compareAtMinor, store.minorUnits) : "",
+    deliveryFee: fromMinorUnits(row.deliveryFeeMinor, store.minorUnits),
     priceDisplay: variant ? money(variant.priceMinor) : "",
     compareAtDisplay: variant?.compareAtMinor ? money(variant.compareAtMinor) : "",
+    deliveryFeeDisplay: money(row.deliveryFeeMinor),
+    freeDelivery: row.freeDelivery,
+    pickupOnly: row.pickupOnly,
     imageUrl: row.images[0]?.url ?? "",
     stock: variant?.stock ?? 0,
     status: row.status,
@@ -136,6 +140,9 @@ export async function createAdminProduct(
         categoryId: values.categoryId,
         status: values.status,
         featured: values.featured,
+        deliveryFeeMinor: values.deliveryFeeMinor,
+        freeDelivery: values.freeDelivery,
+        pickupOnly: values.pickupOnly,
         // Nested records inherit storeId through the composite relations.
         translations: {
           create: [{
@@ -212,7 +219,14 @@ export async function updateAdminProduct(
       const key = { id_storeId: { id: productId, storeId: store.id } };
       await tx.product.update({
         where: key,
-        data: { categoryId: values.categoryId, status: values.status, featured: values.featured },
+        data: {
+          categoryId: values.categoryId,
+          status: values.status,
+          featured: values.featured,
+          deliveryFeeMinor: values.deliveryFeeMinor,
+          freeDelivery: values.freeDelivery,
+          pickupOnly: values.pickupOnly,
+        },
       });
       await tx.productTranslation.upsert({
         where: { productId_locale: { productId, locale: store.defaultLanguage } },

@@ -288,23 +288,6 @@ async function seedDemoStores(db: PrismaClient) {
           });
         }
 
-        // Delivery settings -> one domestic shipping zone and rate (data only)
-        await tx.shippingZone.create({
-          data: {
-            storeId: store.id,
-            name: "Domestic",
-            countries: { create: [{ countryCode }] },
-            rates: {
-              create: [{
-                name: "Standard delivery",
-                currency: s.currency,
-                priceMinor: money(s.deliveryFee),
-                freeOverMinor: s.freeDeliveryThreshold > 0 ? money(s.freeDeliveryThreshold) : null,
-              }],
-            },
-          },
-        });
-
         // Payment methods (configuration only, no provider connected)
         await tx.storePaymentMethod.createMany({
           data: s.paymentMethods.map((m, position) => ({

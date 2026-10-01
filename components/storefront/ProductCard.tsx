@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ProductImage } from "@/components/ProductImage";
-import { formatStoreMoney, isProductOnSale } from "@/lib/storefront-cart";
+import { formatStoreMoney, isProductOnSale, productDeliveryDescription } from "@/lib/storefront-cart";
 import type { StorefrontProduct, StorefrontStore } from "@/lib/storefront-types";
 import { AddToCartButton } from "./CartControls";
 
@@ -66,6 +66,7 @@ export function ProductCard({
             </p>
           )}
         </div>
+        <p className="mt-1 text-[11px] text-slate-600 sm:text-xs">{productDeliveryDescription(product, store)}</p>
         {!soldOut && product.stock <= 5 && (
           <p className="mt-1 text-[11px] font-medium text-amber-700 sm:text-xs">Only {product.stock} left</p>
         )}

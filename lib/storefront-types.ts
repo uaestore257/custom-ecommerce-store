@@ -10,6 +10,7 @@ import type { PaymentMethodId } from "./types";
 
 export interface StorefrontStore {
   id: string;
+  slug: string;
   name: string;
   logoUrl: string;
   accentColor: string;
@@ -26,9 +27,6 @@ export interface StorefrontStore {
   contactEmail: string;
   contactPhone: string;
   contactAddress: string;
-  /** null = this store has no delivery rate set up yet. */
-  deliveryFeeMinor: string | null;
-  freeDeliveryOverMinor: string | null;
   /** Enabled payment methods, in the store's order. */
   paymentMethods: PaymentMethodId[];
 }
@@ -49,6 +47,9 @@ export interface StorefrontProduct {
   categoryId: string;
   priceMinor: string;
   compareAtMinor: string | null;
+  deliveryFeeMinor: string;
+  freeDelivery: boolean;
+  pickupOnly: boolean;
   imageUrl: string;
   stock: number;
   featured: boolean;
@@ -59,4 +60,3 @@ export interface StorefrontCatalog {
   categories: StorefrontCategory[];
   products: StorefrontProduct[];
 }
-

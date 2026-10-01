@@ -16,12 +16,14 @@ import { PreviewStorefrontButton } from "./PreviewStorefrontButton";
 
 export function StoreOverviewView({
   store,
+  previewUrl,
   activeProducts,
   justCreated,
   platform,
   role,
 }: {
   store: AdminStoreDetail;
+  previewUrl: string | null;
   activeProducts: number;
   justCreated: boolean;
   platform: boolean;
@@ -58,7 +60,7 @@ export function StoreOverviewView({
         }
         actions={
           <>
-            {(platform || role === "OWNER") && <PreviewStorefrontButton store={store} />}
+            {(platform || role === "OWNER") && <PreviewStorefrontButton store={store} previewUrl={previewUrl} />}
             {platform ? (
               <>
                 <LinkButton href={`${base}/settings`} variant="secondary">
@@ -121,18 +123,12 @@ export function StoreOverviewView({
               <Detail label="Owner">{store.ownerName} · {store.ownerEmail}</Detail>
               <Detail label="Created">{formatDate(store.createdAt)}</Detail>
               <Detail label="Payment methods">{enabledPayments.join(", ") || "None enabled"}</Detail>
-              <Detail label="Delivery fee">
-                {store.delivery.fee ? `${store.baseCurrency} ${store.delivery.fee}` : "Not set"}
-                {store.delivery.freeOver && ` (free over ${store.baseCurrency} ${store.delivery.freeOver})`}
-              </Detail>
             </dl>
           </Card>
 
           <Card className="p-5 sm:p-6">
             <h2 className="text-lg font-semibold">Not connected yet</h2>
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-slate-600">
-              <li>Orders and customers still use browser demo data.</li>
-              <li>The public storefront still shows demo data, so changes here don&apos;t appear on it yet.</li>
               <li>Custom domains are planned for a later phase.</li>
             </ul>
           </Card>

@@ -6,16 +6,16 @@ PostgreSQL + Prisma 7.
 overview and settings (including archive/restore), products (list, add,
 edit, delete/archive) and categories (add, rename, reorder, delete); and the
 public storefront's reads — store branding and content, categories, active
-products, prices and stock (`lib/server/storefront/catalog.ts`, which only
+products, prices, stock and product-level delivery options (`lib/server/storefront/catalog.ts`, which only
 ever returns ACTIVE, non-archived stores and ACTIVE products, through
 `storeScope()`); checkout's orders (`lib/server/orders.ts`, see
 [Orders](#orders)); and the admin's order management
-([Order management](#order-management)).
+([Order management](#order-management)), plus the Store Owner's read-only,
+store-scoped Customers page.
 
 **Still browser demo data** (`lib/demo-db.ts`, localStorage): the cart's item
-list (product ids and quantities only — never prices), admin customers,
-agency settings and old demo order details. These are connected in later
-phases.
+list (product ids and quantities only — never prices), agency settings and
+old demo order details. These are connected in later phases.
 
 ## Orders
 
@@ -24,8 +24,10 @@ resolves the store on the server (store cookie or configured default, ACTIVE
 only) and calls `placeOrder()`:
 
 * **Nothing about money, stock or ownership is trusted from the browser.**
-  Prices, delivery and totals are recalculated from the database in the
-  store's currency (minor units). The browser sends the total it showed only
+  Prices, the sum of each product's delivery fee by quantity, pickup
+  eligibility and totals are recalculated from the database in the store's
+  currency (minor units). Free-delivery products contribute zero; pickup-only
+  products require the cart to use pickup. The browser sends the total it showed only
   so the server can refuse the order if it differs; the cart's storeId is
   only compared with the resolved store.
 * **One transaction** holds every write: stock decrements, customer, order
@@ -45,6 +47,8 @@ only) and calls `placeOrder()`:
   40 per 10 minutes per store for visitors without a trusted IP.
 * Customers are created once per store and email and never overwritten from
   the public form; each order keeps its own copy of the submitted details.
+  Store Owners can view a bounded, read-only list of customers for their
+  own store; Managers and Staff cannot access it.
 * Adding to the cart never reserves stock.
 
 ## Order management
@@ -257,13 +261,15 @@ so later migrations leave them in place (verified: a follow-up
 * Tax calculation and per-country legal requirements (which tax IDs,
   invoices and registrations each country needs) — to be verified per
   country; nothing here claims compliance.
-* Shipping-rate calculation, payment provider integration. Payment
+* Product delivery fees are supported directly on each product; the legacy
+  `ShippingZone` and `ShippingRate` tables remain for schema compatibility
+  but are not used by current checkout, settings or seed code.
+* Payment provider integration. Payment
   **secrets are never stored in the database**: `secretRef` points to a
   secret manager or environment variable.
 * Language switcher UI and right-to-left layout.
 * Domain routing (the storefront's store choice is a temporary cookie plus a
-  configured default); refunds, returns and editing orders; order emails;
-  moving admin customers from localStorage to the database; importing any
+  configured default); refunds, returns and editing orders; importing any
   data saved in browsers.
 * Data-residency rules differ by country (e.g. GDPR, Saudi PDPL); this
   phase uses a single database.

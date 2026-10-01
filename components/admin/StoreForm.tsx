@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { createStoreAction, updateOwnStoreSettingsAction, updateStoreAction } from "@/app/admin/actions";
+import { createStoreAction, updateStoreAction } from "@/app/admin/actions";
 import { buttonClass, errorProps, Field, inputClass, Notice } from "@/components/ui";
 import { PAYMENT_METHODS, STORE_STATUSES, STORE_TYPES } from "@/lib/config";
 import { slugify } from "@/lib/format";
@@ -16,7 +16,7 @@ import {
 } from "@/lib/admin/validation";
 import { isHexColor } from "@/lib/validation";
 
-type PaymentMethodId = (typeof PAYMENT_METHOD_IDS)[number];
+type PaymentMethodId = (typeof PAYMENT_METHODS)[number]["id"];
 
 interface StoreFormValues {
   name: string;
@@ -35,8 +35,6 @@ interface StoreFormValues {
   accentColor: string;
   // Edit-only fields
   logoUrl: string;
-  deliveryFee: string;
-  freeDeliveryThreshold: string;
   paymentMethods: Record<PaymentMethodId, boolean>;
   tagline: string;
   heroTitle: string;
@@ -56,7 +54,7 @@ function initialValues(store?: AdminStoreDetail): StoreFormValues {
       name: "", businessType: "", status: "DRAFT", ownerName: "", ownerEmail: "", ownerPassword: "", ownerPasswordConfirm: "",
       countryCode: "", baseCurrency: "", timezone: "", defaultLanguage: "", languages: [],
       slug: "", accentColor: "#0f766e",
-      logoUrl: "", deliveryFee: "", freeDeliveryThreshold: "", paymentMethods: methods,
+      logoUrl: "", paymentMethods: methods,
       tagline: "", heroTitle: "", heroText: "", aboutText: "", contactEmail: "", contactPhone: "", contactAddress: "",
     };
   }
@@ -67,7 +65,7 @@ function initialValues(store?: AdminStoreDetail): StoreFormValues {
     countryCode: store.countryCode, baseCurrency: store.baseCurrency, timezone: store.timezone,
     defaultLanguage: store.defaultLanguage, languages: store.languages,
     slug: store.slug, accentColor: store.accentColor ?? "#0f766e",
-    logoUrl: store.logoUrl ?? "", deliveryFee: store.delivery.fee, freeDeliveryThreshold: store.delivery.freeOver,
+    logoUrl: store.logoUrl ?? "",
     paymentMethods: methods, ...store.content,
     contactEmail: store.contactEmail, contactPhone: store.contactPhone, contactAddress: store.contactAddress,
   };
@@ -82,12 +80,10 @@ export function StoreForm({
   mode,
   store,
   reference,
-  readOnly = false,
 }: {
-  mode: "create" | "edit" | "owner-edit";
+  mode: "create" | "edit";
   store?: AdminStoreDetail;
   reference: ReferenceOptions;
-  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [values, setValues] = useState(() => initialValues(store));
@@ -96,8 +92,7 @@ export function StoreForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
-  const isEdit = mode !== "create";
-  const isOwnerEdit = mode === "owner-edit";
+  const isEdit = mode === "edit";
   const currencyLocked = Boolean(isEdit && store?.hasPrices);
 
   // Lookup sets for the shared validators (the server has its own copy).
@@ -144,12 +139,9 @@ export function StoreForm({
     startTransition(async () => {
       const submittedValues = values;
       if (!isEdit) setValues((current) => ({ ...current, ownerPassword: "", ownerPasswordConfirm: "" }));
-      const result =
-        isOwnerEdit && store
-          ? await updateOwnStoreSettingsAction(store.id, submittedValues)
-          : isEdit && store
-            ? await updateStoreAction(store.id, submittedValues)
-            : await createStoreAction(submittedValues);
+      const result = isEdit && store
+        ? await updateStoreAction(store.id, submittedValues)
+        : await createStoreAction(submittedValues);
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {});
         setFormError(result.error);
@@ -180,7 +172,6 @@ export function StoreForm({
         autoComplete={opts.autoComplete}
         inputMode={opts.inputMode}
         placeholder={opts.placeholder}
-        disabled={isOwnerEdit && readOnly}
         value={values[key] as string}
         onChange={(e) => set(key, e.target.value as never)}
         className={inputClass(!!errors[key])}
@@ -198,7 +189,7 @@ export function StoreForm({
       <select
         {...errorProps(`store-${key}`, errors[key])}
         value={values[key] as string}
-        disabled={opts.disabled || (isOwnerEdit && readOnly)}
+        disabled={opts.disabled}
         onChange={(e) => set(key, e.target.value as never)}
         className={`${inputClass(!!errors[key])} disabled:bg-slate-100 disabled:text-slate-500`}
       >
@@ -280,7 +271,6 @@ export function StoreForm({
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-teal-700"
-                  disabled={isOwnerEdit && readOnly}
                   checked={values.languages.includes(l.code)}
                   onChange={(e) => toggleLanguage(l.code, e.target.checked)}
                 />
@@ -301,29 +291,18 @@ export function StoreForm({
       </Section>
 
       <Section title="Branding & web address">
-        {isOwnerEdit ? (
-          <Field label="Store URL" htmlFor="store-url">
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
-              {store?.slug}.localhost:3000
-            </p>
-            <span className="mt-1 block text-xs text-slate-500">The store URL identifier can only be changed by the Platform Owner.</span>
-          </Field>
-        ) : (
-          text("slug", "Store slug", { required: true, hint: "Short unique name used in links, e.g. nest-and-oak." })
-        )}
+        {text("slug", "Store slug", { required: true, hint: "Short unique name used in links, e.g. nest-and-oak." })}
         <Field label="Theme / accent colour" htmlFor="store-accentColor" required error={errors.accentColor}>
           <div className="flex gap-2">
             <input
               type="color"
               aria-label="Pick accent colour"
-              disabled={isOwnerEdit && readOnly}
               value={isHexColor(values.accentColor) ? values.accentColor : "#0f766e"}
               onChange={(e) => set("accentColor", e.target.value)}
               className="h-[42px] w-14 shrink-0 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
             />
             <input
               {...errorProps("store-accentColor", errors.accentColor)}
-              disabled={isOwnerEdit && readOnly}
               value={values.accentColor}
               onChange={(e) => set("accentColor", e.target.value)}
               className={inputClass(!!errors.accentColor)}
@@ -341,25 +320,22 @@ export function StoreForm({
 
       {isEdit && (
         <>
-          <Section title="Delivery" description={`One domestic delivery rate in ${values.baseCurrency}; the fee and optional free-delivery threshold are used at checkout.`}>
-            {text("deliveryFee", "Delivery fee", { required: true, inputMode: "decimal", placeholder: "0" })}
-            {text("freeDeliveryThreshold", "Free delivery over", { inputMode: "decimal", hint: "Leave empty for no free delivery." })}
-          </Section>
-
           <Section title="Payment methods" description="Choose which payment options customers will see at checkout.">
             <div className="sm:col-span-2">
               <Notice tone="warning" className="mb-4">
-                Payment configuration is <strong>not connected to a real payment provider</strong>.
-                Offline methods only record the customer&apos;s choice; no money is collected.
+                Provider accounts and store-specific payment configuration are managed by the Store Owner.
+                This Platform Admin form does not accept payment credentials.
               </Notice>
               <ul className="space-y-3">
-                {PAYMENT_METHODS.map((m) => (
+                {PAYMENT_METHODS.filter((m) =>
+                  ["cash_on_delivery", "card_on_delivery", "bank_transfer", "online_card"].includes(m.id),
+                ).map((m) => (
                   <li key={m.id}>
                     <label className={`flex items-start gap-3 rounded-xl border border-slate-200 p-4 ${m.requiresProvider ? "cursor-not-allowed bg-slate-50 opacity-70" : "cursor-pointer"}`}>
                       <input
                         type="checkbox"
                         className="mt-1 h-4 w-4 accent-teal-700"
-                        disabled={m.requiresProvider || (isOwnerEdit && readOnly)}
+                        disabled={m.requiresProvider}
                         checked={m.requiresProvider ? false : values.paymentMethods[m.id]}
                         onChange={(e) => set("paymentMethods", { ...values.paymentMethods, [m.id]: e.target.checked })}
                       />
@@ -388,10 +364,10 @@ export function StoreForm({
             {text("tagline", "Tagline", { className: "sm:col-span-2" })}
             {text("heroTitle", "Homepage headline", { required: true, className: "sm:col-span-2" })}
             <Field label="Homepage intro" htmlFor="store-heroText" error={errors.heroText} className="sm:col-span-2">
-              <textarea id="store-heroText" rows={2} disabled={isOwnerEdit && readOnly} value={values.heroText} onChange={(e) => set("heroText", e.target.value)} className={inputClass(!!errors.heroText)} />
+              <textarea id="store-heroText" rows={2} value={values.heroText} onChange={(e) => set("heroText", e.target.value)} className={inputClass(!!errors.heroText)} />
             </Field>
             <Field label="About page text" htmlFor="store-aboutText" error={errors.aboutText} className="sm:col-span-2" hint="Leave a blank line between paragraphs.">
-              <textarea id="store-aboutText" rows={5} disabled={isOwnerEdit && readOnly} value={values.aboutText} onChange={(e) => set("aboutText", e.target.value)} className={inputClass(!!errors.aboutText)} />
+              <textarea id="store-aboutText" rows={5} value={values.aboutText} onChange={(e) => set("aboutText", e.target.value)} className={inputClass(!!errors.aboutText)} />
             </Field>
             {text("contactEmail", "Public contact email", { type: "email" })}
             {text("contactPhone", "Public phone", { type: "tel", hint: "International format, e.g. +971 4 000 0000 or +1 415 555 0123." })}
@@ -409,15 +385,13 @@ export function StoreForm({
         <button
           type="button"
           className={buttonClass("secondary")}
-          onClick={() => router.push(isOwnerEdit ? "/admin" : isEdit && store ? `/admin/stores/${store.id}` : "/admin/stores")}
+          onClick={() => router.push(isEdit && store ? `/admin/stores/${store.id}` : "/admin/stores")}
         >
           Cancel
         </button>
-        {!readOnly && (
-          <button type="submit" disabled={pending} className={buttonClass("primary")}>
-            {pending ? "Saving…" : isEdit ? "Save settings" : "Create store"}
-          </button>
-        )}
+        <button type="submit" disabled={pending} className={buttonClass("primary")}>
+          {pending ? "Saving…" : isEdit ? "Save settings" : "Create store"}
+        </button>
       </div>
     </form>
   );
