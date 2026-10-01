@@ -9,6 +9,7 @@ import {
   type CleanCheckout,
   type PlacedOrder,
   type PlaceOrderResult,
+  type ProviderCheckoutRedirect,
 } from "@/lib/checkout";
 import { withinRateLimit } from "./rate-limit";
 import { storeScope } from "./store-scope";
@@ -406,7 +407,7 @@ export async function placeOrder(
         },
       });
 
-      let checkoutRedirect: PlaceOrderResult extends { ok: true; checkout?: infer T } ? T : never | undefined;
+      let checkoutRedirect: ProviderCheckoutRedirect | undefined;
       if (provider) {
         const session = await createProviderCheckout(tx as PrismaClient, store.id, paymentTransaction.id, resolver);
         checkoutRedirect = session?.session.redirect;
