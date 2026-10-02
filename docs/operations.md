@@ -10,8 +10,8 @@ plus one PostgreSQL 16 database. Any host that runs Node.js 22 and
 offers managed PostgreSQL works. Choose one that provides:
 
 * **Custom domains with automatic TLS**, including a wildcard certificate
-  for `*.<PLATFORM_ROOT_DOMAIN>` (every store's subdomain) and each client's
-  own domain listed in `STORE_DOMAINS`.
+  for `*.<PLATFORM_ROOT_DOMAIN>` (every store's subdomain) and each
+  database-managed custom domain.
 * **A trusted client-IP header** (set `TRUSTED_IP_HEADER` to it, e.g.
   `x-real-ip`), so rate limits apply per visitor.
 * **Managed PostgreSQL with point-in-time recovery** (see Backups), in a
@@ -26,7 +26,7 @@ offers managed PostgreSQL works. Choose one that provides:
 | `BETTER_AUTH_URL` | `https://<admin host>` |
 | `ADMIN_HOST` | The admin's host, e.g. `admin.<root domain>` |
 | `PLATFORM_ROOT_DOMAIN` | The root domain stores are subdomains of |
-| `STORE_DOMAINS` | Optional client domains: `host=store-slug,...` |
+| `STORE_DOMAINS` | Optional legacy operator-managed aliases: `host=store-slug,...` |
 | `TRUSTED_IP_HEADER` | The host's client-IP header |
 | `NODE_ENV` | `production` |
 | Email variables | See Email below |
@@ -36,8 +36,12 @@ Never set `TEST_DATABASE_URL` in production.
 ### DNS
 
 * `admin.<root>` and `*.<root>` → the app.
-* Each client domain (and its `www.`) → the app, plus an entry in
-  `STORE_DOMAINS` mapping it to the store's slug.
+* Point each client domain (and any `www.` hostname) to the app using the
+  hosting provider's DNS instructions. A Store Owner or Manager then adds
+  and verifies that hostname in `/admin/domains` using its generated DNS TXT
+  record. Database-managed domains do not need a `STORE_DOMAINS` entry.
+* Keep `STORE_DOMAINS` only for legacy, operator-managed host aliases; these
+  aliases are separate from the verified custom-domain workflow.
 * Changing a store's slug in the admin changes its subdomain address.
 
 ### Deploying

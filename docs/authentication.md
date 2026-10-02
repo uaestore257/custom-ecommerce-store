@@ -56,10 +56,12 @@ http://nest-and-oak.localhost:3000/login
 ```
 
 After sign-in, `/admin` redirects to that store's admin page. The store
-host is resolved from its slug (or a configured custom domain); the
-session is opened only when that user has an `OWNER` membership for the
-resolved store. The shared **Account** link lets the user change their
-name, email, and password after confirming their current password.
+host is resolved from its slug or a legacy operator-configured
+`STORE_DOMAINS` alias; the session is opened only when that user has an
+`OWNER` membership for the resolved store. Database-managed verified
+custom domains serve the public storefront; Store Admin sign-in remains
+on the store's tenant host. The shared **Account** link lets the user
+change their name, email, and password after confirming their current password.
 Changing email or password revokes all sessions, so the user must sign
 in again. A changed email is marked unverified; email verification and
 email-based password recovery are not configured.
