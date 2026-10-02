@@ -315,7 +315,9 @@ export function StoreForm({
             className: "sm:col-span-2",
             hint: "Optional. If empty or broken, the store's initial is shown in its accent colour.",
           })}
-        <p className="text-xs text-slate-500 sm:col-span-2">Custom domains are planned for a later phase.</p>
+        <p className="text-xs text-slate-500 sm:col-span-2">
+          Custom hostnames are managed by the Store Owner from their store admin.
+        </p>
       </Section>
 
       {isEdit && (

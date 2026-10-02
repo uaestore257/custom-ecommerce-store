@@ -30,6 +30,15 @@ export interface PaymentCredentialResolver {
   resolve(context: PaymentCredentialContext): Promise<ResolvedPaymentCredentials | null>;
 }
 
+/** Adapter boundary for a real external secret manager; never persist returned values. */
+export interface PaymentSecretStore {
+  resolve(
+    secretRef: string,
+    provider: PaymentProviderId,
+    storeId: string,
+  ): Promise<Readonly<Record<string, string>> | null>;
+}
+
 export interface ProviderCheckoutInput {
   storeId: string;
   providerAccountId: string;

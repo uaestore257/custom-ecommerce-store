@@ -1,5 +1,5 @@
 export type StripeWebhookResult = "accepted" | "duplicate" | "invalid";
-export type PaymentReturnStatus = "paid" | "pending" | "cancelled" | "invalid";
+export type PaymentReturnStatus = "paid" | "pending" | "failed" | "cancelled" | "invalid";
 
 export async function paymentReturnQuery(request: Request): Promise<URLSearchParams | null> {
   if (request.method === "GET") return new URL(request.url).searchParams;
@@ -27,6 +27,7 @@ export function paymentReturnResponse(status: PaymentReturnStatus): Response {
   const message = {
     paid: ["Payment received", "Your payment was verified successfully."],
     pending: ["Payment pending", "Your payment is awaiting confirmation. You can safely return to the store."],
+    failed: ["Payment failed", "The provider did not approve this payment. Your order remains unpaid."],
     cancelled: ["Checkout cancelled", "No payment was confirmed. You can return to checkout to try again."],
     invalid: ["Payment not verified", "We could not verify this payment. Please contact the store before trying again."],
   }[status];

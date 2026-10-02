@@ -1,7 +1,8 @@
 import "server-only";
 import { Prisma, type PrismaClient } from "@/lib/generated/prisma/client";
+import { isBrowserSafeProviderCheckout } from "@/lib/payments/rules";
 import { storefrontUrlForSlug, storeHostConfig } from "@/lib/store-host";
-import { paymentCredentialsAvailable, resolvePaymentCredentials, unavailablePaymentCredentialResolver } from "./credentials";
+import { paymentCredentialsAvailable, resolvePaymentCredentials, runtimePaymentCredentialResolver } from "./credentials";
 import { paymentProviderAdapter } from "./providers";
 import type {
   PaymentCredentialContext,
@@ -88,7 +89,7 @@ export async function createProviderCheckout(
   client: PrismaClient | Prisma.TransactionClient,
   storeId: string,
   transactionId: string,
-  resolver: PaymentCredentialResolver = unavailablePaymentCredentialResolver,
+  resolver: PaymentCredentialResolver = runtimePaymentCredentialResolver,
 ): Promise<ProviderCheckoutResult | null> {
   const row = await loadPaymentTransaction(client, storeId, transactionId);
   const account = row?.providerAccount;
@@ -111,6 +112,7 @@ export async function createProviderCheckout(
   if (!credentials || !input) return null;
 
   const session = await adapter.createCheckout(input, credentials);
+  if (!isBrowserSafeProviderCheckout(session, credentials.secrets)) return null;
   await client.paymentTransaction.updateMany({
     where: { id: row.id, storeId, status: "PENDING", providerAccountId: account.id },
     data: { providerReference: session.providerReference },
@@ -192,8 +194,8 @@ export async function verifyProviderReturn(
   storeId: string,
   transactionId: string,
   query: URLSearchParams,
-  resolver: PaymentCredentialResolver = unavailablePaymentCredentialResolver,
-): Promise<"paid" | "pending" | "invalid"> {
+  resolver: PaymentCredentialResolver = runtimePaymentCredentialResolver,
+): Promise<"paid" | "pending" | "failed" | "cancelled" | "invalid"> {
   const row = await loadPaymentTransaction(client, storeId, transactionId);
   const account = row?.providerAccount;
   if (
@@ -216,7 +218,16 @@ export async function verifyProviderReturn(
   if (!event) return "invalid";
   const result = await saveVerifiedPaymentEvent(client, storeId, account.id, event);
   if (result === "rejected") return "invalid";
-  return event.outcome === "SUCCEEDED" ? "paid" : "pending";
+  switch (event.outcome) {
+    case "SUCCEEDED":
+      return "paid";
+    case "FAILED":
+      return "failed";
+    case "CANCELLED":
+      return "cancelled";
+    case "PENDING":
+      return "pending";
+  }
 }
 
 export async function handleStripeWebhook(
@@ -224,7 +235,7 @@ export async function handleStripeWebhook(
   providerAccountId: string,
   rawBody: string,
   headers: Headers,
-  resolver: PaymentCredentialResolver = unavailablePaymentCredentialResolver,
+  resolver: PaymentCredentialResolver = runtimePaymentCredentialResolver,
 ): Promise<"accepted" | "duplicate" | "invalid"> {
   const account = await client.paymentProviderAccount.findFirst({
     where: { id: providerAccountId, provider: "stripe_connect", enabled: true, mode: "TEST" },

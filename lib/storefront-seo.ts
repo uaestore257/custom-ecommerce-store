@@ -17,6 +17,25 @@ export function storefrontOriginForSlug(
   return value ? new URL(value) : null;
 }
 
+export function storefrontOriginForDomain(
+  hostname: string,
+  baseUrl: string,
+  config: StoreHostConfig,
+): URL | null {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    url.hostname = hostname;
+    if (config.production) url.port = "";
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 export function storefrontCanonicalUrl(context: StorefrontSeoContext, path: string): string {
   return new URL(path.replace(/^\/+/, ""), context.origin).toString();
 }
@@ -83,6 +102,7 @@ export function buildStorefrontMetadata(
       siteName: context.store.name,
       ...(images ? { images } : {}),
     },
+    other: { "twitter:url": canonical },
     twitter: image
       ? { card: "summary_large_image", title: input.title, description, images: [image] }
       : { card: "summary", title: input.title, description },

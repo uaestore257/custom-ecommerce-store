@@ -138,7 +138,7 @@ export const PAYMENT_METHODS: {
   {
     id: "easypaisa",
     label: "Easypaisa",
-    description: "Hosted payment for Pakistan stores.",
+    description: "Unavailable until the official merchant API and verification contract is implemented.",
     requiresProvider: true,
   },
 ];

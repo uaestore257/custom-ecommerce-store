@@ -148,6 +148,7 @@ test("every admin page and layout checks access itself, with the guard that fits
     join("app", "admin", "account", "page.tsx"),
     join("app", "admin", "settings", "page.tsx"),
     join("app", "admin", "team", "page.tsx"),
+    join("app", "admin", "domains", "page.tsx"),
   ]);
   const platformOnlyStorePages = new Set([
     join("app", "admin", "stores", "[storeId]", "settings", "page.tsx"),

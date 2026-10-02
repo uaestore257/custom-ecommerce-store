@@ -1,10 +1,42 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildJazzcashSecureHash, mapJazzcashResponseCode, verifyJazzcashSecureHash } from "../../lib/server/payments/jazzcash";
+import {
+  buildJazzcashSecureHash,
+  jazzcashAdapter,
+  mapJazzcashResponseCode,
+  verifyJazzcashSecureHash,
+} from "../../lib/server/payments/jazzcash";
+import { isBrowserSafeProviderCheckout, isSecretReference } from "../../lib/payments/rules";
 import { isOnlinePaymentMethodAvailable } from "../../lib/server/payments/methods";
-import type { PaymentCredentialResolver, PaymentProviderAccountConfig } from "../../lib/server/payments/types";
+import type {
+  PaymentCredentialResolver,
+  PaymentProviderAccountConfig,
+  ProviderCheckoutInput,
+  ResolvedPaymentCredentials,
+} from "../../lib/server/payments/types";
 
 const officialHash = "c7689cda7474eb1adcd343fd0c0b676bad0ba66361cc46db589bdb0da4c1c867";
+const merchantPassword = "0F5DD14AE2";
+
+const returnInput: ProviderCheckoutInput = {
+  storeId: "store-a",
+  providerAccountId: "acct-jazzcash",
+  transactionId: "txn-store-a",
+  orderId: "order-a",
+  orderNumber: "A-100",
+  amountMinor: 2995n,
+  currency: "PKR",
+  storeOrigin: "https://store-a.example.test",
+  publicConfig: {},
+};
+
+const returnCredentials: ResolvedPaymentCredentials = {
+  secretRef: "vault:store-a/jazzcash/test",
+  provider: "jazzcash",
+  storeId: "store-a",
+  providerAccountId: "acct-jazzcash",
+  secrets: { merchantPassword },
+};
 
 const resolver: PaymentCredentialResolver = {
   async isAvailable(context) {
@@ -43,7 +75,53 @@ test("JazzCash response codes map to documented statuses", () => {
   assert.equal(mapJazzcashResponseCode("012"), "CANCELLED");
 });
 
-test("online payment availability remains store-scoped and fails closed", async () => {
+test("JazzCash return verification requires matching transaction and amount", async () => {
+  const response = {
+    pp_TxnRefNo: returnInput.transactionId,
+    pp_Amount: returnInput.amountMinor.toString(),
+    pp_TxnCurrency: "PKR",
+    pp_ResponseCode: "000",
+  };
+  const signedResponse = {
+    ...response,
+    pp_SecureHash: buildJazzcashSecureHash(merchantPassword, response),
+  };
+  const verified = await jazzcashAdapter.verifyReturn!(
+    returnInput,
+    new URLSearchParams(signedResponse),
+    returnCredentials,
+  );
+  assert.equal(verified?.outcome, "SUCCEEDED");
+
+  for (const tampered of [
+    { ...signedResponse, pp_Amount: "1" },
+    { ...signedResponse, pp_TxnCurrency: "AED" },
+    { ...signedResponse, pp_TxnRefNo: "txn-store-b" },
+    { pp_TxnRefNo: returnInput.transactionId, pp_TxnCurrency: "PKR", pp_ResponseCode: "000" },
+  ]) {
+    const fields: Record<string, string> = { ...tampered };
+    fields.pp_SecureHash = buildJazzcashSecureHash(merchantPassword, fields);
+    assert.equal(
+      await jazzcashAdapter.verifyReturn!(returnInput, new URLSearchParams(fields), returnCredentials),
+      null,
+    );
+  }
+});
+
+test("JazzCash checkout form containing its merchant password is rejected before browser return", async () => {
+  const credentials: ResolvedPaymentCredentials = {
+    ...returnCredentials,
+    secrets: { merchantId: "FAKE-UNIT-MERCHANT", merchantPassword: "fake-unit-only-password" },
+  };
+  const session = await jazzcashAdapter.createCheckout(
+    { ...returnInput, publicConfig: { merchantId: "FAKE-UNIT-MERCHANT" } },
+    credentials,
+  );
+
+  assert.equal(isBrowserSafeProviderCheckout(session, credentials.secrets), false);
+});
+
+test("JazzCash remains unavailable until its checkout can keep credentials server-side", async () => {
   const account: PaymentProviderAccountConfig = {
     id: "acct-jazzcash",
     storeId: "store-a",
@@ -54,12 +132,22 @@ test("online payment availability remains store-scoped and fails closed", async 
     secretRef: "vault:store-a/jazzcash/test",
   };
 
+  assert.equal(isSecretReference(account.secretRef), true);
   assert.equal(
     await isOnlinePaymentMethodAvailable("jazzcash", account, { id: "store-a", countryCode: "PK", currency: "PKR" }, resolver),
-    true,
+    false,
   );
   assert.equal(
     await isOnlinePaymentMethodAvailable("jazzcash", account, { id: "store-b", countryCode: "PK", currency: "PKR" }, resolver),
+    false,
+  );
+  assert.equal(
+    await isOnlinePaymentMethodAvailable(
+      "easypaisa",
+      { ...account, id: "acct-easypaisa", provider: "easypaisa" },
+      { id: "store-a", countryCode: "PK", currency: "PKR" },
+      resolver,
+    ),
     false,
   );
 });

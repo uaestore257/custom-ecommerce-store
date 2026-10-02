@@ -2,6 +2,7 @@ import {
   isProviderMarketSupported,
   isSecretReference,
   isStripeConnectedAccountId,
+  isStoreProviderSecretReference,
 } from "./rules";
 
 export interface CleanOwnerPaymentSettings {
@@ -24,6 +25,11 @@ export interface CleanOwnerPaymentSettings {
     accountId: string;
     secretRef: string;
   };
+  jazzcash: {
+    enabled: boolean;
+    merchantId: string;
+    secretRef: string;
+  };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -40,11 +46,12 @@ function enabled(value: unknown) {
   return value === true;
 }
 
-export function validateOwnerPaymentSettings(input: unknown, country: string, currency: string) {
+export function validateOwnerPaymentSettings(input: unknown, country: string, currency: string, storeId?: string) {
   const raw = record(input);
   const methods = record(raw.paymentMethods);
   const bank = record(raw.bankTransfer);
   const stripe = record(raw.stripe);
+  const jazzcash = record(raw.jazzcash);
   const errors: Record<string, string> = {};
 
   const fields = {
@@ -56,6 +63,8 @@ export function validateOwnerPaymentSettings(input: unknown, country: string, cu
     instructions: text(bank.instructions, 500),
     stripeAccountId: text(stripe.accountId, 80),
     stripeSecretRef: text(stripe.secretRef, 512),
+    jazzcashMerchantId: text(jazzcash.merchantId, 80),
+    jazzcashSecretRef: text(jazzcash.secretRef, 512),
   };
   for (const [field, value] of Object.entries(fields)) {
     if (value === null) errors[field] = "Keep this value within the allowed length.";
@@ -81,6 +90,11 @@ export function validateOwnerPaymentSettings(input: unknown, country: string, cu
       accountId: fields.stripeAccountId ?? "",
       secretRef: fields.stripeSecretRef ?? "",
     },
+    jazzcash: {
+      enabled: enabled(jazzcash.enabled),
+      merchantId: fields.jazzcashMerchantId ?? "",
+      secretRef: fields.jazzcashSecretRef ?? "",
+    },
   };
 
   if (values.paymentMethods.bank_transfer) {
@@ -97,14 +111,46 @@ export function validateOwnerPaymentSettings(input: unknown, country: string, cu
     if (!isStripeConnectedAccountId(values.stripe.accountId)) {
       errors.stripeAccountId = "Enter the connected Stripe account ID.";
     }
-    if (values.stripe.secretRef && !isSecretReference(values.stripe.secretRef)) {
+    if (
+      values.stripe.secretRef &&
+      (!isSecretReference(values.stripe.secretRef) ||
+        (storeId !== undefined && !isStoreProviderSecretReference(values.stripe.secretRef, storeId, "stripe_connect")))
+    ) {
       errors.stripeSecretRef = "Enter an opaque secret-manager reference, not a credential.";
     }
     if (!values.stripe.secretRef) errors.stripeSecretRef = "Enter the reference to this store's Stripe test credentials.";
   } else if (values.stripe.accountId && !isStripeConnectedAccountId(values.stripe.accountId)) {
     errors.stripeAccountId = "Enter the connected Stripe account ID.";
-  } else if (values.stripe.secretRef && !isSecretReference(values.stripe.secretRef)) {
+  } else if (
+    values.stripe.secretRef &&
+    (!isSecretReference(values.stripe.secretRef) ||
+      (storeId !== undefined && !isStoreProviderSecretReference(values.stripe.secretRef, storeId, "stripe_connect")))
+  ) {
     errors.stripeSecretRef = "Enter an opaque secret-manager reference, not a credential.";
+  }
+
+  if (values.jazzcash.enabled) {
+    if (!isProviderMarketSupported("jazzcash", country, currency)) {
+      errors.jazzcash = "JazzCash is available only for Pakistan stores using PKR.";
+    }
+    if (!values.jazzcash.merchantId) errors.jazzcashMerchantId = "Enter this store's JazzCash merchant ID.";
+    if (
+      !isSecretReference(values.jazzcash.secretRef) ||
+      (storeId !== undefined && !isStoreProviderSecretReference(values.jazzcash.secretRef, storeId, "jazzcash"))
+    ) {
+      errors.jazzcashSecretRef = "Enter an opaque JazzCash secret-manager reference for this store.";
+    }
+  } else {
+    if (
+      values.jazzcash.secretRef &&
+      (!isSecretReference(values.jazzcash.secretRef) ||
+        (storeId !== undefined && !isStoreProviderSecretReference(values.jazzcash.secretRef, storeId, "jazzcash")))
+    ) {
+      errors.jazzcashSecretRef = "Enter an opaque JazzCash secret-manager reference for this store.";
+    }
+    if (values.jazzcash.merchantId && !isProviderMarketSupported("jazzcash", country, currency)) {
+      errors.jazzcash = "JazzCash is available only for Pakistan stores using PKR.";
+    }
   }
 
   return { values, errors };

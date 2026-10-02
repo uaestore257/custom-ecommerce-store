@@ -12,6 +12,9 @@ const env = {
 test("storefront host resolution follows the slug and ignores a conflicting cookie", async () => {
   const queries: string[] = [];
   const client = {
+    storeDomain: {
+      findUnique: async () => null,
+    },
     store: {
       findFirst: async ({ where }: { where: { slug: string } }) => {
         queries.push(where.slug);

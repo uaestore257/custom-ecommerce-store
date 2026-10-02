@@ -22,7 +22,7 @@ import type { DbStoreStatus } from "./types";
 
 export type StoreAccess = "write" | "read" | "none";
 export type StoreMembershipRole = "OWNER" | "MANAGER" | "STAFF";
-export type StoreSection = "overview" | "products" | "categories" | "orders" | "messages" | "settings" | "team" | "customers";
+export type StoreSection = "overview" | "products" | "categories" | "orders" | "messages" | "settings" | "team" | "customers" | "domains";
 
 export type AdminHost = { kind: "admin" } | { kind: "store"; slug: string } | { kind: "other" };
 
@@ -91,12 +91,12 @@ export function mayAccessStoreSection(role: StoreMembershipRole, section: StoreS
   if (platform || role === "OWNER") return true;
   if (section === "overview") return true;
   if (role === "MANAGER") {
-    return ["products", "categories", "orders", "messages", "team"].includes(section);
+    return ["products", "categories", "orders", "messages", "team", "domains"].includes(section);
   }
   return section === "orders" || section === "messages";
 }
 
-export type StoreAction = "store-settings" | "team-management" | "products" | "categories" | "orders" | "messages";
+export type StoreAction = "store-settings" | "team-management" | "domain-management" | "products" | "categories" | "orders" | "messages";
 
 export function mayRunStoreAction(role: StoreMembershipRole, action: StoreAction, platform = false): boolean {
   if (platform || role === "OWNER") return true;

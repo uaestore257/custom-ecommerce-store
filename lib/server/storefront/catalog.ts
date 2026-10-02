@@ -3,6 +3,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { DEFAULT_STOREFRONT_STORE_ID, PAYMENT_METHODS } from "@/lib/config";
 import { storeFormatLocale } from "@/lib/standards";
+import { normalizeRequestHostname } from "@/lib/store-domains";
 import { isStoreIdCookieValue, STOREFRONT_STORE_COOKIE } from "@/lib/storefront-cookie";
 import { isPlatformBusinessHost, matchStoreHost, storeHostConfig } from "@/lib/store-host";
 import type { StorefrontCatalog, StorefrontProduct, StorefrontStore } from "@/lib/storefront-types";
@@ -65,8 +66,26 @@ export async function resolveStoreForHost(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
   if (isPlatformBusinessHost(host, env)) return null;
-  const match = matchStoreHost(host, storeHostConfig(env));
+  const config = storeHostConfig(env);
+  const match = matchStoreHost(host, config);
   if (match.kind === "platform") return resolveStorefrontStoreId(client, previewCookie, DEFAULT_STOREFRONT_STORE_ID);
+  const hostname = normalizeRequestHostname(host);
+  if (hostname) {
+    // Database ownership overrides an operator alias, including PENDING or
+    // DISABLED rows, so a reused hostname can never fall back to another store.
+    const customDomain = await client.storeDomain.findUnique({
+      where: { hostname },
+      select: { storeId: true, status: true },
+    });
+    if (customDomain) {
+      if (customDomain.status !== "VERIFIED") return null;
+      const store = await client.store.findFirst({
+        where: { id: customDomain.storeId, ...PUBLIC_STORE },
+        select: { id: true },
+      });
+      return store?.id ?? null;
+    }
+  }
   if (match.kind === "unknown") return null;
   const store = await client.store.findFirst({ where: { slug: match.slug, ...PUBLIC_STORE }, select: { id: true } });
   return store?.id ?? null;

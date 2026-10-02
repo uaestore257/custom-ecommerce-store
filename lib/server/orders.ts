@@ -15,7 +15,7 @@ import { withinRateLimit } from "./rate-limit";
 import { storeScope } from "./store-scope";
 import {
   paymentCredentialsAvailable,
-  unavailablePaymentCredentialResolver,
+  runtimePaymentCredentialResolver,
 } from "./payments/credentials";
 import { bankTransferConfigurationIsValid } from "./payments/methods";
 import { paymentProviderAdapter } from "./payments/providers";
@@ -62,6 +62,7 @@ export const ORDER_MESSAGES = {
   otherStore: "Your cart is from a different store. Please review your cart and try again.",
   pickupOnly: "Your cart contains a pickup-only product. Choose pickup to place this order.",
   paymentUnavailable: "This payment method isn't available for this store.",
+  paymentCredentialsUnavailable: "This store's online payment credentials are not configured on the server. Choose another payment method or contact the store.",
   unavailable: "Some items in your cart are no longer available. Please review your cart.",
   stock: "There isn't enough stock for some items in your cart. Please review your cart.",
   priceChanged: "Prices or delivery changed since you opened checkout. Please review your cart and try again.",
@@ -235,7 +236,7 @@ export async function placeOrder(
       if (!allowed || !selectedMethod) {
         throw new OrderRefused(ORDER_MESSAGES.paymentUnavailable);
       }
-      const resolver = testHooks.paymentCredentialResolver ?? unavailablePaymentCredentialResolver;
+      const resolver = testHooks.paymentCredentialResolver ?? runtimePaymentCredentialResolver;
       let providerAccountId: string | null = null;
       let provider: ReturnType<typeof paymentProviderForMethod> = null;
       provider = paymentProviderForMethod(values.paymentMethod as PaymentMethodId);
@@ -266,7 +267,7 @@ export async function placeOrder(
           storeId: store.id,
           providerAccountId: account.id,
         });
-        if (!configured) throw new OrderRefused(ORDER_MESSAGES.paymentUnavailable);
+        if (!configured) throw new OrderRefused(ORDER_MESSAGES.paymentCredentialsUnavailable);
         providerAccountId = account.id;
       } else if (values.paymentMethod === "bank_transfer") {
         const bankAccount = selectedMethod.providerAccountId
@@ -410,7 +411,8 @@ export async function placeOrder(
       let checkoutRedirect: ProviderCheckoutRedirect | undefined;
       if (provider) {
         const session = await createProviderCheckout(tx as PrismaClient, store.id, paymentTransaction.id, resolver);
-        checkoutRedirect = session?.session.redirect;
+        if (!session) throw new OrderRefused(ORDER_MESSAGES.paymentCredentialsUnavailable);
+        checkoutRedirect = session.session.redirect;
       }
 
       const created = await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });

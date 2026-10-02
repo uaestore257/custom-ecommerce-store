@@ -96,6 +96,10 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   revokeStoreMemberAction: () => actions.revokeStoreMemberAction(t.membershipId),
   createStoreInvitationAction: () => actions.createStoreInvitationAction(`invite-${uid()}@example.com`, "STAFF"),
   revokeStoreInvitationAction: () => actions.revokeStoreInvitationAction(t.membershipId),
+  addStoreDomainAction: () => actions.addStoreDomainAction("shop.example.test"),
+  verifyStoreDomainAction: () => actions.verifyStoreDomainAction("missing-domain"),
+  setPrimaryStoreDomainAction: () => actions.setPrimaryStoreDomainAction("missing-domain"),
+  disableStoreDomainAction: () => actions.disableStoreDomainAction("missing-domain"),
   updateMyAccountAction: () => actions.updateMyAccountAction({
     name: "",
     email: "",

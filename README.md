@@ -13,8 +13,9 @@ TypeScript and Tailwind CSS.
 > the platform owner ([docs/authentication.md](docs/authentication.md)).
 > Admin customers and agency settings still use sample data saved in the
 > browser's `localStorage`. Email can be configured through SMTP but is
-> disabled until configured; there is no payment provider or domain/DNS
-> integration. See [Demo limitations](#demo-limitations).
+> disabled until configured; online payment providers are not connected.
+> Store Owners and Managers can manage custom storefront domains after DNS
+> ownership verification. See [Demo limitations](#demo-limitations).
 
 ## New Developer Setup
 
@@ -114,11 +115,16 @@ These parts are **not** implemented and need a backend:
   after SMTP is configured. Admin customers and agency settings are still
   browser demo data. A store without a delivery rate can't take orders.
 - **Stores are chosen by hostname.** Each active store is served at
-  `<slug>.<PLATFORM_ROOT_DOMAIN>`, or at a client domain listed in
-  `STORE_DOMAINS` (see `.env.example`); other hosts show no store. Custom
-  domains are configuration, not yet stored per store in the database, and
-  changing a store's slug changes its address. Draft stores can't be
+  `<slug>.<PLATFORM_ROOT_DOMAIN>`, an operator-configured `STORE_DOMAINS`
+  alias, or a database-managed custom hostname after TXT verification.
+  Unrecognized or unverified hosts show no store. A verified primary custom
+  hostname is used for canonical storefront URLs; otherwise the existing
+  platform slug host or trusted operator alias is used. Draft stores can't be
   previewed on the storefront yet.
+- **Custom-domain access.** Store Owners and Managers can add, verify, set a
+  primary hostname, or disable domains at `/admin/domains` on their store's
+  platform tenant host. Domain actions derive the store from the authenticated
+  host and are unavailable to Staff and Platform Admin sessions.
 - **Payments.** Nothing is paid online and no card details are collected.
   "Online card payment" can't be switched on because no payment provider is
   connected, and "card on delivery" isn't offered at checkout yet.
@@ -128,8 +134,10 @@ These parts are **not** implemented and need a backend:
   saved to the database for that store, but there is no admin page to read
   them yet and no email is sent. The store is chosen by the visitor's browser,
   not yet by domain.
-- **Domains.** The domain field is just a setting. Nothing is registered, no
-  DNS is changed and nothing is deployed.
+- **Domains.** Adding a custom hostname does not register it, alter DNS, or
+  provision hosting. The Store Owner or Manager must configure DNS with their
+  hosting provider and publish the displayed TXT proof record before the
+  hostname routes to the store.
 - **Template versioning.** There is none. Every store uses the current code.
 
 Use made-up details when testing checkout locally. To go back to the original

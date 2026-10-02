@@ -5,6 +5,7 @@ import { useParams, usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ExternalLink,
+  Globe,
   LayoutDashboard,
   LayoutTemplate,
   Mail,
@@ -51,6 +52,7 @@ export function storeNav(storeId: string): NavItem[] {
     { label: "Orders", href: `${base}/orders`, icon: Receipt },
     { label: "Messages", href: `${base}/messages`, icon: Mail },
     { label: "Customers", href: `${base}/customers`, icon: Users },
+    { label: "Domains", href: "/admin/domains", icon: Globe },
     { label: "Store settings", href: `${base}/settings`, icon: Settings },
   ];
 }
@@ -65,10 +67,13 @@ export function storeNavForViewer(storeId: string, platform: boolean, role: Stor
         Orders: "orders",
         Messages: "messages",
         Customers: "customers",
+        Domains: "domains",
         "Store settings": "settings",
       };
       const allowedSection = section[item.label];
-      return platform || !allowedSection || mayAccessStoreSection(role, allowedSection);
+      return item.label !== "Domains" || !platform
+        ? platform || !allowedSection || mayAccessStoreSection(role, allowedSection)
+        : false;
     })
     .map((item) =>
       !platform && role === "OWNER" && item.label === "Store settings"

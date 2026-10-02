@@ -197,6 +197,13 @@ Two independent layers, so a bug in one is caught by the other.
 ### 1. Database constraints (cannot be bypassed by application code)
 
 * Every store-owned table has a required `storeId`.
+* `StoreDomain` assigns one globally unique hostname to one store. A custom
+  hostname is routed only after its DNS TXT ownership proof is verified and
+  its store is active; a partial unique index permits one verified primary
+  domain per store. Domain-management queries and mutations include the
+  authenticated store ID. Legacy `STORE_DOMAINS` entries are trusted
+  operator-configured aliases; a database row for the hostname takes
+  precedence, so PENDING and DISABLED records cannot fall through to an alias.
 * Parent tables expose a composite key `(id, storeId)`; children
   reference it with a **composite foreign key**, so both must match:
 
@@ -212,6 +219,10 @@ Two independent layers, so a bug in one is caught by the other.
   | `StorePaymentMethod (providerAccountId, storeId)` | `PaymentProviderAccount (id, storeId)` |
   | `ProductVariant`, `ShippingRate (storeId, currency)` | `Store (id, baseCurrency)` |
   | `*Translation (storeId, locale)` | `StoreLanguage (storeId, languageCode)` |
+
+`StoreDomain` references `Store(id)` directly rather than another
+store-owned child record; its hostname is globally unique and can belong to
+only one store.
 
 * All composite keys are `ON UPDATE RESTRICT`, and a trigger makes
   `storeId` immutable on every store-owned table: records can never be
@@ -240,7 +251,8 @@ so later migrations leave them in place (verified: a follow-up
   platform-level administrator. Store Owners authenticate with Better
   Auth credentials in `Account` and require `StoreMembership` role `OWNER`
   for the exact store resolved from the request hostname and route.
-  `MANAGER` and `STAFF` stay in the enum but are not used for authorization.
+  `MANAGER` has store-scoped operational permissions, including domain
+  management; `STAFF` remains read-only for Orders and Messages.
 * Customers belong to one store (`@@unique([storeId, email])`): the same
   person shopping at two stores is two separate customer records.
 
@@ -264,9 +276,18 @@ so later migrations leave them in place (verified: a follow-up
 * Product delivery fees are supported directly on each product; the legacy
   `ShippingZone` and `ShippingRate` tables remain for schema compatibility
   but are not used by current checkout, settings or seed code.
-* Payment provider integration. Payment
-  **secrets are never stored in the database**: `secretRef` points to a
-  secret manager or environment variable.
+* Live payment processing requires deployment infrastructure to install a
+  server-only `PaymentSecretStore` adapter through
+  `configurePaymentSecretStore()`. The adapter resolves a `vault:<storeId>/<provider>/<key>`
+  reference for the exact store and provider; no local database or
+  environment-variable secret store is provided. Stripe remains unavailable
+  until an external adapter is installed. JazzCash checkout remains disabled
+  even with resolved credentials because its current browser-post flow would
+  expose the merchant password; it needs a credential-safe server-side handoff
+  supported by official documentation. Credential-bearing provider form
+  redirects are rejected before reaching the browser. No payment secrets are
+  stored in the database. Easypaisa is disabled until its official merchant
+  API and response-verification contract is available and implemented.
 * Language switcher UI and right-to-left layout.
 * Domain routing (the storefront's store choice is a temporary cookie plus a
   configured default); refunds, returns and editing orders; importing any

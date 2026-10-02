@@ -97,6 +97,11 @@ export async function getAdminOrder(client: Client, storeId: string, orderId: st
     include: {
       currencyRef: { select: { minorUnits: true } },
       items: { orderBy: { id: "asc" } },
+      paymentTransactions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { providerReference: true },
+      },
     },
   });
   if (!order) return null;
@@ -108,6 +113,7 @@ export async function getAdminOrder(client: Client, storeId: string, orderId: st
   return {
     ...toSummary(order, store, locale),
     fulfillmentMethod,
+    paymentTransactionReference: order.paymentTransactions[0]?.providerReference ?? "",
     address: {
       recipientName: text(address.recipientName),
       line1: text(address.line1),

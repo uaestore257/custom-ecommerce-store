@@ -34,6 +34,31 @@ store-level fixed fee / free-delivery threshold and shipping-rate checkout
 path are no longer used; existing `ShippingZone` / `ShippingRate` schema
 objects are retained for compatibility.
 
+## Payment phase status (2026-10-02)
+
+Bank Transfer, Cash on Delivery, and Pay on Pickup are store-scoped. Hosted
+Stripe Checkout and the documented JazzCash sandbox adapter are wired to
+store-scoped transactions, with server-side totals, account checks, return
+verification, and Stripe signature-verified webhook processing. JazzCash
+checkout is explicitly unavailable: its current browser-post flow would
+expose the merchant password, so credential-bearing redirects are blocked
+until an official credential-safe server-side handoff is supported. Payment
+references shown in Store Owner order details are non-secret provider
+identifiers only.
+
+Store Payment Settings accept each store's Stripe and JazzCash metadata and
+opaque, provider/store-scoped credential reference; they never display or
+accept provider secrets. Runtime resolution uses the server-only
+`PaymentSecretStore` adapter, installed by deployment infrastructure through
+`configurePaymentSecretStore()`. The application intentionally includes no
+database-backed or `.env`-backed secret store. Stripe checkout remains
+unavailable until that adapter is installed and credentials are provisioned
+externally. JazzCash also remains unavailable regardless of credentials until
+its checkout handoff can keep the merchant password server-side. JazzCash
+returns use the documented return contract; no separate callback/webhook
+behavior is assumed. Easypaisa remains unavailable because no official
+merchant API and response-verification contract is implemented.
+
 ## 1. Project overview
 
 Code X Store (repo `uaestore257/custom-ecommerce-store`): a multi-store
@@ -156,7 +181,7 @@ rest was written but has had only a type-check since.
    payment-method settings and read-only customers. Delivery is configured
    per product, not at store level.
 7. Draft and paused → full owner access. 8. Suspended → read-only. 9. Archived → no owner access.
-10. Store creation, archive/restore, ownership, status, slug/domain, platform-wide settings → platform owner only.
+10. Store creation, archive/restore, ownership, status, store slug and platform-wide settings → platform owner only. Custom hostnames are managed by that store's OWNER or MANAGER after DNS ownership verification.
 11. Store invitations are single-use, expiring and store-scoped; SMTP delivery
     remains disabled until configured. No card-payment integration.
 12. No cross-store access via URL, request data, store id or domain. MANAGER gets operational access; STAFF is read-only for orders/messages.
@@ -165,31 +190,41 @@ rest was written but has had only a type-check since.
 
 Latest safe checks on the primary checkout:
 - `npm run typecheck` ✅
-- `npm run lint` ✅
-- `npm run test:unit` ✅ (120 passed)
+- `npm run lint` ✅ (3 existing unused-symbol warnings)
+- `npm run test:unit` ✅ (159 passed)
 - `npx prisma validate` ✅
+- `npx prisma migrate status` ✅ (all 7 migrations applied)
 - `git diff --check` ✅
 
-Database integration tests were not run. The additive Product delivery
-migration is present but was not applied.
+Database integration tests were not run because `npm run test:db` resets and
+seeds its test database. The primary local development database reports all
+seven migrations applied, including Product delivery and StoreDomain.
 
 ## 7. Database safety (mandatory)
 
 - The one approved `npm run test:db` run has been **used**. Any further run needs the user's **fresh, explicit approval**.
 - `npm run test:db` = `tsx scripts/test-db.ts`: `prisma migrate reset --force` + `prisma db seed` on `TEST_DATABASE_URL`, then all `tests/db/*.test.ts`. Guards: `scripts/test-db.ts:18`, `tests/db/helpers.ts:8`.
-- Preflight before asking (report names only, never credentials/full URLs): `TEST_DATABASE_URL` → `localhost:5433/shop_test`; `DATABASE_URL` → `localhost:5433/shop_dev`; distinct; no `DATABASE_URL`/`TEST_DATABASE_URL`/`DOTENV_CONFIG_PATH` in the shell; only `.env` and `.env.example` exist.
+- Preflight before asking (report names only, never credentials/full URLs): `TEST_DATABASE_URL` → `localhost:5435/shop_test`; `DATABASE_URL` → `localhost:5435/shop_dev`; distinct; no `DATABASE_URL`/`TEST_DATABASE_URL`/`DOTENV_CONFIG_PATH` in the shell; only `.env` and `.env.example` exist.
 - Prisma refuses AI-driven resets unless `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` is set to the user's exact approval message.
-- Never run migrations, seeds, resets or cleanup on `shop_dev`. The Store Owner
-  access tables already exist; the Product delivery migration is separate,
-  additive and still unapplied.
+- Never reset, seed, drop or clean `shop_dev`. The Product delivery and
+  StoreDomain migrations have been applied to the primary local development
+  database using the approved deploy process; this does not imply they are
+  applied to any other environment.
+
+The additive StoreDomain migration has been applied to the primary local
+development database, and Prisma reports the schema up to date. Other
+environments still need to apply it through the repository's approved
+migration process; never reset or seed a database as part of this feature.
 
 ## 8. Current follow-up
 
 1. Run the safe checks for pending code changes: TypeScript, lint, unit tests,
    Prisma validation and `git diff --check`.
-2. The additive Product delivery migration is not applied by this work. Apply
-   migrations only through the repository's guarded process and with explicit
-   approval; never reset, seed or drop a database as part of this feature.
+2. The additive Product delivery and StoreDomain migrations are applied in
+   the primary local development database. Apply pending migrations in other
+   environments only through the repository's guarded process and with
+   explicit approval; never reset, seed or drop a database as part of this
+   feature.
 3. Keep authorization coverage for store-host access, role-specific sections,
    suspended-store read-only behavior, invitations and cross-store denial.
    Database integration tests require fresh approval before any run that resets

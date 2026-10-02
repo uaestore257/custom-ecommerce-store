@@ -39,6 +39,12 @@ enum StoreStatus {
   SUSPENDED
 }
 
+enum StoreDomainStatus {
+  PENDING
+  VERIFIED
+  DISABLED
+}
+
 enum StoreRole {
   OWNER
   MANAGER
@@ -334,6 +340,7 @@ model Store {
 
   memberships     StoreMembership[]
   invitations     StoreInvitation[]
+  domains         StoreDomain[]
   languages       StoreLanguage[]
   categories      Category[]
   products        Product[]
@@ -353,6 +360,26 @@ model Store {
   // Lets prices reference (storeId, currency) so they must be in the
   // store's base currency. Changing baseCurrency is blocked while prices exist.
   @@unique([id, baseCurrency])
+}
+
+/// A hostname owned by exactly one store. Verification tokens are public DNS
+/// proof identifiers, never credentials. Only VERIFIED domains route traffic.
+model StoreDomain {
+  id                String            @id @default(cuid())
+  storeId           String
+  hostname          String            @unique @db.VarChar(253)
+  status            StoreDomainStatus @default(PENDING)
+  isPrimary         Boolean           @default(false)
+  verificationToken String            @db.VarChar(64)
+  verifiedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, status])
+  // Database migration also enforces that only VERIFIED domains can be primary,
+  // with at most one verified primary hostname per store.
 }
 
 /// Languages a store offers. Content can only be written in these.

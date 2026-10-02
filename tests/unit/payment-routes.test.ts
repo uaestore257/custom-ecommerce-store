@@ -5,6 +5,127 @@ import {
   paymentReturnQuery,
   paymentReturnResponse,
 } from "../../lib/server/payments/http";
+import { isBrowserSafeProviderCheckout } from "../../lib/payments/rules";
+
+test("provider checkout results never expose credentials in fields, URLs, or references", () => {
+  const secrets = { merchantPassword: "fake-test-password", signingSecret: "fake-signing-secret" };
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      {
+        providerReference: "txn-test",
+        redirect: {
+          kind: "post",
+          action: "https://gateway.example.test/checkout",
+          fields: {
+            pp_MerchantID: "merchant-test",
+            pp_Password: "fake-test-password",
+            pp_SecureHash: "derived-test-hash",
+          },
+        },
+      },
+      secrets,
+    ),
+    false,
+  );
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      {
+        providerReference: "txn-test",
+        redirect: {
+          kind: "post",
+          action: "https://gateway.example.test/checkout",
+          fields: {
+            pp_MerchantID: "merchant-test",
+            pp_Description: "fake-test-password",
+            pp_SecureHash: "derived-test-hash",
+          },
+        },
+      },
+      secrets,
+    ),
+    false,
+  );
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      {
+        providerReference: "txn-test",
+        redirect: {
+          kind: "post",
+          action: "https://gateway.example.test/checkout?token=fake-signing-secret",
+          fields: { pp_MerchantID: "merchant-test", pp_TxnRefNo: "txn-test", pp_SecureHash: "derived-test-hash" },
+        },
+      },
+      secrets,
+    ),
+    false,
+  );
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      {
+        providerReference: "txn-test",
+        redirect: {
+          kind: "redirect",
+          url: "https://checkout.example.test/session?token=fake-signing-secret",
+        },
+      },
+      secrets,
+    ),
+    false,
+  );
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      {
+        providerReference: "fake-test-password",
+        redirect: {
+          kind: "post",
+          action: "https://gateway.example.test/checkout",
+          fields: { pp_MerchantID: "merchant-test", pp_TxnRefNo: "txn-test", pp_SecureHash: "derived-test-hash" },
+        },
+      },
+      secrets,
+    ),
+    false,
+  );
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      {
+        providerReference: "txn-test",
+        redirect: {
+          kind: "post",
+          action: "https://gateway.example.test/checkout",
+          fields: {
+            pp_MerchantID: "merchant-test",
+            pp_Description: encodeURIComponent("fake-test-password"),
+            pp_SecureHash: "derived-test-hash",
+          },
+        },
+      },
+      secrets,
+    ),
+    false,
+  );
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      {
+        providerReference: "txn-test",
+        redirect: {
+          kind: "post",
+          action: "https://gateway.example.test/checkout",
+          fields: { pp_MerchantID: "merchant-test", pp_TxnRefNo: "txn-test", pp_SecureHash: "derived-test-hash" },
+        },
+      },
+      secrets,
+    ),
+    true,
+  );
+  assert.equal(
+    isBrowserSafeProviderCheckout(
+      { providerReference: "txn-test", redirect: { kind: "redirect", url: "https://checkout.example.test/session" } },
+      secrets,
+    ),
+    true,
+  );
+});
 
 test("Stripe webhook forwarding preserves the raw request body and provider account scope", async () => {
   const rawBody = '{ "id" : "evt_test", "data": { "amount": 100 } }\n';
@@ -48,10 +169,12 @@ test("provider return responses are uncached and distinguish payment outcomes", 
   const paid = paymentReturnResponse("paid");
   const cancelled = paymentReturnResponse("cancelled");
   const pending = paymentReturnResponse("pending");
+  const failed = paymentReturnResponse("failed");
 
   assert.match(await paid.text(), /Payment received/);
   assert.match(await cancelled.text(), /Checkout cancelled/);
   assert.match(await pending.text(), /awaiting confirmation/);
+  assert.match(await failed.text(), /order remains unpaid/);
   assert.equal(paid.headers.get("cache-control"), "no-store, max-age=0");
 });
 

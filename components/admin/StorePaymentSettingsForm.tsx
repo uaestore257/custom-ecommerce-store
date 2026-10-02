@@ -42,6 +42,11 @@ export function StorePaymentSettingsForm({
   const [methods, setMethods] = useState(() => initialMethods(store));
   const [bank, setBank] = useState<BankFields>(store.bankTransfer);
   const [stripe, setStripe] = useState({ enabled: store.stripe.enabled, accountId: store.stripe.accountId, secretRef: "" });
+  const [jazzcash, setJazzcash] = useState({
+    enabled: store.jazzcash.enabled,
+    merchantId: store.jazzcash.merchantId,
+    secretRef: "",
+  });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -55,6 +60,7 @@ export function StorePaymentSettingsForm({
         paymentMethods: methods,
         bankTransfer: bank,
         stripe,
+        jazzcash,
       });
       if (!result.ok) {
         setError(result.error);
@@ -142,7 +148,11 @@ export function StorePaymentSettingsForm({
               onChange={(event) => setStripe((value) => ({ ...value, secretRef: event.target.value }))}
               className={inputClass()}
               autoComplete="off"
-              placeholder={store.stripe.hasCredentialReference ? "Leave blank to keep existing reference" : "vault:store-id/stripe/test"}
+              placeholder={
+                store.stripe.hasCredentialReference
+                  ? "Leave blank to keep existing reference"
+                  : `vault:${store.id}/stripe/account-key`
+              }
             />
           </Field>
           <label className="flex items-start gap-3 text-sm sm:col-span-2">
@@ -161,10 +171,54 @@ export function StorePaymentSettingsForm({
       </Card>
 
       <Card className="p-5 sm:p-6">
-        <h2 className="text-lg font-semibold">Pakistan payment providers</h2>
+        <h2 className="text-lg font-semibold">JazzCash — sandbox</h2>
         <p className="mt-1 text-sm text-slate-600">
-          JazzCash and Easypaisa are unavailable pending their official merchant documentation for sandbox checkout, credentials, signature verification, and server notifications.
+          JazzCash settings are store-scoped to Pakistan, but checkout remains disabled because its current browser-post flow would expose the merchant password. A credential-safe server-side handoff is required.
         </p>
+        {!store.jazzcash.available && (
+          <Notice tone="warning" className="mt-4">
+            JazzCash checkout is unavailable until a credential-safe server-side handoff is supported. No credential values are stored here or sent to the browser.
+          </Notice>
+        )}
+        <fieldset disabled={readOnly || pending} className="mt-4 grid gap-4 sm:grid-cols-2">
+          <legend className="sr-only">JazzCash sandbox configuration</legend>
+          <Field label="Merchant ID" htmlFor="jazzcash-merchant-id">
+            <input
+              id="jazzcash-merchant-id"
+              value={jazzcash.merchantId}
+              onChange={(event) => setJazzcash((value) => ({ ...value, merchantId: event.target.value }))}
+              className={inputClass()}
+              autoComplete="off"
+              maxLength={80}
+            />
+          </Field>
+          <Field label="Sandbox credential reference" htmlFor="jazzcash-secret-reference">
+            <input
+              id="jazzcash-secret-reference"
+              value={jazzcash.secretRef}
+              onChange={(event) => setJazzcash((value) => ({ ...value, secretRef: event.target.value }))}
+              className={inputClass()}
+              autoComplete="off"
+              placeholder={
+                store.jazzcash.hasCredentialReference
+                  ? "Leave blank to keep existing reference"
+                  : `vault:${store.id}/jazzcash/merchant-key`
+              }
+            />
+          </Field>
+          <label className="flex items-start gap-3 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-teal-700"
+              checked={jazzcash.enabled}
+              onChange={(event) => setJazzcash((value) => ({ ...value, enabled: event.target.checked }))}
+            />
+            <span>Save this store&apos;s JazzCash sandbox preference. Checkout remains blocked until a credential-safe server-side handoff is supported.</span>
+          </label>
+          <p className="text-xs text-slate-500 sm:col-span-2">
+            Enter only an opaque store-scoped reference and the merchant ID; never enter a password or secure-hash key. Easypaisa remains unavailable.
+          </p>
+        </fieldset>
       </Card>
 
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}

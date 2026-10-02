@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { ArrowRight, Package, Pause, Pencil, Play, Receipt, Settings, Tags, Users, type LucideIcon } from "lucide-react";
+import { ArrowRight, Globe, Package, Pause, Pencil, Play, Receipt, Settings, Tags, Users, type LucideIcon } from "lucide-react";
 import { setStoreStatusAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -127,10 +127,10 @@ export function StoreOverviewView({
           </Card>
 
           <Card className="p-5 sm:p-6">
-            <h2 className="text-lg font-semibold">Not connected yet</h2>
-            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-slate-600">
-              <li>Custom domains are planned for a later phase.</li>
-            </ul>
+            <h2 className="text-lg font-semibold">Custom domains</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Verified domains can provide the storefront&apos;s canonical public URL after production routing is configured by the platform team.
+            </p>
           </Card>
         </div>
 
@@ -152,6 +152,9 @@ export function StoreOverviewView({
           )}
           {!platform && (role === "OWNER" || role === "MANAGER") && (
             <QuickLink href="/admin/team" icon={Users} title="Team" text="Manage store memberships" />
+          )}
+          {!platform && (role === "OWNER" || role === "MANAGER") && (
+            <QuickLink href="/admin/domains" icon={Globe} title="Custom domains" text="Verify storefront hostnames" />
           )}
         </nav>
       </div>

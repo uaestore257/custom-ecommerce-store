@@ -1,6 +1,6 @@
 import "server-only";
 import { isProviderMarketSupported, paymentProviderForMethod } from "@/lib/payments/rules";
-import { paymentCredentialsAvailable, unavailablePaymentCredentialResolver } from "./credentials";
+import { paymentCredentialsAvailable, runtimePaymentCredentialResolver } from "./credentials";
 import { paymentProviderAdapter } from "./providers";
 import type { PaymentCredentialResolver, PaymentProviderAccountConfig } from "./types";
 import type { PaymentMethodId } from "@/lib/types";
@@ -9,7 +9,7 @@ export async function isOnlinePaymentMethodAvailable(
   method: PaymentMethodId,
   account: PaymentProviderAccountConfig | null | undefined,
   store: { id: string; countryCode: string; currency: string },
-  resolver: PaymentCredentialResolver = unavailablePaymentCredentialResolver,
+  resolver: PaymentCredentialResolver = runtimePaymentCredentialResolver,
 ): Promise<boolean> {
   const provider = paymentProviderForMethod(method);
   if (
@@ -25,6 +25,8 @@ export async function isOnlinePaymentMethodAvailable(
   ) {
     return false;
   }
+  // JazzCash's current browser-post flow includes the merchant password in its form payload.
+  if (provider === "jazzcash") return false;
   return paymentCredentialsAvailable(resolver, {
     secretRef: account.secretRef,
     provider,

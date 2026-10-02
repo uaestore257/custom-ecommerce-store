@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   PaymentProviderAdapter,
   ProviderCheckoutInput,
@@ -56,9 +56,10 @@ export function buildJazzcashSecureHash(secret: string, fields: Record<string, s
 
 export function verifyJazzcashSecureHash(secret: string, fields: Record<string, string>): boolean {
   const hash = typeof fields.pp_SecureHash === "string" ? fields.pp_SecureHash.trim() : "";
-  if (!hash) return false;
-  const expected = buildJazzcashSecureHash(secret, fields);
-  return expected.toLowerCase() === hash.toLowerCase();
+  if (!/^[a-f0-9]{64}$/i.test(hash)) return false;
+  const expected = Buffer.from(buildJazzcashSecureHash(secret, fields), "hex");
+  const actual = Buffer.from(hash, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 export function mapJazzcashResponseCode(responseCode: string): "PENDING" | "SUCCEEDED" | "FAILED" | "CANCELLED" {
@@ -135,10 +136,17 @@ export const jazzcashAdapter: PaymentProviderAdapter = {
     }
     if (!verifyJazzcashSecureHash(merchantPassword, params)) return null;
     const responseCode = params.pp_ResponseCode ?? params.ResponseCode ?? "";
-    const transactionReference = params.pp_TxnRefNo ?? input.transactionId;
+    const transactionReference = params.pp_TxnRefNo ?? "";
     const amount = params.pp_Amount ?? "";
     const requestedAmount = input.amountMinor.toString();
-    if (amount && amount !== requestedAmount) return null;
+    const currency = params.pp_TxnCurrency?.toUpperCase();
+    if (
+      transactionReference !== input.transactionId ||
+      amount !== requestedAmount ||
+      (currency !== undefined && currency !== input.currency.toUpperCase())
+    ) {
+      return null;
+    }
     const outcome = mapJazzcashResponseCode(responseCode);
     return {
       eventId: `jazzcash:${transactionReference}:${responseCode || "unknown"}`,
@@ -146,7 +154,7 @@ export const jazzcashAdapter: PaymentProviderAdapter = {
       paymentTransactionId: input.transactionId,
       transactionReference,
       amountMinor: BigInt(amount || input.amountMinor.toString()),
-      currency: input.currency,
+      currency: currency ?? input.currency.toUpperCase(),
       outcome,
     };
   },

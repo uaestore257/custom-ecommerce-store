@@ -22,7 +22,7 @@ import {
 } from "@/lib/admin/validation";
 import type { StoreType } from "@/lib/types";
 import { isProviderMarketSupported } from "@/lib/payments/rules";
-import { paymentCredentialsAvailable, unavailablePaymentCredentialResolver } from "../payments/credentials";
+import { paymentCredentialsAvailable, runtimePaymentCredentialResolver } from "../payments/credentials";
 import { validateOwnerPaymentSettings } from "@/lib/payments/validation";
 import { recordAudit } from "../audit";
 import { getAuth } from "../auth/auth";
@@ -156,7 +156,7 @@ export async function getAdminStorePaymentSettings(
       baseCurrency: true,
       paymentMethods: { orderBy: { position: "asc" }, select: { method: true, enabled: true } },
       paymentAccounts: {
-        where: { provider: { in: ["bank_transfer", "stripe_connect"] } },
+        where: { provider: { in: ["bank_transfer", "stripe_connect", "jazzcash"] } },
         select: { id: true, provider: true, mode: true, enabled: true, publicConfig: true, secretRef: true },
       },
     },
@@ -165,6 +165,7 @@ export async function getAdminStorePaymentSettings(
 
   const bankAccount = store.paymentAccounts.find((account) => account.provider === "bank_transfer");
   const stripeAccount = store.paymentAccounts.find((account) => account.provider === "stripe_connect");
+  const jazzcashAccount = store.paymentAccounts.find((account) => account.provider === "jazzcash");
   const bankConfig =
     bankAccount?.publicConfig && typeof bankAccount.publicConfig === "object" && !Array.isArray(bankAccount.publicConfig)
       ? (bankAccount.publicConfig as Record<string, unknown>)
@@ -176,7 +177,16 @@ export async function getAdminStorePaymentSettings(
       ? (stripeAccount.publicConfig as Record<string, unknown>)
       : {};
   const stripeMethod = store.paymentMethods.find((entry) => entry.method === "stripe_checkout");
+  const jazzcashMethod = store.paymentMethods.find((entry) => entry.method === "jazzcash");
   const secretRef = stripeAccount?.secretRef ?? null;
+  const jazzcashSecretRef = jazzcashAccount?.secretRef ?? null;
+  const jazzcashConfig =
+    jazzcashAccount?.publicConfig &&
+    typeof jazzcashAccount.publicConfig === "object" &&
+    !Array.isArray(jazzcashAccount.publicConfig)
+      ? (jazzcashAccount.publicConfig as Record<string, unknown>)
+      : {};
+  const jazzcashMerchantId = typeof jazzcashConfig.merchantId === "string" ? jazzcashConfig.merchantId : "";
   const available = Boolean(
     stripeAccount &&
       secretRef &&
@@ -184,7 +194,7 @@ export async function getAdminStorePaymentSettings(
       stripeAccount.mode === "TEST" &&
       stripeMethod?.enabled &&
       isProviderMarketSupported("stripe_connect", store.countryCode, store.baseCurrency) &&
-      (await paymentCredentialsAvailable(unavailablePaymentCredentialResolver, {
+      (await paymentCredentialsAvailable(runtimePaymentCredentialResolver, {
         secretRef,
         provider: "stripe_connect",
         storeId: store.id,
@@ -219,6 +229,26 @@ export async function getAdminStorePaymentSettings(
       hasCredentialReference: Boolean(secretRef),
       enabled: stripeMethod?.enabled ?? false,
       available,
+    },
+    jazzcash: {
+      merchantId: jazzcashMerchantId,
+      hasCredentialReference: Boolean(jazzcashSecretRef),
+      enabled: jazzcashMethod?.enabled ?? false,
+      available: Boolean(
+        jazzcashAccount &&
+          jazzcashAccount.enabled &&
+          jazzcashAccount.mode === "TEST" &&
+          jazzcashMethod?.enabled &&
+          jazzcashSecretRef &&
+          jazzcashMerchantId &&
+          isProviderMarketSupported("jazzcash", store.countryCode, store.baseCurrency) &&
+          (await paymentCredentialsAvailable(runtimePaymentCredentialResolver, {
+            secretRef: jazzcashSecretRef,
+            provider: "jazzcash",
+            storeId: store.id,
+            providerAccountId: jazzcashAccount.id,
+          })),
+      ),
     },
   };
 }
@@ -432,11 +462,50 @@ export async function updateStoreOwnerSettings(
 ): Promise<ActionResult<{ id: string }>> {
   const existing = await client.store.findFirst({
     where: { id: storeId, archivedAt: null },
-    select: { id: true, countryCode: true, baseCurrency: true },
+    select: {
+      id: true,
+      countryCode: true,
+      baseCurrency: true,
+      paymentAccounts: {
+        where: { provider: { in: ["stripe_connect", "jazzcash"] } },
+        select: { provider: true, secretRef: true },
+      },
+    },
   });
   if (!existing) return fail(NOT_FOUND.store);
 
-  const { values, errors } = validateOwnerPaymentSettings(input, existing.countryCode, existing.baseCurrency);
+  const inputRecord = input && typeof input === "object" && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : {};
+  const stripeInput = inputRecord.stripe && typeof inputRecord.stripe === "object" && !Array.isArray(inputRecord.stripe)
+    ? (inputRecord.stripe as Record<string, unknown>)
+    : {};
+  const jazzcashInput =
+    inputRecord.jazzcash && typeof inputRecord.jazzcash === "object" && !Array.isArray(inputRecord.jazzcash)
+      ? (inputRecord.jazzcash as Record<string, unknown>)
+      : {};
+  const storedStripeReference =
+    existing.paymentAccounts.find((account) => account.provider === "stripe_connect")?.secretRef ?? "";
+  const storedJazzcashReference =
+    existing.paymentAccounts.find((account) => account.provider === "jazzcash")?.secretRef ?? "";
+  const settingsInput = {
+    ...inputRecord,
+    stripe: {
+      ...stripeInput,
+      secretRef:
+        typeof stripeInput.secretRef === "string" && stripeInput.secretRef.trim()
+          ? stripeInput.secretRef
+          : storedStripeReference,
+    },
+    jazzcash: {
+      ...jazzcashInput,
+      secretRef:
+        typeof jazzcashInput.secretRef === "string" && jazzcashInput.secretRef.trim()
+          ? jazzcashInput.secretRef
+          : storedJazzcashReference,
+    },
+  };
+  const { values, errors } = validateOwnerPaymentSettings(settingsInput, existing.countryCode, existing.baseCurrency, storeId);
   if (hasErrors(errors)) return fail(INVALID, errors);
 
   await client.$transaction(async (tx) => {
@@ -521,12 +590,67 @@ export async function updateStoreOwnerSettings(
       stripeAccountId !== null &&
       isProviderMarketSupported("stripe_connect", existing.countryCode, existing.baseCurrency) &&
       (secretRef !== null &&
-        await paymentCredentialsAvailable(unavailablePaymentCredentialResolver, {
+        await paymentCredentialsAvailable(runtimePaymentCredentialResolver, {
         secretRef,
         provider: "stripe_connect",
         storeId,
         providerAccountId: stripeAccountId,
         }));
+
+    const currentJazzcash = await tx.paymentProviderAccount.findFirst({
+      where: { storeId, provider: "jazzcash" },
+      select: { id: true, secretRef: true },
+    });
+    const jazzcashSecretRef = values.jazzcash.secretRef || currentJazzcash?.secretRef || null;
+    const jazzcashRequested = Boolean(values.jazzcash.merchantId && jazzcashSecretRef);
+    let jazzcashAccountId: string | null = null;
+    if (jazzcashRequested) {
+      if (currentJazzcash) {
+        const account = await tx.paymentProviderAccount.update({
+          where: { id: currentJazzcash.id },
+          data: {
+            displayName: "JazzCash",
+            mode: "TEST",
+            enabled: true,
+            publicConfig: { merchantId: values.jazzcash.merchantId },
+            secretRef: jazzcashSecretRef,
+          },
+          select: { id: true },
+        });
+        jazzcashAccountId = account.id;
+      } else {
+        const account = await tx.paymentProviderAccount.create({
+          data: {
+            storeId,
+            provider: "jazzcash",
+            displayName: "JazzCash",
+            mode: "TEST",
+            enabled: true,
+            publicConfig: { merchantId: values.jazzcash.merchantId },
+            secretRef: jazzcashSecretRef,
+          },
+          select: { id: true },
+        });
+        jazzcashAccountId = account.id;
+      }
+    } else if (currentJazzcash) {
+      await tx.paymentProviderAccount.update({
+        where: { id: currentJazzcash.id },
+        data: { enabled: false, mode: "TEST" },
+      });
+    }
+
+    const jazzcashAvailable =
+      values.jazzcash.enabled &&
+      jazzcashAccountId !== null &&
+      isProviderMarketSupported("jazzcash", existing.countryCode, existing.baseCurrency) &&
+      jazzcashSecretRef !== null &&
+      await paymentCredentialsAvailable(runtimePaymentCredentialResolver, {
+        secretRef: jazzcashSecretRef,
+        provider: "jazzcash",
+        storeId,
+        providerAccountId: jazzcashAccountId,
+      });
 
     const ownerMethods = [
       ["cash_on_delivery", values.paymentMethods.cash_on_delivery, null],
@@ -534,6 +658,7 @@ export async function updateStoreOwnerSettings(
       ["bank_transfer", values.paymentMethods.bank_transfer, bankAccountId],
       ["cash_on_pickup", values.paymentMethods.cash_on_pickup, null],
       ["stripe_checkout", stripeAvailable, stripeAccountId],
+      ["jazzcash", jazzcashAvailable, jazzcashAccountId],
     ] as const;
     for (const [position, [method, enabled, providerAccountId]] of ownerMethods.entries()) {
       await tx.storePaymentMethod.upsert({

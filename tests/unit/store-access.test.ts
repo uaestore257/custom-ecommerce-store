@@ -148,7 +148,7 @@ test("platform-only actions need the platform owner on the admin host; owner act
 
 test("Manager and Staff section and action permissions do not extend to Owner controls", () => {
   assert.equal(mayAccessStoreSection("OWNER", "customers"), true);
-  for (const section of ["products", "categories", "orders", "messages", "team"] as const) {
+  for (const section of ["products", "categories", "orders", "messages", "team", "domains"] as const) {
     assert.equal(mayAccessStoreSection("MANAGER", section), true);
   }
   for (const section of ["settings", "customers"] as const) assert.equal(mayAccessStoreSection("MANAGER", section), false);
@@ -159,10 +159,12 @@ test("Manager and Staff section and action permissions do not extend to Owner co
 
   assert.equal(mayRunStoreAction("MANAGER", "products"), true);
   assert.equal(mayRunStoreAction("MANAGER", "team-management"), true);
+  assert.equal(mayRunStoreAction("MANAGER", "domain-management"), true);
   assert.equal(mayRunStoreAction("MANAGER", "store-settings"), false);
-  for (const action of ["products", "categories", "orders", "messages", "team-management", "store-settings"] as const) {
+  for (const action of ["products", "categories", "orders", "messages", "team-management", "domain-management", "store-settings"] as const) {
     assert.equal(mayRunStoreAction("STAFF", action), false);
   }
   assert.equal(mayAccessStoreSection("STAFF", "customers", true), true, "platform navigation is unchanged");
+  assert.equal(mayAccessStoreSection("STAFF", "domains", true), true, "platform store access is unchanged");
   assert.equal(mayRunStoreAction("STAFF", "store-settings", true), true, "platform store actions are unchanged");
 });

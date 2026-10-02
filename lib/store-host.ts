@@ -6,14 +6,15 @@ import { normalizeHost } from "./auth/constants";
 // request's Host on the server, never from anything the browser sends.
 //
 //   <slug>.<PLATFORM_ROOT_DOMAIN>   -> the store with that slug
-//   a host listed in STORE_DOMAINS  -> the store with the mapped slug
-//                                      (a client's own domain)
+//   a host listed in STORE_DOMAINS  -> a trusted operator-configured alias
+//                                      (database ownership/status overrides it)
 //   ADMIN_HOST                      -> platform host
 //   PLATFORM_ROOT_DOMAIN itself     -> platform business website in local
 //                                      development; it does not name a store
 //   anything else                   -> unknown: no store is shown
 //
-// STORE_DOMAINS is a comma-separated list of host=slug pairs, e.g.
+// STORE_DOMAINS is a trusted, operator-managed comma-separated list of
+// host=slug pairs, e.g.
 // "shop.example.com=client-a,www.shop.example.com=client-a".
 // ---------------------------------------------------------------
 

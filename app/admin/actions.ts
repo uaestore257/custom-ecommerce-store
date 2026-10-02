@@ -60,6 +60,13 @@ import {
 } from "@/lib/server/admin/team";
 import { getMailer } from "@/lib/server/mailer";
 import { hostContext } from "@/lib/server/auth/store-access";
+import {
+  addStoreDomain,
+  disableStoreDomain,
+  setPrimaryStoreDomain,
+  verifyStoreDomain,
+} from "@/lib/server/admin/domains";
+import { storeHostConfig } from "@/lib/store-host";
 
 const GENERIC_ERROR = "Something went wrong while saving. Please try again.";
 const SIGNED_OUT: ActionResult<never> = { ok: false, error: "Your session has ended. Please sign in again." };
@@ -122,9 +129,10 @@ function asStoreWriter<T>(
   return guarded(label, () => requireStoreAccess(storeId, "write", action), work);
 }
 
-/** Store-team actions are limited to authorized OWNER/MANAGER users on the current store host. */
-function asCurrentStoreTeamManager<T>(
+/** Store-management actions are limited to authorized OWNER/MANAGER users on the current store host. */
+function asCurrentStoreManager<T>(
   label: string,
+  action: "team-management" | "domain-management",
   work: (viewer: Extract<AdminViewer, { kind: "store" }>) => Promise<ActionResult<T>>,
 ) {
   return guarded(
@@ -133,7 +141,7 @@ function asCurrentStoreTeamManager<T>(
       const viewer = await requireAdminViewer();
       if (viewer.kind !== "store") throw new AccessDenied("forbidden");
       if (viewer.access !== "write") throw new AccessDenied("read-only");
-      if (!mayRunStoreAction(viewer.role, "team-management")) throw new AccessDenied("forbidden");
+      if (!mayRunStoreAction(viewer.role, action)) throw new AccessDenied("forbidden");
       return viewer;
     },
     work,
@@ -264,21 +272,21 @@ export async function setInquiryStatusAction(storeId: unknown, inquiryId: unknow
 
 export async function updateStoreMemberRoleAction(memberId: unknown, role: unknown) {
   if (!isId(memberId) || !isManagedStoreTeamRole(role)) return badRequest;
-  return asCurrentStoreTeamManager("updateStoreMemberRole", (viewer) =>
+  return asCurrentStoreManager("updateStoreMemberRole", "team-management", (viewer) =>
     updateStoreTeamMemberRole(getDb(), viewer.store.id, viewer.user.id, memberId, role),
   );
 }
 
 export async function revokeStoreMemberAction(memberId: unknown) {
   if (!isId(memberId)) return badRequest;
-  return asCurrentStoreTeamManager("revokeStoreMember", (viewer) =>
+  return asCurrentStoreManager("revokeStoreMember", "team-management", (viewer) =>
     revokeStoreTeamMember(getDb(), viewer.store.id, viewer.user.id, memberId),
   );
 }
 
 export async function createStoreInvitationAction(email: unknown, role: unknown) {
   if (typeof email !== "string" || !isManagedStoreTeamRole(role)) return badRequest;
-  return asCurrentStoreTeamManager("createStoreInvitation", async (viewer) => {
+  return asCurrentStoreManager("createStoreInvitation", "team-management", async (viewer) => {
     const db = getDb();
     const headers = await requestRuntime().headers();
     const rawHost = headers.get("host");
@@ -302,11 +310,40 @@ export async function createStoreInvitationAction(email: unknown, role: unknown)
 
 export async function revokeStoreInvitationAction(invitationId: unknown) {
   if (!isId(invitationId)) return badRequest;
-  return asCurrentStoreTeamManager("revokeStoreInvitation", (viewer) =>
+  return asCurrentStoreManager("revokeStoreInvitation", "team-management", (viewer) =>
     revokeStoreInvitation(getDb(), {
       storeId: viewer.store.id,
       actorUserId: viewer.user.id,
       invitationId,
     }),
+  );
+}
+
+// ---------- Custom domains (current store OWNER/MANAGER only) ----------
+
+export async function addStoreDomainAction(hostname: unknown) {
+  return asCurrentStoreManager("addStoreDomain", "domain-management", (viewer) =>
+    addStoreDomain(getDb(), viewer.store.id, viewer.user.id, hostname, storeHostConfig()),
+  );
+}
+
+export async function verifyStoreDomainAction(domainId: unknown) {
+  if (!isId(domainId)) return badRequest;
+  return asCurrentStoreManager("verifyStoreDomain", "domain-management", (viewer) =>
+    verifyStoreDomain(getDb(), viewer.store.id, viewer.user.id, domainId),
+  );
+}
+
+export async function setPrimaryStoreDomainAction(domainId: unknown) {
+  if (!isId(domainId)) return badRequest;
+  return asCurrentStoreManager("setPrimaryStoreDomain", "domain-management", (viewer) =>
+    setPrimaryStoreDomain(getDb(), viewer.store.id, viewer.user.id, domainId),
+  );
+}
+
+export async function disableStoreDomainAction(domainId: unknown) {
+  if (!isId(domainId)) return badRequest;
+  return asCurrentStoreManager("disableStoreDomain", "domain-management", (viewer) =>
+    disableStoreDomain(getDb(), viewer.store.id, viewer.user.id, domainId),
   );
 }

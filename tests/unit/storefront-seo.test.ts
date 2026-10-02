@@ -8,6 +8,7 @@ import {
   buildStorefrontRobots,
   buildStorefrontSitemapUrls,
   serializeJsonLd,
+  storefrontOriginForDomain,
   storefrontOriginForSlug,
   type StorefrontSeoContext,
 } from "@/lib/storefront-seo";
@@ -73,6 +74,50 @@ test("storefront origin and metadata use only the selected store host", () => {
   assert.equal(title && typeof title === "object" && "absolute" in title ? title.absolute : title, store.name);
   assert.ok(JSON.stringify(metadata.openGraph).includes("http://nest-and-oak.localhost:3000/"));
   assert.ok(JSON.stringify(metadata.openGraph).includes(store.logoUrl));
+});
+
+test("a verified custom-domain origin preserves the development port and removes production ports", () => {
+  const local = storefrontOriginForDomain("shop.example.test", "http://admin.localhost:3001", config);
+  assert.equal(local?.toString(), "http://shop.example.test:3001/");
+
+  const production = storefrontOriginForDomain(
+    "shop.example.test",
+    "https://admin.shops.test:8443",
+    storeHostConfig({ PLATFORM_ROOT_DOMAIN: "shops.test", NODE_ENV: "production" }),
+  );
+  assert.equal(production?.toString(), "https://shop.example.test/");
+});
+
+test("storefront SEO URLs use the verified custom origin across metadata and discovery files", () => {
+  const productionConfig = storeHostConfig({ PLATFORM_ROOT_DOMAIN: "shops.test", NODE_ENV: "production" });
+  const customOrigin = storefrontOriginForDomain("shop.example.test", "https://admin.shops.test", productionConfig);
+  assert.ok(customOrigin);
+  const customContext = { ...context, origin: customOrigin, config: productionConfig };
+  const metadata = buildStorefrontMetadata(customContext, {
+    title: store.name,
+    description: store.tagline,
+    path: "/",
+  });
+  const canonical = "https://shop.example.test/";
+  assert.deepEqual(metadata.alternates, { canonical });
+  assert.equal(metadata.openGraph?.url, canonical);
+  assert.equal(metadata.other?.["twitter:url"], canonical);
+  assert.equal(buildStoreOrganizationJsonLd(customContext, store.tagline).url, canonical);
+  assert.deepEqual(
+    buildStorefrontSitemapUrls(customContext, [product], []),
+    [canonical, "https://shop.example.test/shop", "https://shop.example.test/products/product-1"],
+  );
+  assert.deepEqual(
+    buildStorefrontRobots(true, "https://shop.example.test/sitemap.xml"),
+    {
+      rules: {
+        userAgent: "*",
+        allow: "/",
+        disallow: ["/admin", "/login", "/accept-invitation", "/api", "/cart", "/checkout"],
+      },
+      sitemap: "https://shop.example.test/sitemap.xml",
+    },
+  );
 });
 
 test("category metadata canonicalizes the existing store-scoped category route", () => {

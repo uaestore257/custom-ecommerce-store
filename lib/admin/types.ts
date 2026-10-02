@@ -70,6 +70,21 @@ export interface AdminStorePaymentSettings {
     enabled: boolean;
     available: boolean;
   };
+  jazzcash: {
+    merchantId: string;
+    hasCredentialReference: boolean;
+    enabled: boolean;
+    available: boolean;
+  };
+}
+
+export interface AdminStoreDomain {
+  id: string;
+  hostname: string;
+  status: "PENDING" | "VERIFIED" | "DISABLED";
+  isPrimary: boolean;
+  verificationToken: string | null;
+  verifiedAt: string | null;
 }
 
 export interface AdminCustomerSummary {
@@ -150,6 +165,7 @@ export interface AdminOrderSummary {
 /** One order with everything the admin's order page shows (from the database). */
 export interface AdminOrderDetail extends AdminOrderSummary {
   fulfillmentMethod: "DELIVERY" | "PICKUP";
+  paymentTransactionReference: string;
   address: {
     recipientName: string;
     line1: string;
