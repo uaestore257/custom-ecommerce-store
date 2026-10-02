@@ -87,7 +87,7 @@ async function main() {
   }
   if (!(await confirmReset(target))) return;
 
-  const env = { ...process.env, DATABASE_URL: testUrl };
+  const env = { ...process.env, DATABASE_URL: testUrl, DIRECT_URL: "" };
   const testFiles = readdirSync("tests/db")
     .filter((name) => name.endsWith(".test.ts"))
     .sort()

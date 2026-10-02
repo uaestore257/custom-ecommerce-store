@@ -106,6 +106,7 @@ test("test database reset guard requires a separate local test database", () => 
 test("production deploy guard requires explicit production mode and a non-local production database", () => {
   const production = {
     NODE_ENV: "production",
+    DIRECT_URL: "postgresql://db.example.com:5432/store",
     DATABASE_URL: "postgresql://app:secret@db.example.com:5432/store",
   };
   assert.deepEqual(getProductionTarget(production), {
@@ -144,8 +145,62 @@ test("destructive and production confirmations include the exact database name",
   assert.equal(expectedConfirmation("seed", "shop_dev"), "yes");
 });
 
+test("production migration target and approval are derived from DIRECT_URL", () => {
+  const target = getProductionTarget({
+    NODE_ENV: "production",
+    DATABASE_URL: "postgresql://pool.example.com/runtime",
+    DIRECT_URL: "postgresql://direct.example.com/store",
+  });
+  assert.deepEqual(target, { database: "store", host: "direct.example.com", port: "5432" });
+  assert.equal(expectedConfirmation("production deployment", target.database), "DEPLOY store");
+});
+
+test("production migration errors never include connection URL values", () => {
+  const runtimeUrl = "postgresql://pool-user:unique-test-sentinel@pool.example.com/runtime";
+  assert.throws(
+    () => getProductionTarget({ NODE_ENV: "production", DATABASE_URL: runtimeUrl }),
+    (error) => {
+      assert.match(error.message, /DIRECT_URL is required/);
+      assert.doesNotMatch(error.message, /pool-user|unique-test-sentinel|pool\.example\.com/);
+      return true;
+    },
+  );
+});
+
+test("local migration guard confirms DIRECT_URL when configured and falls back otherwise", () => {
+  assert.deepEqual(
+    getLocalDevelopmentTarget({
+      DATABASE_URL: "postgresql://localhost:5435/shop_dev",
+      DIRECT_URL: "postgresql://127.0.0.1:5436/shop_local",
+    }),
+    { database: "shop_local", host: "127.0.0.1", port: "5436" },
+  );
+  assert.deepEqual(
+    getLocalDevelopmentTarget({ DATABASE_URL: "postgresql://localhost:5435/shop_dev" }),
+    { database: "shop_dev", host: "localhost", port: "5435" },
+  );
+});
+
+test("local reset guard remains tied to DATABASE_URL when DIRECT_URL is present", () => {
+  assert.deepEqual(
+    getLocalDevelopmentTarget(
+      {
+        DATABASE_URL: "postgresql://localhost:5435/shop_dev",
+        DIRECT_URL: "postgresql://127.0.0.1:5436/shop_other",
+      },
+      { useMigrationUrl: false },
+    ),
+    { database: "shop_dev", host: "localhost", port: "5435" },
+  );
+});
+
 test("database-writing npm commands route through their safety wrapper", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  assert.equal(packageJson.scripts.build, "next build", "build must not invoke migration commands");
+  const dbReset = readFileSync(new URL("../../scripts/db-reset.ts", import.meta.url), "utf8");
+  const testDb = readFileSync(new URL("../../scripts/test-db.ts", import.meta.url), "utf8");
+  assert.match(dbReset, /DIRECT_URL:\s*""/, "development reset must use the guarded DATABASE_URL");
+  assert.match(testDb, /DIRECT_URL:\s*""/, "database tests must use the guarded TEST_DATABASE_URL");
   assert.match(packageJson.scripts["db:migrate"], /db-command\.mjs migrate$/);
   assert.match(packageJson.scripts["db:deploy"], /db-command\.mjs deploy$/);
   assert.match(packageJson.scripts["db:deploy:production"], /db-command\.mjs deploy-production$/);

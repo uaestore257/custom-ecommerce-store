@@ -66,9 +66,16 @@ Copy-Item -LiteralPath .env.example -Destination .env -NoClobber
 If `.env` already exists, stop and inspect it privately; do not replace it.
 Edit `.env` locally if needed. Set `DATABASE_URL` to the intended development
 database. When using this Compose file, set `POSTGRES_PORT` to its chosen host
-port and use the same port in both database URLs. Keep `.env` private;
+port and use the same port in `POSTGRES_PORT`, `DATABASE_URL`, and
+`TEST_DATABASE_URL`; if you configure local `DIRECT_URL`, point it at the
+intended local database too. Keep `.env` private;
 `.gitignore` excludes it. `TEST_DATABASE_URL` must refer to a different,
 disposable test database and is not needed for normal setup.
+`DATABASE_URL` is the app runtime URL. `DIRECT_URL` is optional for local
+Prisma CLI commands and, when set, selects their direct connection; if absent,
+Prisma falls back to `DATABASE_URL`. Keep local URLs pointed at the intended
+local database. Destructive `db:reset` and `test:db` commands are pinned to
+their separately guarded `DATABASE_URL` and `TEST_DATABASE_URL` targets.
 
 ## Start an isolated PostgreSQL instance with Compose
 

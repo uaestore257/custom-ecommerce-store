@@ -4,8 +4,8 @@
 //      prisma/seed-guard.ts) — BEFORE anything is dropped
 //   2. resets it (drops all data!) and applies every migration
 //   3. seeds reference data + demo stores
-// Prisma reads the same DATABASE_URL (prisma.config.ts), so the database
-// checked here is the one that gets reset.
+// The Prisma CLI is explicitly pinned to DATABASE_URL for the reset, so the
+// database checked here is the one that gets reset even if DIRECT_URL is set.
 import "dotenv/config";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -46,7 +46,11 @@ function localCli(pkg: string) {
   const { bin } = JSON.parse(readFileSync(join("node_modules", pkg, "package.json"), "utf8"));
   return join("node_modules", pkg, typeof bin === "string" ? bin : bin[pkg]);
 }
-const run = (pkg: string, args: string[]) => execFileSync(process.execPath, [localCli(pkg), ...args], { stdio: "inherit" });
+const run = (pkg: string, args: string[]) =>
+  execFileSync(process.execPath, [localCli(pkg), ...args], {
+    stdio: "inherit",
+    env: { ...process.env, DIRECT_URL: "" },
+  });
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;

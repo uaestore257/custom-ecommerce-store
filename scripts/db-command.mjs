@@ -40,11 +40,13 @@ function sameDatabase(left, right) {
   return leftHost === rightHost && left.port === right.port && left.database === right.database;
 }
 
-export function getLocalDevelopmentTarget(env = process.env) {
+export function getLocalDevelopmentTarget(env = process.env, { useMigrationUrl = true } = {}) {
   if (env.NODE_ENV === "production") {
     throw new Error("Refusing local database changes while NODE_ENV is production.");
   }
-  const target = parseTarget(env.DATABASE_URL, "DATABASE_URL");
+  const migrationUrl = useMigrationUrl ? env.DIRECT_URL?.trim() : "";
+  const variableName = migrationUrl ? "DIRECT_URL" : "DATABASE_URL";
+  const target = parseTarget(migrationUrl || env.DATABASE_URL, variableName);
   if (!LOCAL_HOSTS.has(target.host)) {
     throw new Error("Refusing: local database commands only allow localhost/loopback hosts.");
   }
@@ -61,12 +63,18 @@ export function getProductionTarget(env = process.env) {
   if (env.TEST_DATABASE_URL) {
     throw new Error("Refusing production deployment while TEST_DATABASE_URL is configured.");
   }
-  const target = parseTarget(env.DATABASE_URL, "DATABASE_URL");
-  if (LOCAL_HOSTS.has(target.host)) {
-    throw new Error("Refusing production deployment to a localhost/loopback database.");
+  if (!env.DIRECT_URL?.trim()) {
+    throw new Error("DIRECT_URL is required for production migrations; refusing to use DATABASE_URL.");
   }
-  if (DEVELOPMENT_DATABASE.test(target.database) || TEST_DATABASE.test(target.database)) {
-    throw new Error("Refusing production deployment to a database marked dev, local, demo, or test.");
+  const target = parseTarget(env.DIRECT_URL, "DIRECT_URL");
+  const runtimeTarget = env.DATABASE_URL ? parseTarget(env.DATABASE_URL, "DATABASE_URL") : null;
+  for (const candidate of [target, runtimeTarget].filter(Boolean)) {
+    if (LOCAL_HOSTS.has(candidate.host)) {
+      throw new Error("Refusing production deployment to a localhost/loopback database.");
+    }
+    if (DEVELOPMENT_DATABASE.test(candidate.database) || TEST_DATABASE.test(candidate.database)) {
+      throw new Error("Refusing production deployment to a database marked dev, local, demo, or test.");
+    }
   }
   return target;
 }
@@ -158,7 +166,7 @@ async function main() {
 
   if (action === "reset" || action === "test") {
     const target = action === "reset"
-      ? getLocalDevelopmentTarget()
+      ? getLocalDevelopmentTarget(process.env, { useMigrationUrl: false })
       : getTestDatabaseTarget();
     const confirmationAction = action === "reset" ? "development database reset" : "test database reset";
     if (!(await confirmTarget(target, confirmationAction, { destructive: true }))) return;
