@@ -9,12 +9,22 @@ import { formatDate } from "@/lib/format";
 import type { PaymentMethodId } from "@/lib/types";
 
 /** This store's orders from the database; each opens its order page. */
-export function DbOrdersList({ orders, storeId, storeName }: { orders: AdminOrderSummary[]; storeId: string; storeName: string }) {
+export function DbOrdersList({
+  orders,
+  storeId,
+  storeName,
+  readOnly = false,
+}: {
+  orders: AdminOrderSummary[];
+  storeId: string;
+  storeName: string;
+  readOnly?: boolean;
+}) {
   return (
     <>
       <PageHeader
         title="Orders"
-        description={`Orders placed in ${storeName}'s storefront, newest first. Open an order to update its status or payment.`}
+        description={`Orders placed in ${storeName}'s storefront, newest first.${readOnly ? "" : " Open an order to update its status or payment."}`}
       />
       {orders.length === 0 ? (
         <EmptyState icon={Receipt} title="No orders yet" description="Orders placed in the storefront will appear here." />

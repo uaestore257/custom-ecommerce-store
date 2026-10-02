@@ -82,6 +82,11 @@ export function OrderControls({ storeId, order }: { storeId: string; order: Admi
           {order.paymentMethod ? paymentMethodLabel(order.paymentMethod as PaymentMethodId) : "—"}
         </p>
         <p className={`mt-1 text-sm font-semibold ${paid ? "text-emerald-700" : "text-amber-700"}`}>{paid ? "Paid" : "Unpaid"}</p>
+        {order.paymentTransactionReference && (
+          <p className="mt-2 break-all text-xs text-slate-500">
+            Provider reference: <span className="font-mono">{order.paymentTransactionReference}</span>
+          </p>
+        )}
         {paymentBlocked ? (
           <p className="mt-3 text-xs text-slate-500">{paymentBlocked}</p>
         ) : paid ? (

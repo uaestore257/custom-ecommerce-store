@@ -5,6 +5,7 @@ import { useParams, usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ExternalLink,
+  Globe,
   LayoutDashboard,
   LayoutTemplate,
   Mail,
@@ -22,6 +23,8 @@ import {
 import { LinkButton } from "@/components/ui";
 import { useDemoState } from "@/lib/demo-db";
 import type { AdminStoreSummary } from "@/lib/admin/types";
+import { mayAccessStoreSection, type StoreMembershipRole, type StoreSection } from "@/lib/admin/store-access";
+import { storeSettingsNav, storeTeamNav } from "@/lib/admin/store-navigation";
 import { SignOutButton } from "./SignOutButton";
 import { StoreSelector } from "./StoreSelector";
 
@@ -49,8 +52,40 @@ export function storeNav(storeId: string): NavItem[] {
     { label: "Orders", href: `${base}/orders`, icon: Receipt },
     { label: "Messages", href: `${base}/messages`, icon: Mail },
     { label: "Customers", href: `${base}/customers`, icon: Users },
+    { label: "Domains", href: "/admin/domains", icon: Globe },
     { label: "Store settings", href: `${base}/settings`, icon: Settings },
   ];
+}
+
+export function storeNavForViewer(storeId: string, platform: boolean, role: StoreMembershipRole = "OWNER"): NavItem[] {
+  const items = storeNav(storeId)
+    .filter((item) => {
+      const section: Partial<Record<NavItem["label"], StoreSection>> = {
+        Overview: "overview",
+        Products: "products",
+        Categories: "categories",
+        Orders: "orders",
+        Messages: "messages",
+        Customers: "customers",
+        Domains: "domains",
+        "Store settings": "settings",
+      };
+      const allowedSection = section[item.label];
+      return item.label !== "Domains" || !platform
+        ? platform || !allowedSection || mayAccessStoreSection(role, allowedSection)
+        : false;
+    })
+    .map((item) =>
+      !platform && role === "OWNER" && item.label === "Store settings"
+        ? { ...item, ...storeSettingsNav(platform, storeId) }
+        : item,
+    );
+  const team = storeTeamNav(platform, role);
+  if (team) {
+    const settingsIndex = items.findIndex((item) => item.label === "Store Settings");
+    items.splice(settingsIndex < 0 ? items.length : settingsIndex, 0, { ...team, icon: Users });
+  }
+  return items;
 }
 
 export function isNavActive(pathname: string, item: { href: string; exact?: boolean }) {
@@ -66,7 +101,20 @@ export interface ShellUser {
   email: string;
 }
 
-export function AdminShell({ children, stores, user }: { children: ReactNode; stores: ShellStore[]; user: ShellUser }) {
+export function AdminShell({
+  children,
+  stores,
+  user,
+  platform,
+  role,
+}: {
+  children: ReactNode;
+  stores: ShellStore[];
+  user: ShellUser;
+  /** The platform owner (agency pages shown); false for a store owner, who sees only their store. */
+  platform: boolean;
+  role: StoreMembershipRole | null;
+}) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
 
@@ -88,7 +136,7 @@ export function AdminShell({ children, stores, user }: { children: ReactNode; st
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <SidebarContent stores={stores} />
+        <SidebarContent stores={stores} platform={platform} role={role} />
       </aside>
 
       {/* Mobile drawer */}
@@ -109,25 +157,37 @@ export function AdminShell({ children, stores, user }: { children: ReactNode; st
             >
               <X className="h-5 w-5" aria-hidden />
             </button>
-            <SidebarContent stores={stores} />
+            <SidebarContent stores={stores} platform={platform} role={role} />
           </aside>
         </div>
       )}
 
       <div className="lg:pl-64">
-        <AdminHeader stores={stores} user={user} onOpenMenu={() => setDrawerOpen(true)} />
+        <AdminHeader stores={stores} user={user} platform={platform} onOpenMenu={() => setDrawerOpen(true)} />
         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
   );
 }
 
-function SidebarContent({ stores }: { stores: ShellStore[] }) {
+function SidebarContent({
+  stores,
+  platform,
+  role,
+}: {
+  stores: ShellStore[];
+  platform: boolean;
+  role: StoreMembershipRole | null;
+}) {
   const pathname = usePathname();
   const params = useParams<{ storeId?: string }>();
   // The agency name is still demo data (agency settings are not in the database yet).
   const state = useDemoState();
-  const selected = params.storeId ? (stores.find((s) => s.id === params.storeId) ?? null) : null;
+  const selected = params.storeId
+    ? (stores.find((s) => s.id === params.storeId) ?? null)
+    : !platform
+      ? (stores[0] ?? null)
+      : null;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -139,20 +199,22 @@ function SidebarContent({ stores }: { stores: ShellStore[] }) {
           <span className="block truncate font-bold leading-tight">
             {state?.agency.agencyName ?? "Agency"}
           </span>
-          <span className="text-xs text-slate-500">Agency Admin</span>
+          <span className="text-xs text-slate-500">{platform ? "Agency Admin" : "Store Admin"}</span>
         </span>
       </Link>
 
-      <nav aria-label="Agency" className="px-3 py-4">
-        <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Agency</p>
-        <NavList items={agencyNav} pathname={pathname} />
-      </nav>
+      {platform && (
+        <nav aria-label="Agency" className="px-3 py-4">
+          <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Agency</p>
+          <NavList items={agencyNav} pathname={pathname} />
+        </nav>
+      )}
 
       {selected && (
         <nav aria-label={`Store: ${selected.name}`} className="border-t border-slate-200 px-3 py-4">
           <p className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Selected store</p>
           <p className="truncate px-2 pb-2 pt-1 text-sm font-semibold text-teal-800">{selected.name}</p>
-          <NavList items={storeNav(selected.id)} pathname={pathname} />
+          <NavList items={storeNavForViewer(selected.id, platform, role ?? "OWNER")} pathname={pathname} />
         </nav>
       )}
 
@@ -197,7 +259,17 @@ function NavList({ items, pathname }: { items: NavItem[]; pathname: string }) {
   );
 }
 
-function AdminHeader({ stores, user, onOpenMenu }: { stores: ShellStore[]; user: ShellUser; onOpenMenu: () => void }) {
+function AdminHeader({
+  stores,
+  user,
+  platform,
+  onOpenMenu,
+}: {
+  stores: ShellStore[];
+  user: ShellUser;
+  platform: boolean;
+  onOpenMenu: () => void;
+}) {
   // The dashboard has its own "Create New Store" button.
   const onDashboard = usePathname() === "/admin";
   return (
@@ -211,15 +283,19 @@ function AdminHeader({ stores, user, onOpenMenu }: { stores: ShellStore[]; user:
         >
           <Menu className="h-5 w-5" aria-hidden />
         </button>
-        <StoreSelector stores={stores} />
-        {!onDashboard && (
+        <StoreSelector stores={stores} platform={platform} />
+        {platform && !onDashboard && (
           <LinkButton href="/admin/stores/new" size="sm" className="ml-auto shrink-0">
             <Plus className="h-4 w-4" aria-hidden />
             <span className="hidden sm:inline">Create New Store</span>
             <span className="sm:hidden">New</span>
           </LinkButton>
         )}
-        <div className={onDashboard ? "ml-auto" : undefined}>
+        <div className="ml-auto flex items-center gap-2">
+          <LinkButton href="/admin/account" size="sm" variant="secondary">
+            <Settings className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">Account</span>
+          </LinkButton>
           <SignOutButton email={user.email} />
         </div>
       </div>

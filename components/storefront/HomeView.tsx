@@ -6,7 +6,7 @@ import { CategoryImage } from "@/components/CategoryImage";
 import { LinkButton } from "@/components/ui";
 import { paymentMethodLabel } from "@/lib/config";
 import { useStorefront } from "@/lib/storefront";
-import { categoryNameOf, formatStoreMoney } from "@/lib/storefront-cart";
+import { categoryNameOf } from "@/lib/storefront-cart";
 import { PRODUCT_GRID, ProductCard } from "./ProductCard";
 
 export function HomeView() {
@@ -26,12 +26,7 @@ export function HomeView() {
   const offlineMethods = store.paymentMethods
     .filter((id) => id !== "online_card")
     .map((id) => paymentMethodLabel(id));
-  const deliveryText =
-    store.deliveryFeeMinor === null
-      ? "Delivery charges are confirmed by the store."
-      : store.freeDeliveryOverMinor !== null
-        ? `Free delivery on orders over ${formatStoreMoney(store, store.freeDeliveryOverMinor)}.`
-        : `Flat delivery fee of ${formatStoreMoney(store, store.deliveryFeeMinor)}.`;
+  const deliveryText = "Delivery options and charges are shown on each product. Pickup-only items are marked.";
 
   return (
     <main>

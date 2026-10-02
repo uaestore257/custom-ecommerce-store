@@ -1,7 +1,7 @@
 # Checks every pull request and every push to main.
 # No database is used: the Prisma client is generated without one, the
 # build does not connect, and the database tests (`npm run test:db`,
-# which resets a database) are deliberately not run here yet.
+# which reset a separate disposable database) are deliberately not run here.
 name: CI
 
 on:
@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          # Meets Next.js (>=20.9) and Prisma 7 (^20.19 || ^22.12 || >=24).
+          # Meets the package's Node 22 engine and Prisma 7 requirements.
           node-version: 22
           cache: npm
 
@@ -37,8 +37,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Prisma schema validation
+        run: npm exec prisma -- validate
+
       - name: Lint
         run: npm run lint
+
+      - name: Setup and database safety tests
+        run: npm run test:setup
 
       - name: Unit tests
         run: npm run test:unit

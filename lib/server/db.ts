@@ -1,6 +1,7 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { runtimeDatabaseUrl } from "@/lib/database-urls";
 
 // One Prisma client per server process, created on first use (not at
 // import time), so `next build` works without database credentials.
@@ -11,7 +12,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export function createPrismaClient(connectionString = process.env.DATABASE_URL) {
+export function createPrismaClient(connectionString = runtimeDatabaseUrl()) {
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set. Copy .env.example to .env.");
   }

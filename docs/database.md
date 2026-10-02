@@ -6,16 +6,16 @@ PostgreSQL + Prisma 7.
 overview and settings (including archive/restore), products (list, add,
 edit, delete/archive) and categories (add, rename, reorder, delete); and the
 public storefront's reads — store branding and content, categories, active
-products, prices and stock (`lib/server/storefront/catalog.ts`, which only
+products, prices, stock and product-level delivery options (`lib/server/storefront/catalog.ts`, which only
 ever returns ACTIVE, non-archived stores and ACTIVE products, through
 `storeScope()`); checkout's orders (`lib/server/orders.ts`, see
 [Orders](#orders)); and the admin's order management
-([Order management](#order-management)).
+([Order management](#order-management)), plus the Store Owner's read-only,
+store-scoped Customers page.
 
 **Still browser demo data** (`lib/demo-db.ts`, localStorage): the cart's item
-list (product ids and quantities only — never prices), admin customers,
-agency settings and old demo order details. These are connected in later
-phases.
+list (product ids and quantities only — never prices), agency settings and
+old demo order details. These are connected in later phases.
 
 ## Orders
 
@@ -24,8 +24,10 @@ resolves the store on the server (store cookie or configured default, ACTIVE
 only) and calls `placeOrder()`:
 
 * **Nothing about money, stock or ownership is trusted from the browser.**
-  Prices, delivery and totals are recalculated from the database in the
-  store's currency (minor units). The browser sends the total it showed only
+  Prices, the sum of each product's delivery fee by quantity, pickup
+  eligibility and totals are recalculated from the database in the store's
+  currency (minor units). Free-delivery products contribute zero; pickup-only
+  products require the cart to use pickup. The browser sends the total it showed only
   so the server can refuse the order if it differs; the cart's storeId is
   only compared with the resolved store.
 * **One transaction** holds every write: stock decrements, customer, order
@@ -45,6 +47,8 @@ only) and calls `placeOrder()`:
   40 per 10 minutes per store for visitors without a trusted IP.
 * Customers are created once per store and email and never overwritten from
   the public form; each order keeps its own copy of the submitted details.
+  Store Owners can view a bounded, read-only list of customers for their
+  own store; Managers and Staff cannot access it.
 * Adding to the cart never reserves stock.
 
 ## Order management
@@ -193,6 +197,13 @@ Two independent layers, so a bug in one is caught by the other.
 ### 1. Database constraints (cannot be bypassed by application code)
 
 * Every store-owned table has a required `storeId`.
+* `StoreDomain` assigns one globally unique hostname to one store. A custom
+  hostname is routed only after its DNS TXT ownership proof is verified and
+  its store is active; a partial unique index permits one verified primary
+  domain per store. Domain-management queries and mutations include the
+  authenticated store ID. Legacy `STORE_DOMAINS` entries are trusted
+  operator-configured aliases; a database row for the hostname takes
+  precedence, so PENDING and DISABLED records cannot fall through to an alias.
 * Parent tables expose a composite key `(id, storeId)`; children
   reference it with a **composite foreign key**, so both must match:
 
@@ -208,6 +219,10 @@ Two independent layers, so a bug in one is caught by the other.
   | `StorePaymentMethod (providerAccountId, storeId)` | `PaymentProviderAccount (id, storeId)` |
   | `ProductVariant`, `ShippingRate (storeId, currency)` | `Store (id, baseCurrency)` |
   | `*Translation (storeId, locale)` | `StoreLanguage (storeId, languageCode)` |
+
+`StoreDomain` references `Store(id)` directly rather than another
+store-owned child record; its hostname is globally unique and can belong to
+only one store.
 
 * All composite keys are `ON UPDATE RESTRICT`, and a trigger makes
   `storeId` immutable on every store-owned table: records can never be
@@ -232,10 +247,12 @@ so later migrations leave them in place (verified: a follow-up
   record returns `null`.
 * The `storeId` always comes from the route (e.g.
   `/admin/stores/[storeId]`), never from a request body.
-* Access checks: Phase 2a requires the platform owner
-  (`User.isPlatformOwner`, at most one) for the whole admin. Phase 2b adds
-  store owners (`StoreMembership` role `OWNER`). `MANAGER` and `STAFF` stay
-  in the enum but are not used for authorization.
+* Access checks: `User.isPlatformOwner` (at most one) is the
+  platform-level administrator. Store Owners authenticate with Better
+  Auth credentials in `Account` and require `StoreMembership` role `OWNER`
+  for the exact store resolved from the request hostname and route.
+  `MANAGER` has store-scoped operational permissions, including domain
+  management; `STAFF` remains read-only for Orders and Messages.
 * Customers belong to one store (`@@unique([storeId, email])`): the same
   person shopping at two stores is two separate customer records.
 
@@ -251,30 +268,41 @@ so later migrations leave them in place (verified: a follow-up
 
 ## Not in Phase 1 (to verify or build later)
 
-* Store-owner sign-in and store-level permissions (Phase 2b).
+* Email-based password recovery. Manager/Staff assignment, role-scoped access
+  and hashed, expiring store invitations are implemented.
 * Tax calculation and per-country legal requirements (which tax IDs,
   invoices and registrations each country needs) — to be verified per
   country; nothing here claims compliance.
-* Shipping-rate calculation, payment provider integration. Payment
-  **secrets are never stored in the database**: `secretRef` points to a
-  secret manager or environment variable.
+* Product delivery fees are supported directly on each product; the legacy
+  `ShippingZone` and `ShippingRate` tables remain for schema compatibility
+  but are not used by current checkout, settings or seed code.
+* Live payment processing requires deployment infrastructure to install a
+  server-only `PaymentSecretStore` adapter through
+  `configurePaymentSecretStore()`. The adapter resolves a `vault:<storeId>/<provider>/<key>`
+  reference for the exact store and provider; no local database or
+  environment-variable secret store is provided. Stripe remains unavailable
+  until an external adapter is installed. JazzCash checkout remains disabled
+  even with resolved credentials because its current browser-post flow would
+  expose the merchant password; it needs a credential-safe server-side handoff
+  supported by official documentation. Credential-bearing provider form
+  redirects are rejected before reaching the browser. No payment secrets are
+  stored in the database. Easypaisa is disabled until its official merchant
+  API and response-verification contract is available and implemented.
 * Language switcher UI and right-to-left layout.
 * Domain routing (the storefront's store choice is a temporary cookie plus a
-  configured default); refunds, returns and editing orders; order emails;
-  moving admin customers from localStorage to the database; importing any
+  configured default); refunds, returns and editing orders; importing any
   data saved in browsers.
 * Data-residency rules differ by country (e.g. GDPR, Saudi PDPL); this
   phase uses a single database.
 
 ## Commands
 
-```bash
-docker compose up -d     # local PostgreSQL 16 (or use your own)
-cp .env.example .env
-npm install              # also runs `prisma generate`
-npm run db:migrate       # apply migrations to the dev database
-npm run db:seed          # reference data + 3 demo stores (refuses production)
-npm run platform:create-owner   # your admin login (see authentication.md)
-npm run test:unit        # money, standards, auth pieces (no database needed)
-npm run test:db          # RESETS the test database, then runs DB tests
-```
+See the [Windows local development guide](local-development.md) for safe
+PostgreSQL setup and dependency installation. Verify `DATABASE_URL` points to
+the intended local database before running `npm run db:migrate` (schema
+changes) or `npm run db:seed` (data writes).
+
+`npm run test:unit` does not need a database. **`npm run test:db` resets the
+database in `TEST_DATABASE_URL` and deletes its existing data**; only use it
+with a disposable test database whose target has been verified. Do not use
+`npm run db:reset` for normal setup; it drops data in `DATABASE_URL`.

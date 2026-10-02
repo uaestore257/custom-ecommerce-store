@@ -16,7 +16,7 @@ import {
 } from "@/lib/admin/validation";
 import { isHexColor } from "@/lib/validation";
 
-type PaymentMethodId = (typeof PAYMENT_METHOD_IDS)[number];
+type PaymentMethodId = (typeof PAYMENT_METHODS)[number]["id"];
 
 interface StoreFormValues {
   name: string;
@@ -24,6 +24,8 @@ interface StoreFormValues {
   status: string;
   ownerName: string;
   ownerEmail: string;
+  ownerPassword: string;
+  ownerPasswordConfirm: string;
   countryCode: string;
   baseCurrency: string;
   timezone: string;
@@ -33,8 +35,6 @@ interface StoreFormValues {
   accentColor: string;
   // Edit-only fields
   logoUrl: string;
-  deliveryFee: string;
-  freeDeliveryThreshold: string;
   paymentMethods: Record<PaymentMethodId, boolean>;
   tagline: string;
   heroTitle: string;
@@ -51,21 +51,21 @@ function initialValues(store?: AdminStoreDetail): StoreFormValues {
   const methods = Object.fromEntries(PAYMENT_METHOD_IDS.map((id) => [id, id === "cash_on_delivery"])) as Record<PaymentMethodId, boolean>;
   if (!store) {
     return {
-      name: "", businessType: "", status: "DRAFT", ownerName: "", ownerEmail: "",
+      name: "", businessType: "", status: "DRAFT", ownerName: "", ownerEmail: "", ownerPassword: "", ownerPasswordConfirm: "",
       countryCode: "", baseCurrency: "", timezone: "", defaultLanguage: "", languages: [],
       slug: "", accentColor: "#0f766e",
-      logoUrl: "", deliveryFee: "", freeDeliveryThreshold: "", paymentMethods: methods,
+      logoUrl: "", paymentMethods: methods,
       tagline: "", heroTitle: "", heroText: "", aboutText: "", contactEmail: "", contactPhone: "", contactAddress: "",
     };
   }
   for (const m of store.paymentMethods) methods[m.method as PaymentMethodId] = m.enabled;
   return {
     name: store.name, businessType: store.businessType ?? "", status: store.status,
-    ownerName: store.ownerName, ownerEmail: store.ownerEmail,
+    ownerName: store.ownerName, ownerEmail: store.ownerEmail, ownerPassword: "", ownerPasswordConfirm: "",
     countryCode: store.countryCode, baseCurrency: store.baseCurrency, timezone: store.timezone,
     defaultLanguage: store.defaultLanguage, languages: store.languages,
     slug: store.slug, accentColor: store.accentColor ?? "#0f766e",
-    logoUrl: store.logoUrl ?? "", deliveryFee: store.delivery.fee, freeDeliveryThreshold: store.delivery.freeOver,
+    logoUrl: store.logoUrl ?? "",
     paymentMethods: methods, ...store.content,
     contactEmail: store.contactEmail, contactPhone: store.contactPhone, contactAddress: store.contactAddress,
   };
@@ -128,13 +128,20 @@ export function StoreForm({
     event.preventDefault();
     setFormError(null);
     const found = isEdit ? validateStoreSettings(values, lookup).errors : validateStoreBase(values, lookup).errors;
+    if (!isEdit && values.ownerPassword !== values.ownerPasswordConfirm) {
+      found.ownerPasswordConfirm = "The passwords don't match.";
+    }
     setErrors(found);
     if (hasErrors(found)) {
       document.getElementById(`store-${Object.keys(found)[0]}`)?.focus();
       return;
     }
     startTransition(async () => {
-      const result = isEdit && store ? await updateStoreAction(store.id, values) : await createStoreAction(values);
+      const submittedValues = values;
+      if (!isEdit) setValues((current) => ({ ...current, ownerPassword: "", ownerPasswordConfirm: "" }));
+      const result = isEdit && store
+        ? await updateStoreAction(store.id, submittedValues)
+        : await createStoreAction(submittedValues);
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {});
         setFormError(result.error);
@@ -148,12 +155,21 @@ export function StoreForm({
   const text = (
     key: keyof StoreFormValues,
     label: string,
-    opts: { required?: boolean; hint?: ReactNode; type?: string; placeholder?: string; className?: string; inputMode?: "decimal" } = {},
+    opts: {
+      required?: boolean;
+      hint?: ReactNode;
+      type?: string;
+      placeholder?: string;
+      className?: string;
+      inputMode?: "decimal";
+      autoComplete?: string;
+    } = {},
   ) => (
     <Field label={label} htmlFor={`store-${key}`} required={opts.required} error={errors[key]} hint={opts.hint} className={opts.className}>
       <input
         {...errorProps(`store-${key}`, errors[key])}
         type={opts.type ?? "text"}
+        autoComplete={opts.autoComplete}
         inputMode={opts.inputMode}
         placeholder={opts.placeholder}
         value={values[key] as string}
@@ -197,12 +213,6 @@ export function StoreForm({
       <Section title="Store details" description="Basic information about this client store.">
         {text("name", "Store name", { required: true, placeholder: "e.g. Nest & Oak Home" })}
         {select("businessType", "Store category / type", STORE_TYPES, { placeholder: "Choose category…" })}
-        {/* Owner and status are set here only when creating a store. Afterwards
-            they have their own platform-only actions (owner card and status
-            controls below / on the overview), so saving settings never
-            changes them. */}
-        {!isEdit && text("ownerName", "Owner / contact name", { required: true })}
-        {!isEdit && text("ownerEmail", "Owner email", { required: true, type: "email" })}
         {!isEdit &&
           select(
             "status",
@@ -211,6 +221,18 @@ export function StoreForm({
             { hint: "Draft and paused stores are not open for business." },
           )}
       </Section>
+
+      {!isEdit && (
+        <Section
+          title="Store Owner"
+          description="Create the Store Owner's sign-in credentials. The password is hashed and never shown again."
+        >
+          {text("ownerName", "Owner name", { required: true })}
+          {text("ownerEmail", "Owner email", { required: true, type: "email" })}
+          {text("ownerPassword", "Owner password", { required: true, type: "password", autoComplete: "new-password" })}
+          {text("ownerPasswordConfirm", "Confirm password", { required: true, type: "password", autoComplete: "new-password" })}
+        </Section>
+      )}
 
       <Section title="Country, currency & time" description="Each store has its own settings; nothing is assumed for you.">
         {select("countryCode", "Country / region", reference.countries.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })), {
@@ -293,31 +315,30 @@ export function StoreForm({
             className: "sm:col-span-2",
             hint: "Optional. If empty or broken, the store's initial is shown in its accent colour.",
           })}
-        <p className="text-xs text-slate-500 sm:col-span-2">Custom domains are planned for a later phase.</p>
+        <p className="text-xs text-slate-500 sm:col-span-2">
+          Custom hostnames are managed by the Store Owner from their store admin.
+        </p>
       </Section>
 
       {isEdit && (
         <>
-          <Section title="Delivery" description={`Amounts in ${values.baseCurrency}. Saved as a setting; nothing is calculated yet.`}>
-            {text("deliveryFee", "Delivery fee", { required: true, inputMode: "decimal", placeholder: "0" })}
-            {text("freeDeliveryThreshold", "Free delivery over", { inputMode: "decimal", hint: "Leave empty for no free delivery." })}
-          </Section>
-
           <Section title="Payment methods" description="Choose which payment options customers will see at checkout.">
             <div className="sm:col-span-2">
               <Notice tone="warning" className="mb-4">
-                Payment configuration is <strong>not connected to a real payment provider</strong>.
-                Offline methods only record the customer&apos;s choice; no money is collected.
+                Provider accounts and store-specific payment configuration are managed by the Store Owner.
+                This Platform Admin form does not accept payment credentials.
               </Notice>
               <ul className="space-y-3">
-                {PAYMENT_METHODS.map((m) => (
+                {PAYMENT_METHODS.filter((m) =>
+                  ["cash_on_delivery", "card_on_delivery", "bank_transfer", "online_card"].includes(m.id),
+                ).map((m) => (
                   <li key={m.id}>
                     <label className={`flex items-start gap-3 rounded-xl border border-slate-200 p-4 ${m.requiresProvider ? "cursor-not-allowed bg-slate-50 opacity-70" : "cursor-pointer"}`}>
                       <input
                         type="checkbox"
                         className="mt-1 h-4 w-4 accent-teal-700"
-                        checked={m.requiresProvider ? false : values.paymentMethods[m.id]}
                         disabled={m.requiresProvider}
+                        checked={m.requiresProvider ? false : values.paymentMethods[m.id]}
                         onChange={(e) => set("paymentMethods", { ...values.paymentMethods, [m.id]: e.target.checked })}
                       />
                       <span>

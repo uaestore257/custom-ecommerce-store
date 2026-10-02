@@ -47,14 +47,13 @@ export interface CartSummary {
   priceChangedCount: number;
   subtotalMinor: bigint;
   deliveryMinor: bigint;
-  /** false = the store has no delivery rate yet; delivery is not included in the total. */
-  deliveryConfigured: boolean;
+  requiresPickup: boolean;
   totalMinor: bigint;
 }
 
 const ZERO = BigInt(0);
 
-function emptySummary(store: StorefrontStore): CartSummary {
+function emptySummary(): CartSummary {
   return {
     lines: [],
     itemCount: 0,
@@ -63,7 +62,7 @@ function emptySummary(store: StorefrontStore): CartSummary {
     priceChangedCount: 0,
     subtotalMinor: ZERO,
     deliveryMinor: ZERO,
-    deliveryConfigured: store.deliveryFeeMinor !== null,
+    requiresPickup: false,
     totalMinor: ZERO,
   };
 }
@@ -83,7 +82,7 @@ export function reconcileSession(session: StoredSession | null | undefined, show
 
 export function computeCart(catalog: StorefrontCatalog, session: StoredSession | null | undefined): CartSummary {
   const { store } = catalog;
-  const summary = emptySummary(store);
+  const summary = emptySummary();
   if (!session || session.storeId !== store.id) return summary;
 
   // One entry per product, even if stored data was edited by hand.
@@ -116,9 +115,16 @@ export function computeCart(catalog: StorefrontCatalog, session: StoredSession |
     summary.subtotalMinor += lineTotalMinor;
   }
 
-  if (summary.lines.length > 0 && store.deliveryFeeMinor !== null) {
-    const freeOver = store.freeDeliveryOverMinor === null ? null : BigInt(store.freeDeliveryOverMinor);
-    summary.deliveryMinor = freeOver !== null && summary.subtotalMinor >= freeOver ? ZERO : BigInt(store.deliveryFeeMinor);
+  summary.requiresPickup = summary.lines.some((line) => line.product.pickupOnly);
+  if (!summary.requiresPickup) {
+    summary.deliveryMinor = summary.lines.reduce(
+      (sum, line) =>
+        sum +
+        (line.product.freeDelivery
+          ? ZERO
+          : BigInt(line.product.deliveryFeeMinor) * BigInt(line.quantity)),
+      ZERO,
+    );
   }
   summary.totalMinor = summary.subtotalMinor + summary.deliveryMinor;
   return summary;
@@ -147,6 +153,12 @@ export function formatStoreMoney(
   minor: bigint | string,
 ): string {
   return formatMinorUnits(typeof minor === "bigint" ? minor : BigInt(minor), store.currency, store.minorUnits, store.locale);
+}
+
+export function productDeliveryDescription(product: StorefrontProduct, store: StorefrontStore) {
+  if (product.pickupOnly) return "Pickup Only";
+  if (product.freeDelivery) return "Free Delivery";
+  return `Delivery: ${formatStoreMoney(store, product.deliveryFeeMinor)}`;
 }
 
 export function isProductOnSale(product: Pick<StorefrontProduct, "priceMinor" | "compareAtMinor">) {

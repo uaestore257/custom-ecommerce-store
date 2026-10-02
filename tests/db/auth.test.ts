@@ -1,9 +1,11 @@
 // Authentication (Better Auth) and the platform-owner guard, end to end:
 // real HTTP handler, real Session/Account rows, real guards.
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, beforeEach, test } from "node:test";
 import { authHandler, createAuth, DISABLED_PATHS, ENABLED_PATHS, getAuth } from "../../lib/server/auth/auth";
-import { AccessDenied, getSignedInUser, requirePlatformOwner } from "../../lib/server/auth/guards";
+import { AccessDenied, getSignedInUser, requireAdminViewer, requirePlatformOwner, requireStoreAccess } from "../../lib/server/auth/guards";
+import { updateOwnAccount } from "../../lib/server/auth/account";
 import { createPlatformOwner, PlatformOwnerError, resetPlatformOwnerPassword } from "../../lib/server/auth/platform-owner";
 import { getDb } from "../../lib/server/db";
 import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
@@ -16,6 +18,7 @@ import {
   ensurePlatformOwner,
   OWNER_EMAIL,
   OWNER_PASSWORD,
+  STORE_HOST,
   signIn,
   setTestAuthEnv,
 } from "./auth-helpers";
@@ -217,7 +220,7 @@ test("removing the platform-owner flag takes effect on the next request", async 
   }
 });
 
-test("users who are not the platform owner can't sign in (Phase 2a)", async () => {
+test("users who are neither a Platform Owner nor a store owner on this host cannot sign in", async () => {
   const email = `store-owner-${uid()}@example.com`;
   const ctx = await getAuth().$context;
   const user = await ctx.internalAdapter.createUser({ email, name: "Store Owner" }, { method: "admin" });
@@ -226,6 +229,119 @@ test("users who are not the platform owner can't sign in (Phase 2a)", async () =
     providerId: "credential",
     accountId: user.id,
     password: await ctx.password.hash("a store owner password 9"),
+  });
+
+  test("a provisioned Store Owner signs in only on their own hostname and store", async () => {
+    const user = await db.user.create({ data: { email: `store-login-${uid()}@example.com`, name: "Store Owner" } });
+    await db.storeMembership.create({ data: { userId: user.id, storeId: "store-a", role: "OWNER" } });
+    const password = "a private store owner passphrase 2026";
+    try {
+      const context = await getAuth().$context;
+      await db.account.create({
+        data: {
+          id: randomUUID(),
+          userId: user.id,
+          accountId: user.id,
+          providerId: "credential",
+          password: await context.password.hash(password),
+        },
+      });
+
+      await db.rateLimit.deleteMany();
+      const storeSignIn = await authRequest("/sign-in/email", { email: user.email, password }, { host: STORE_HOST });
+      assert.equal(storeSignIn.status, 200);
+      const cookie = cookieHeader(storeSignIn);
+      assert.ok(cookie);
+      actAs(cookie, STORE_HOST);
+      assert.equal((await requireAdminViewer()).kind, "store");
+      assert.equal((await requireStoreAccess("store-a")).access, "write");
+      await assert.rejects(requireStoreAccess("store-b"), (error: unknown) => error instanceof AccessDenied && error.reason === "forbidden");
+      await assert.rejects(requirePlatformOwner(), (error: unknown) => error instanceof AccessDenied && error.reason === "forbidden");
+
+      const adminHostSignIn = await authRequest("/sign-in/email", { email: user.email, password });
+      assert.equal(adminHostSignIn.ok, false, "a Store Owner cannot create a session on ADMIN_HOST");
+    } finally {
+      await db.user.delete({ where: { id: user.id } });
+    }
+  });
+
+  test("a credential cannot own multiple stores and thereby gain multiple store hosts", async () => {
+    const user = await db.user.create({ data: { email: `multi-owner-${uid()}@example.com`, name: "Multi Store Owner" } });
+    await db.storeMembership.createMany({
+      data: [
+        { userId: user.id, storeId: "store-a", role: "OWNER" },
+        { userId: user.id, storeId: "store-b", role: "OWNER" },
+      ],
+    });
+    const password = "a multi store owner passphrase 2026";
+    const context = await getAuth().$context;
+    await db.account.create({
+      data: {
+        id: randomUUID(),
+        userId: user.id,
+        accountId: user.id,
+        providerId: "credential",
+        password: await context.password.hash(password),
+      },
+    });
+    try {
+      const response = await authRequest("/sign-in/email", { email: user.email, password }, { host: STORE_HOST });
+      assert.equal(response.ok, false);
+      assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
+    } finally {
+      await db.user.delete({ where: { id: user.id } });
+    }
+  });
+
+  test("Store Owner account updates re-authenticate and never audit plaintext credentials", async () => {
+    const email = `store-change-${uid()}@example.com`;
+    const user = await db.user.create({ data: { email, name: "Original Store Owner" } });
+    await db.storeMembership.create({ data: { userId: user.id, storeId: "store-a", role: "OWNER" } });
+    const currentPassword = "a current owner passphrase 2026";
+    try {
+      const context = await getAuth().$context;
+      await db.account.create({
+        data: {
+          id: randomUUID(),
+          userId: user.id,
+          accountId: user.id,
+          providerId: "credential",
+          password: await context.password.hash(currentPassword),
+        },
+      });
+      const loginCookie = await signIn(user.email, currentPassword, STORE_HOST);
+      actAs(loginCookie, STORE_HOST);
+
+      const nextPassword = "a different owner passphrase 2026";
+      const result = await updateOwnAccount(getAuth(), db, user.id, {
+        name: "Updated Store Owner",
+        email: `updated-${uid()}@example.com`,
+        currentPassword,
+        newPassword: nextPassword,
+        confirmPassword: nextPassword,
+      });
+      assert.ok(result.ok, JSON.stringify(result));
+      if (!result.ok) return;
+      assert.equal(result.data.requiresSignIn, true);
+      assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
+      const updated = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+      assert.equal(updated.name, "Updated Store Owner");
+      assert.equal(updated.emailVerified, false, "a changed email is not marked verified");
+      assert.equal(await context.password.verify({
+        hash: (await db.account.findUniqueOrThrow({
+          where: { providerId_accountId: { providerId: "credential", accountId: user.id } },
+        })).password!,
+        password: nextPassword,
+      }), true);
+      const event = await db.auditEvent.findFirstOrThrow({
+        where: { action: "account.profile_change", targetId: user.id },
+        orderBy: { createdAt: "desc" },
+      });
+      assert.deepEqual(event.metadata, { changedFields: ["name", "email", "password"] });
+      assert.doesNotMatch(JSON.stringify(event), new RegExp(`${currentPassword}|${nextPassword}`));
+    } finally {
+      await db.user.delete({ where: { id: user.id } });
+    }
   });
   const response = await authRequest("/sign-in/email", { email, password: "a store owner password 9" });
   assert.equal(response.ok, false);
@@ -284,4 +400,3 @@ test("audit events can't be edited or deleted", async () => {
   await rejects(() => db.auditEvent.update({ where: { id: event.id }, data: { action: "auth.sign_out" } }), /cannot be modified/);
   await rejects(() => db.auditEvent.delete({ where: { id: event.id } }), /cannot be deleted/);
 });
-

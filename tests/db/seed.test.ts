@@ -89,12 +89,8 @@ test("customers and orders stay in their own store, with per-store numbers", asy
   assert.equal(storeA.orderNumberPrefix, "NO");
 });
 
-test("delivery and payment settings became per-store configuration rows", async () => {
-  const rate = await db.shippingRate.findFirstOrThrow({ where: { storeId: "store-a" }, include: { zone: { include: { countries: true } } } });
-  assert.equal(rate.priceMinor, 3000n);
-  assert.equal(rate.freeOverMinor, 75000n);
-  assert.equal(rate.currency, "AED");
-  assert.deepEqual(rate.zone.countries.map((c) => c.countryCode), ["AE"]);
+test("seeded legacy store delivery rates are absent and payment settings remain per-store", async () => {
+  assert.equal(await db.shippingRate.count({ where: { storeId: "store-a" } }), 0);
   const methods = await db.storePaymentMethod.findMany({ where: { storeId: "store-a" }, orderBy: { position: "asc" } });
   assert.deepEqual(methods.map((m) => [m.method, m.enabled]), [
     ["cash_on_delivery", true],

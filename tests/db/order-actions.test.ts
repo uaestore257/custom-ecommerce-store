@@ -44,6 +44,7 @@ async function makeStore(status: "ACTIVE" | "DRAFT") {
     status,
     ownerName: "Owner",
     ownerEmail: `owner-${uid()}@example.com`,
+    ownerPassword: "an order action passphrase 2026",
     countryCode: "AE",
     baseCurrency: "AED",
     timezone: "Asia/Dubai",
@@ -52,10 +53,6 @@ async function makeStore(status: "ACTIVE" | "DRAFT") {
     accentColor: "#123456",
   });
   assert.ok(result.ok, JSON.stringify(result));
-  const zone = await db.shippingZone.create({ data: { storeId: result.data.id, name: "Domestic" } });
-  await db.shippingRate.create({
-    data: { storeId: result.data.id, zoneId: zone.id, name: "Standard", currency: "AED", priceMinor: BigInt(2500), freeOverMinor: null },
-  });
   return result.data.id;
 }
 
@@ -68,6 +65,9 @@ async function makeProduct(storeId: string) {
     description: "A sturdy stool for testing orders.",
     price: "100.00",
     compareAtPrice: "",
+    deliveryFee: "12.50",
+    freeDelivery: false,
+    pickupOnly: false,
     imageUrl: "",
     stock: "5",
     status: "ACTIVE",
@@ -81,6 +81,7 @@ const input = (storeId: string, productId: string) => ({
   storeId,
   idempotencyKey: randomUUID(),
   expectedTotalMinor: "12500",
+  fulfillmentMethod: "DELIVERY",
   items: [{ productId, quantity: 1 }],
   name: "Jane Visitor",
   email: `jane-${uid()}@example.com`,

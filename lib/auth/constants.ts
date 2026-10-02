@@ -15,7 +15,7 @@ export function isConfiguredAdminHost(requestHost: string, adminHost: string) {
   return configuredHost !== "" && normalizeHost(requestHost) === configuredHost;
 }
 
-/** Paths that belong to the admin and are only served on ADMIN_HOST. */
+/** Paths that belong to the admin and are only served on an admin or store host. */
 export function isAdminPath(pathname: string) {
   return /^\/(admin|login|api\/auth)(\/|$)/.test(pathname);
 }

@@ -19,6 +19,9 @@ interface ProductFormValues {
   description: string;
   price: string;
   compareAtPrice: string;
+  deliveryFee: string;
+  freeDelivery: boolean;
+  pickupOnly: boolean;
   imageUrl: string;
   stock: string;
   status: DbProductStatus;
@@ -39,6 +42,9 @@ function toValues(product?: AdminProduct): ProductFormValues {
     description: product?.description ?? "",
     price: product?.price ?? "",
     compareAtPrice: product?.compareAtPrice ?? "",
+    deliveryFee: product?.deliveryFee ?? "0",
+    freeDelivery: product?.freeDelivery ?? false,
+    pickupOnly: product?.pickupOnly ?? false,
     imageUrl: product?.imageUrl ?? "",
     stock: product ? String(product.stock) : "0",
     status: product?.status ?? "ACTIVE",
@@ -85,6 +91,19 @@ export function ProductForm({
     setSaved(false);
     setValues((v) => ({ ...v, [key]: value }));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: "" }));
+  }
+
+  const deliveryOption = values.pickupOnly ? "PICKUP" : values.freeDelivery ? "FREE" : "FEE";
+
+  function setDeliveryOption(option: "FEE" | "FREE" | "PICKUP") {
+    setSaved(false);
+    setValues((current) => ({
+      ...current,
+      freeDelivery: option === "FREE",
+      pickupOnly: option === "PICKUP",
+      deliveryFee: option === "FEE" ? current.deliveryFee || "0" : "0",
+    }));
+    setErrors((current) => ({ ...current, deliveryOptions: "" }));
   }
 
   function handleSubmit(event: FormEvent) {
@@ -175,6 +194,52 @@ export function ProductForm({
             >
               <input {...errorProps("product-compareAtPrice", errors.compareAtPrice)} type="number" min="0" step={step} inputMode="decimal" value={values.compareAtPrice} onChange={(e) => set("compareAtPrice", e.target.value)} className={inputClass(!!errors.compareAtPrice)} />
             </Field>
+            <fieldset
+              id="product-deliveryOptions"
+              className="sm:col-span-2"
+              aria-invalid={Boolean(errors.deliveryOptions)}
+            >
+              <legend className="mb-2 text-sm font-medium text-slate-700">Delivery</legend>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {([
+                  ["FEE", "Delivery fee"],
+                  ["FREE", "Free delivery"],
+                  ["PICKUP", "Pickup only"],
+                ] as const).map(([option, label]) => (
+                  <label key={option} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+                    <input
+                      type="radio"
+                      name="product-delivery-option"
+                      value={option}
+                      checked={deliveryOption === option}
+                      onChange={() => setDeliveryOption(option)}
+                      className="h-4 w-4 accent-teal-700"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              {errors.deliveryOptions && <p className="mt-1.5 text-sm text-red-600">{errors.deliveryOptions}</p>}
+            </fieldset>
+            {deliveryOption === "FEE" && (
+              <Field
+                label={`Delivery fee (${store.baseCurrency})`}
+                htmlFor="product-deliveryFee"
+                required
+                error={errors.deliveryFee}
+              >
+                <input
+                  {...errorProps("product-deliveryFee", errors.deliveryFee)}
+                  type="number"
+                  min="0"
+                  step={step}
+                  inputMode="decimal"
+                  value={values.deliveryFee}
+                  onChange={(e) => set("deliveryFee", e.target.value)}
+                  className={inputClass(!!errors.deliveryFee)}
+                />
+              </Field>
+            )}
             <Field label="Stock quantity" htmlFor="product-stock" required error={errors.stock}>
               <input {...errorProps("product-stock", errors.stock)} type="number" min="0" step="1" inputMode="numeric" value={values.stock} onChange={(e) => set("stock", e.target.value)} className={inputClass(!!errors.stock)} />
             </Field>

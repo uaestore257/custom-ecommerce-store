@@ -28,6 +28,7 @@ async function makeStore(status: Status, currency = { country: "AE", code: "AED"
     status,
     ownerName: "Owner",
     ownerEmail: `owner-${uid()}@example.com`,
+    ownerPassword: "a catalog owner passphrase 2026",
     countryCode: currency.country,
     baseCurrency: currency.code,
     timezone: currency.tz,
@@ -50,6 +51,9 @@ async function makeProduct(storeId: string, overrides: Record<string, unknown> =
     compareAtPrice: "",
     imageUrl: "",
     stock: "7",
+    deliveryFee: "0",
+    freeDelivery: false,
+    pickupOnly: false,
     status: "ACTIVE",
     featured: false,
     ...overrides,
@@ -215,6 +219,9 @@ test("money is exact minor units in each store's currency (AED 2 decimals, KWD 3
   assert.equal(kwdCatalog.store.minorUnits, 3);
   assert.equal(k.priceMinor, "12345");
   assert.equal(k.compareAtMinor, null);
+  assert.equal(a.deliveryFeeMinor, "0");
+  assert.equal(a.freeDelivery, false);
+  assert.equal(a.pickupOnly, false);
 });
 
 test("an admin price or stock change is what the next catalog read returns", async () => {
@@ -247,11 +254,12 @@ test("only whitelisted, JSON-safe fields reach the browser", async () => {
   assert.deepEqual(JSON.parse(JSON.stringify(catalog)), catalog, "must survive JSON (no BigInt, Date or class instances)");
   assert.deepEqual(Object.keys(catalog.store).sort(), [
     "aboutText", "accentColor", "contactAddress", "contactEmail", "contactPhone", "countryCode", "countryName",
-    "currency", "deliveryFeeMinor", "freeDeliveryOverMinor", "heroText", "heroTitle", "id", "locale", "logoUrl",
+    "currency", "heroText", "heroTitle", "id", "locale", "logoUrl",
     "minorUnits", "name", "paymentMethods", "tagline",
   ]);
   assert.deepEqual(Object.keys(catalog.products[0]).sort(), [
-    "categoryId", "compareAtMinor", "description", "featured", "id", "imageUrl", "name", "priceMinor", "sku", "stock", "storeId",
+    "categoryId", "compareAtMinor", "deliveryFeeMinor", "description", "featured", "freeDelivery", "id", "imageUrl",
+    "name", "pickupOnly", "priceMinor", "sku", "stock", "storeId",
   ]);
   assert.deepEqual(Object.keys(catalog.categories[0]).sort(), ["id", "imageUrl", "name"]);
 });
@@ -277,19 +285,16 @@ test("branding and content come from the store's default-language record; missin
   assert.equal(bare.store.heroTitle, "");
 });
 
-test("delivery and payment settings: none configured means null, configured values are exact", async () => {
+test("product delivery choices and enabled payment methods are returned to the storefront", async () => {
   const store = await makeStore("ACTIVE");
-  const none = (await getStorefrontCatalog(db, store))!;
-  assert.equal(none.store.deliveryFeeMinor, null, "a new store has no delivery rate yet");
-  assert.equal(none.store.freeDeliveryOverMinor, null);
+  await makeProduct(store, { deliveryFee: "25.00" });
+  await makeProduct(store, { freeDelivery: true, deliveryFee: "0" });
+  await makeProduct(store, { pickupOnly: true, deliveryFee: "0" });
   // createAdminStore() gives every new store all payment-method rows,
   // with only cash on delivery enabled.
+  const none = (await getStorefrontCatalog(db, store))!;
   assert.deepEqual(none.store.paymentMethods, ["cash_on_delivery"]);
 
-  const zone = await db.shippingZone.create({ data: { storeId: store, name: "Domestic" } });
-  await db.shippingRate.create({
-    data: { storeId: store, zoneId: zone.id, name: "Standard", priceMinor: BigInt(2500), freeOverMinor: BigInt(50000), currency: "AED" },
-  });
   // Enable bank transfer and put it first; card on delivery stays disabled.
   const setMethod = (method: string, data: { enabled?: boolean; position?: number }) =>
     db.storePaymentMethod.update({ where: { storeId_method: { storeId: store, method } }, data });
@@ -297,7 +302,13 @@ test("delivery and payment settings: none configured means null, configured valu
   await setMethod("cash_on_delivery", { position: 1 });
   await setMethod("card_on_delivery", { enabled: false, position: 2 });
   const configured = (await getStorefrontCatalog(db, store))!;
-  assert.equal(configured.store.deliveryFeeMinor, "2500");
-  assert.equal(configured.store.freeDeliveryOverMinor, "50000");
   assert.deepEqual(configured.store.paymentMethods, ["bank_transfer", "cash_on_delivery"], "enabled only, in position order");
+  assert.deepEqual(
+    configured.products.map(({ deliveryFeeMinor, freeDelivery, pickupOnly }) => ({ deliveryFeeMinor, freeDelivery, pickupOnly })),
+    [
+      { deliveryFeeMinor: "2500", freeDelivery: false, pickupOnly: false },
+      { deliveryFeeMinor: "0", freeDelivery: true, pickupOnly: false },
+      { deliveryFeeMinor: "0", freeDelivery: false, pickupOnly: true },
+    ],
+  );
 });

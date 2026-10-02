@@ -5,14 +5,14 @@ import type { AdminOrderDetail, AdminOrderSummary, DbOrderStatus, DbPaymentStatu
 import { formatMinorUnits } from "@/lib/money";
 import { storeFormatLocale } from "@/lib/standards";
 import { recordAudit } from "../audit";
-import type { PlatformOwner } from "../auth/guards";
+import type { StoreActor } from "../auth/guards";
 import { fail, NOT_FOUND, ok, type Client } from "./common";
 
 // ---------------------------------------------------------------
 // ORDERS (admin) — always inside ONE store.
 // The storeId comes from the route; an order of another store is "not
-// found". Callers must already have passed requireAdminPage() (reads) or
-// requirePlatformOwner() (changes, which take the PlatformOwner).
+// found". Callers must already have passed requireStorePage(storeId) (reads) or
+// requireStoreAccess(storeId, "write") (changes, which take its actor).
 //
 // Every change names the state the admin saw ("from"). The database only
 // applies it while the order is still in that state (a conditional
@@ -97,6 +97,11 @@ export async function getAdminOrder(client: Client, storeId: string, orderId: st
     include: {
       currencyRef: { select: { minorUnits: true } },
       items: { orderBy: { id: "asc" } },
+      paymentTransactions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { providerReference: true },
+      },
     },
   });
   if (!order) return null;
@@ -104,8 +109,11 @@ export async function getAdminOrder(client: Client, storeId: string, orderId: st
   const locale = storeFormatLocale(store);
   const money = (minor: bigint) => formatMinorUnits(minor, order.currency, order.currencyRef.minorUnits, locale);
   const address = (order.shippingAddress ?? {}) as Record<string, unknown>;
+  const fulfillmentMethod = address.fulfillmentMethod === "PICKUP" ? "PICKUP" : "DELIVERY";
   return {
     ...toSummary(order, store, locale),
+    fulfillmentMethod,
+    paymentTransactionReference: order.paymentTransactions[0]?.providerReference ?? "",
     address: {
       recipientName: text(address.recipientName),
       line1: text(address.line1),
@@ -145,7 +153,7 @@ async function currentOrder(tx: Prisma.TransactionClient, storeId: string, order
 
 /** Moves an order one step forward: Pending → Processing → Shipped → Delivered. */
 export async function setAdminOrderStatus(
-  actor: PlatformOwner,
+  actor: StoreActor,
   client: PrismaClient,
   storeId: string,
   orderId: string,
@@ -176,7 +184,7 @@ export async function setAdminOrderStatus(
  * Cancels a pending or processing, unpaid order and returns its stock.
  * Seeded sample orders never reduced stock, so none is returned for them.
  */
-export async function cancelAdminOrder(actor: PlatformOwner, client: PrismaClient, storeId: string, orderId: string, from: unknown) {
+export async function cancelAdminOrder(actor: StoreActor, client: PrismaClient, storeId: string, orderId: string, from: unknown) {
   if (!isOrderStatus(from)) return fail(NOT_ALLOWED);
   return client.$transaction(async (tx) => {
     const current = await currentOrder(tx, storeId, orderId);
@@ -226,7 +234,7 @@ export async function cancelAdminOrder(actor: PlatformOwner, client: PrismaClien
 
 /** Marks a cash on delivery or bank transfer order as paid or unpaid. */
 export async function setAdminOrderPayment(
-  actor: PlatformOwner,
+  actor: StoreActor,
   client: PrismaClient,
   storeId: string,
   orderId: string,

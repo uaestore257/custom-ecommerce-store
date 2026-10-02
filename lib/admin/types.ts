@@ -47,11 +47,53 @@ export interface AdminStoreDetail extends AdminStoreSummary {
   ownerName: string;
   ownerEmail: string;
   content: { tagline: string; heroTitle: string; heroText: string; aboutText: string };
-  /** Decimal strings in the store's base currency, "" when not set. */
-  delivery: { fee: string; freeOver: string };
   paymentMethods: { method: string; enabled: boolean }[];
   categoryCount: number;
-  hasPrices: boolean; // products or shipping rates exist -> currency is locked
+  hasPrices: boolean; // products have prices -> currency is locked
+}
+
+export interface AdminStorePaymentSettings {
+  id: string;
+  name: string;
+  paymentMethods: { method: string; enabled: boolean }[];
+  bankTransfer: {
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    iban: string;
+    swiftCode: string;
+    instructions: string;
+  };
+  stripe: {
+    accountId: string;
+    hasCredentialReference: boolean;
+    enabled: boolean;
+    available: boolean;
+  };
+  jazzcash: {
+    merchantId: string;
+    hasCredentialReference: boolean;
+    enabled: boolean;
+    available: boolean;
+  };
+}
+
+export interface AdminStoreDomain {
+  id: string;
+  hostname: string;
+  status: "PENDING" | "VERIFIED" | "DISABLED";
+  isPrimary: boolean;
+  verificationToken: string | null;
+  verifiedAt: string | null;
+}
+
+export interface AdminCustomerSummary {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  orderCount: number;
+  createdAt: string;
 }
 
 export interface AdminCategory {
@@ -72,8 +114,12 @@ export interface AdminProduct {
   /** Exact decimal strings in the store currency, e.g. "2499.00". */
   price: string;
   compareAtPrice: string;
+  deliveryFee: string;
   priceDisplay: string;
   compareAtDisplay: string;
+  deliveryFeeDisplay: string;
+  freeDelivery: boolean;
+  pickupOnly: boolean;
   imageUrl: string;
   stock: number;
   status: DbProductStatus;
@@ -118,6 +164,8 @@ export interface AdminOrderSummary {
 
 /** One order with everything the admin's order page shows (from the database). */
 export interface AdminOrderDetail extends AdminOrderSummary {
+  fulfillmentMethod: "DELIVERY" | "PICKUP";
+  paymentTransactionReference: string;
   address: {
     recipientName: string;
     line1: string;

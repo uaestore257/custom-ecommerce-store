@@ -37,6 +37,7 @@ async function makeStore() {
     status: "ACTIVE",
     ownerName: "Owner",
     ownerEmail: `owner-${uid()}@example.com`,
+    ownerPassword: "an order owner passphrase 2026",
     countryCode: "AE",
     baseCurrency: "AED",
     timezone: "Asia/Dubai",
@@ -46,10 +47,6 @@ async function makeStore() {
   });
   assert.ok(result.ok, JSON.stringify(result));
   const storeId = result.data.id;
-  const zone = await db.shippingZone.create({ data: { storeId, name: "Domestic" } });
-  await db.shippingRate.create({
-    data: { storeId, zoneId: zone.id, name: "Standard", currency: "AED", priceMinor: BigInt(2500), freeOverMinor: null },
-  });
   await db.storePaymentMethod.update({ where: { storeId_method: { storeId, method: "bank_transfer" } }, data: { enabled: true } });
   return storeId;
 }
@@ -63,6 +60,9 @@ async function makeProduct(storeId: string, stock = "5") {
     description: "A comfortable sofa for testing orders.",
     price: "100.00",
     compareAtPrice: "",
+    deliveryFee: "12.50",
+    freeDelivery: false,
+    pickupOnly: false,
     imageUrl: "",
     stock,
     status: "ACTIVE",
@@ -73,7 +73,7 @@ async function makeProduct(storeId: string, stock = "5") {
   return { id: result.data.id, variantId: variant.id };
 }
 
-/** Places a real order through checkout: 2 × A and 1 × B at 100.00 each, plus 25.00 delivery. */
+/** Places a real order: 2 × A and 1 × B at 100.00 each, plus 37.50 delivery. */
 async function placeTestOrder(storeId: string, a: { id: string }, b: { id: string }, paymentMethod = "cash_on_delivery") {
   const result = await placeOrder(
     db,
@@ -81,8 +81,9 @@ async function placeTestOrder(storeId: string, a: { id: string }, b: { id: strin
     {
       storeId,
       idempotencyKey: randomUUID(),
-      expectedTotalMinor: "32500",
+      expectedTotalMinor: "33750",
       items: [{ productId: a.id, quantity: 2 }, { productId: b.id, quantity: 1 }],
+      fulfillmentMethod: "DELIVERY",
       name: "Jane Visitor",
       email: `jane-${uid()}@example.com`,
       phone: "050 123 4567",
@@ -133,8 +134,9 @@ test("the order page shows the order's items, totals, address and payment, in th
   assert.equal(detail.items.length, 2);
   assert.deepEqual(detail.items.map((i) => i.quantity).sort(), [1, 2]);
   assert.equal(detail.itemCount, 3);
-  assert.match(detail.totalDisplay, /325\.00/);
-  assert.match(detail.shippingDisplay, /25\.00/);
+  assert.match(detail.totalDisplay, /337\.50/);
+  assert.match(detail.shippingDisplay, /37\.50/);
+  assert.equal(detail.fulfillmentMethod, "DELIVERY");
   assert.equal(detail.discountDisplay, "");
   assert.equal(detail.address.line1, "Villa 12, Example Street");
   assert.equal(detail.address.city, "Dubai");

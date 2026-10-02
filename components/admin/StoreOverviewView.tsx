@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { ArrowRight, Package, Pause, Pencil, Play, Receipt, Settings, Tags, Users, type LucideIcon } from "lucide-react";
+import { ArrowRight, Globe, Package, Pause, Pencil, Play, Receipt, Settings, Tags, Users, type LucideIcon } from "lucide-react";
 import { setStoreStatusAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -11,16 +11,23 @@ import { labelFor, paymentMethodLabel, STORE_TYPES } from "@/lib/config";
 import { formatDate } from "@/lib/format";
 import type { AdminStoreDetail, DbStoreStatus } from "@/lib/admin/types";
 import type { PaymentMethodId, StoreType } from "@/lib/types";
+import type { StoreMembershipRole } from "@/lib/admin/store-access";
 import { PreviewStorefrontButton } from "./PreviewStorefrontButton";
 
 export function StoreOverviewView({
   store,
+  previewUrl,
   activeProducts,
   justCreated,
+  platform,
+  role,
 }: {
   store: AdminStoreDetail;
+  previewUrl: string | null;
   activeProducts: number;
   justCreated: boolean;
+  platform: boolean;
+  role: StoreMembershipRole;
 }) {
   const [confirmPause, setConfirmPause] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,29 +49,42 @@ export function StoreOverviewView({
     <>
       <PageHeader
         title="Store overview"
-        breadcrumbs={[
-          { label: "Agency Admin", href: "/admin" },
-          { label: "Client stores", href: "/admin/stores" },
-          { label: store.name },
-        ]}
+        breadcrumbs={
+          platform
+            ? [
+                { label: "Agency Admin", href: "/admin" },
+                { label: "Client stores", href: "/admin/stores" },
+                { label: store.name },
+              ]
+            : [{ label: store.name }]
+        }
         actions={
           <>
-            <PreviewStorefrontButton store={store} />
-            <LinkButton href={`${base}/settings`} variant="secondary">
-              <Pencil className="h-4 w-4" aria-hidden />
-              Edit store
-            </LinkButton>
-            {store.status === "ACTIVE" ? (
-              <button type="button" disabled={pending} className={buttonClass("secondary")} onClick={() => setConfirmPause(true)}>
-                <Pause className="h-4 w-4" aria-hidden />
-                Pause store
-              </button>
-            ) : (
-              <button type="button" disabled={pending} className={buttonClass("primary")} onClick={() => changeStatus("ACTIVE")}>
-                <Play className="h-4 w-4" aria-hidden />
-                {pending ? "Saving…" : store.status === "SUSPENDED" ? "Reactivate store" : "Activate store"}
-              </button>
-            )}
+            {(platform || role === "OWNER") && <PreviewStorefrontButton store={store} previewUrl={previewUrl} />}
+            {platform ? (
+              <>
+                <LinkButton href={`${base}/settings`} variant="secondary">
+                  <Pencil className="h-4 w-4" aria-hidden />
+                  Edit store
+                </LinkButton>
+                {store.status === "ACTIVE" ? (
+                  <button type="button" disabled={pending} className={buttonClass("secondary")} onClick={() => setConfirmPause(true)}>
+                    <Pause className="h-4 w-4" aria-hidden />
+                    Pause store
+                  </button>
+                ) : (
+                  <button type="button" disabled={pending} className={buttonClass("primary")} onClick={() => changeStatus("ACTIVE")}>
+                    <Play className="h-4 w-4" aria-hidden />
+                    {pending ? "Saving…" : store.status === "SUSPENDED" ? "Reactivate store" : "Activate store"}
+                  </button>
+                )}
+              </>
+            ) : role === "OWNER" ? (
+              <LinkButton href="/admin/settings" variant="secondary">
+                <Pencil className="h-4 w-4" aria-hidden />
+                Store Settings
+              </LinkButton>
+            ) : null}
           </>
         }
       />
@@ -103,29 +123,39 @@ export function StoreOverviewView({
               <Detail label="Owner">{store.ownerName} · {store.ownerEmail}</Detail>
               <Detail label="Created">{formatDate(store.createdAt)}</Detail>
               <Detail label="Payment methods">{enabledPayments.join(", ") || "None enabled"}</Detail>
-              <Detail label="Delivery fee">
-                {store.delivery.fee ? `${store.baseCurrency} ${store.delivery.fee}` : "Not set"}
-                {store.delivery.freeOver && ` (free over ${store.baseCurrency} ${store.delivery.freeOver})`}
-              </Detail>
             </dl>
           </Card>
 
           <Card className="p-5 sm:p-6">
-            <h2 className="text-lg font-semibold">Not connected yet</h2>
-            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-slate-600">
-              <li>Orders and customers still use browser demo data.</li>
-              <li>The public storefront still shows demo data, so changes here don&apos;t appear on it yet.</li>
-              <li>Custom domains are planned for a later phase.</li>
-            </ul>
+            <h2 className="text-lg font-semibold">Custom domains</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Verified domains can provide the storefront&apos;s canonical public URL after production routing is configured by the platform team.
+            </p>
           </Card>
         </div>
 
         <nav aria-label="Manage this store" className="space-y-3">
-          <QuickLink href={`${base}/products`} icon={Package} title="Products" text={`${store.productCount} products`} />
-          <QuickLink href={`${base}/categories`} icon={Tags} title="Categories" text={`${store.categoryCount} categories`} />
-          <QuickLink href={`${base}/orders`} icon={Receipt} title="Orders" text="Demo data" />
-          <QuickLink href={`${base}/customers`} icon={Users} title="Customers" text="Demo data" />
-          <QuickLink href={`${base}/settings`} icon={Settings} title="Store settings" text="Branding, region, delivery, payments" />
+          {(platform || role === "OWNER" || role === "MANAGER") && (
+            <>
+              <QuickLink href={`${base}/products`} icon={Package} title="Products" text={`${store.productCount} products`} />
+              <QuickLink href={`${base}/categories`} icon={Tags} title="Categories" text={`${store.categoryCount} categories`} />
+            </>
+          )}
+          <QuickLink href={`${base}/orders`} icon={Receipt} title="Orders" text="Manage store orders" />
+          <QuickLink href={`${base}/messages`} icon={Users} title="Messages" text="Customer enquiries" />
+          {platform && <QuickLink href={`${base}/customers`} icon={Users} title="Customers" text="Demo data" />}
+          {platform && (
+            <QuickLink href={`${base}/settings`} icon={Settings} title="Store settings" text="Branding, region, delivery, payments" />
+          )}
+          {!platform && role === "OWNER" && (
+            <QuickLink href="/admin/settings" icon={Settings} title="Store Settings" text="Branding, region, delivery, payments" />
+          )}
+          {!platform && (role === "OWNER" || role === "MANAGER") && (
+            <QuickLink href="/admin/team" icon={Users} title="Team" text="Manage store memberships" />
+          )}
+          {!platform && (role === "OWNER" || role === "MANAGER") && (
+            <QuickLink href="/admin/domains" icon={Globe} title="Custom domains" text="Verify storefront hostnames" />
+          )}
         </nav>
       </div>
 

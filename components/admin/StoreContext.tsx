@@ -10,8 +10,9 @@ import { StoreLogo } from "@/components/StoreLogo";
 import { labelFor, STORE_TYPES } from "@/lib/config";
 import { findStore, getStoreData, useDemoState } from "@/lib/demo-db";
 import type { AdminStoreSummary } from "@/lib/admin/types";
+import type { StoreMembershipRole } from "@/lib/admin/store-access";
 import type { DemoState, Store, StoreData, StoreType } from "@/lib/types";
-import { isNavActive, storeNav } from "./AdminShell";
+import { isNavActive, storeNavForViewer } from "./AdminShell";
 
 // ---------------------------------------------------------------
 // The store every page under /admin/stores/[storeId] works on. It is
@@ -28,7 +29,20 @@ export function useAdminStore(): AdminStoreSummary {
   return value;
 }
 
-export function StoreContextLayout({ store, children }: { store: AdminStoreSummary; children: ReactNode }) {
+export function StoreContextLayout({
+  store,
+  readOnly = false,
+  platform,
+  role,
+  children,
+}: {
+  store: AdminStoreSummary;
+  /** A suspended store, seen by its owner: nothing can be changed (the server refuses it too). */
+  readOnly?: boolean;
+  platform: boolean;
+  role: StoreMembershipRole;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
 
   return (
@@ -52,7 +66,7 @@ export function StoreContextLayout({ store, children }: { store: AdminStoreSumma
         </div>
         <nav aria-label="Store sections" className="overflow-x-auto border-t border-slate-200">
           <ul className="flex min-w-max gap-1 px-2">
-            {storeNav(store.id).map((item) => {
+            {storeNavForViewer(store.id, platform, role).map((item) => {
               const active = isNavActive(pathname, item);
               return (
                 <li key={item.href}>
@@ -74,7 +88,16 @@ export function StoreContextLayout({ store, children }: { store: AdminStoreSumma
           </ul>
         </nav>
       </div>
-      {children}
+      {readOnly && (
+        <p role="status" className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>This store is suspended.</strong> The admin is read-only: you can view everything, but nothing can be
+          changed. Contact the platform owner to reactivate the store.
+        </p>
+      )}
+      {/* Disables every form control below while read-only (links still work). */}
+      <fieldset disabled={readOnly} className="contents">
+        {children}
+      </fieldset>
     </DbStoreContext.Provider>
   );
 }

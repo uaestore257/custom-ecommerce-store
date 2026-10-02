@@ -4,12 +4,14 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { createAuthMiddleware, getSessionFromCtx, isAPIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
-import { AUTH_COOKIE_PREFIX } from "@/lib/auth/constants";
+import { adminHostOf } from "@/lib/admin/store-access";
+import { AUTH_COOKIE_PREFIX, normalizeHost } from "@/lib/auth/constants";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password-policy";
 import { recordAudit } from "@/lib/server/audit";
 import { getDb } from "@/lib/server/db";
+import { storeHostConfig } from "@/lib/store-host";
 import { readAuthEnv, type AuthEnv } from "./env";
-import { canSignIn } from "./policy";
+import { sessionAllowed } from "./store-access";
 
 // ---------------------------------------------------------------
 // BETTER AUTH (better-auth 1.7.6, pinned) — authentication only.
@@ -18,7 +20,8 @@ import { canSignIn } from "./policy";
 // re-read the user from the database on every request.
 //
 //  * Email + password only. Public sign-up is disabled; the platform
-//    owner is created with the CLI (scripts/platform-owner.ts).
+//    owner uses the CLI and Store Owner credentials are provisioned by the
+//    platform owner through the store workflows.
 //  * Only the endpoints in ENABLED_PATHS are reachable over HTTP
 //    (authHandler allow-list, plus Better Auth's own disabledPaths).
 //  * Sessions live in the database (revocable) and last 8 hours.
@@ -76,7 +79,16 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
     appName: "Codex Store Admin",
     secret: env.secret,
     baseURL: env.baseURL,
-    trustedOrigins: [env.baseURL],
+    // The admin URL, plus — only for a request whose Host is a store's own
+    // host (lib/store-host.ts rules; exact, no wildcards) — that store
+    // host's own origin, so a store owner can sign in there. A page on
+    // another site can never pass this check, and which accounts may then
+    // actually open a session is decided by the session hook below.
+    trustedOrigins: (request) => {
+      const host = normalizeHost(request?.headers.get("host") ?? "");
+      if (adminHostOf(host, storeHostConfig()).kind !== "store") return [env.baseURL];
+      return [env.baseURL, `${new URL(env.baseURL).protocol}//${host}`];
+    },
     database: prismaAdapter(db, { provider: "postgresql" }),
     telemetry: { enabled: false },
     disabledPaths: DISABLED_PATHS,
@@ -125,15 +137,14 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
     databaseHooks: {
       session: {
         create: {
-          // Refuse to open a session for users who may not use the admin
-          // (disabled users, and — until store owners arrive in Phase 2b —
-          // everyone except the platform owner).
-          before: async (session) => {
-            const user = await db.user.findUnique({
-              where: { id: session.userId },
-              select: { isPlatformOwner: true, disabledAt: true },
-            });
-            if (!user || !canSignIn(user)) return false;
+          // Refuse to open a session unless this user may use the admin ON
+          // THIS HOST: the platform owner on ADMIN_HOST, or a member of the
+          // store a store host serves (lib/admin/store-access.ts). Disabled
+          // users never. No request context -> no session (fails closed).
+          before: async (session, context) => {
+            const headers = context?.headers ?? context?.request?.headers;
+            const host = headers?.get("host") ?? "";
+            if (!(await sessionAllowed(db, session.userId, host))) return false;
           },
         },
       },

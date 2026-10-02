@@ -10,16 +10,25 @@ import {
   restoreAdminStore,
   setAdminStoreStatus,
   updateAdminStore,
+  updateStoreOwnerSettings,
 } from "../../lib/server/admin/stores";
 import type { PlatformOwner } from "../../lib/server/auth/guards";
+import { getAuth } from "../../lib/server/auth/auth";
+import { AccessDenied, requireStoreAccess } from "../../lib/server/auth/guards";
+import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
+import { actAs, authRequest, cookieHeader, setTestAuthEnv } from "./auth-helpers";
 import { testActor, testDb, uid } from "./helpers";
 
+setTestAuthEnv();
 const db = testDb();
 let actor: PlatformOwner;
 before(async () => {
   actor = await testActor(db);
 });
-after(() => db.$disconnect());
+after(async () => {
+  setRequestRuntimeForTests(null);
+  await db.$disconnect();
+});
 
 const newStore = (overrides: Record<string, unknown> = {}) => ({
   name: "Maple & Co",
@@ -28,6 +37,7 @@ const newStore = (overrides: Record<string, unknown> = {}) => ({
   status: "DRAFT",
   ownerName: "Jamie Lee",
   ownerEmail: `jamie-${uid()}@example.com`,
+  ownerPassword: "a store owner passphrase 2026",
   countryCode: "US",
   baseCurrency: "USD",
   timezone: "America/New_York",
@@ -47,7 +57,7 @@ async function settingsFor(storeId: string, overrides: Record<string, unknown> =
     languages: d.languages, accentColor: d.accentColor ?? "#0f766e", logoUrl: d.logoUrl ?? "",
     contactEmail: d.contactEmail, contactPhone: d.contactPhone, contactAddress: d.contactAddress,
     tagline: d.content.tagline, heroTitle: d.content.heroTitle || "Welcome", heroText: d.content.heroText,
-    aboutText: d.content.aboutText, deliveryFee: d.delivery.fee || "0", freeDeliveryThreshold: d.delivery.freeOver,
+    aboutText: d.content.aboutText,
     paymentMethods: Object.fromEntries(d.paymentMethods.map((m) => [m.method, m.enabled])),
     ...overrides,
   };
@@ -99,6 +109,28 @@ test("creating a store persists valid data (international, no UAE defaults)", as
   assert.equal(store.memberships.length, 1);
   assert.equal(store.memberships[0].role, "OWNER");
   assert.equal(store.memberships[0].user.email, input.ownerEmail);
+  const account = await db.account.findUniqueOrThrow({
+    where: { providerId_accountId: { providerId: "credential", accountId: store.memberships[0].userId } },
+  });
+  assert.ok(account.password);
+  assert.notEqual(account.password, input.ownerPassword);
+  const authContext = await getAuth().$context;
+  assert.equal(await authContext.password.verify({ hash: account.password!, password: input.ownerPassword }), true);
+  await db.rateLimit.deleteMany();
+  const ownerHost = `${input.slug}.test.local`;
+  const response = await authRequest(
+    "/sign-in/email",
+    { email: input.ownerEmail, password: input.ownerPassword },
+    { host: ownerHost },
+  );
+  assert.equal(response.status, 200, "new owner can sign in immediately on the new store host");
+  actAs(cookieHeader(response), ownerHost);
+  assert.equal((await requireStoreAccess(store.id)).access, "write");
+  await assert.rejects(
+    requireStoreAccess("store-a"),
+    (error: unknown) => error instanceof AccessDenied && error.reason === "forbidden",
+  );
+  setRequestRuntimeForTests(null);
   // Starter categories for the store type, like the demo.
   assert.deepEqual(store.categories.map((c) => c.translations[0].name).sort(), ["Bedroom", "Living Room", "Storage"]);
   assert.equal((await listAdminStores(db)).some((s) => s.id === store.id), true);
@@ -141,8 +173,6 @@ test("updating a store persists supported changes", async () => {
     languages: ["en", "ar"],
     contactPhone: "+1 (415) 555-0123",
     tagline: "Furniture for every room",
-    deliveryFee: "12.50",
-    freeDeliveryThreshold: "200",
     paymentMethods: { cash_on_delivery: true, bank_transfer: true, online_card: true },
   }));
   assert.ok(result.ok, JSON.stringify(result));
@@ -153,11 +183,36 @@ test("updating a store persists supported changes", async () => {
   assert.deepEqual([...d.languages].sort(), ["ar", "en"]);
   assert.equal(d.contactPhone, "+14155550123");
   assert.equal(d.content.tagline, "Furniture for every room");
-  assert.equal(d.delivery.fee, "12.50");
-  assert.equal(d.delivery.freeOver, "200.00");
   const methods = Object.fromEntries(d.paymentMethods.map((m) => [m.method, m.enabled]));
   assert.equal(methods.bank_transfer, true);
   assert.equal(methods.online_card, false, "online card stays off: no payment provider");
+});
+
+test("Store Owner settings can change payment methods only", async () => {
+  const created = await createAdminStore(actor, db, newStore({ name: "Payment settings test" }));
+  assert.ok(created.ok);
+  if (!created.ok) return;
+  const before = (await getAdminStoreDetail(db, created.data.id))!;
+  const result = await updateStoreOwnerSettings(db, created.data.id, actor.userId, {
+    paymentMethods: { cash_on_delivery: false, card_on_delivery: true, bank_transfer: true, online_card: true },
+    name: "Attempted name change",
+    slug: "attempted-slug",
+    status: "ACTIVE",
+    ownerEmail: "attacker@example.com",
+    contactAddress: "Attempted profile change",
+  });
+  assert.ok(result.ok, JSON.stringify(result));
+  const after = (await getAdminStoreDetail(db, created.data.id))!;
+  assert.equal(after.name, before.name);
+  assert.equal(after.slug, before.slug);
+  assert.equal(after.status, before.status);
+  assert.equal(after.ownerEmail, before.ownerEmail);
+  assert.equal(after.contactAddress, before.contactAddress);
+  const methods = Object.fromEntries(after.paymentMethods.map(({ method, enabled }) => [method, enabled]));
+  assert.equal(methods.cash_on_delivery, false);
+  assert.equal(methods.card_on_delivery, true);
+  assert.equal(methods.bank_transfer, true);
+  assert.equal(methods.online_card, false);
 });
 
 test("the currency can't change once prices exist", async () => {

@@ -4,7 +4,17 @@ import { formatDate } from "@/lib/format";
 import { OrderControls } from "./OrderControls";
 
 /** One order of the store, from the database, with its status and payment controls. */
-export function DbOrderDetail({ storeId, storeName, order }: { storeId: string; storeName: string; order: AdminOrderDetail }) {
+export function DbOrderDetail({
+  storeId,
+  storeName,
+  order,
+  readOnly = false,
+}: {
+  storeId: string;
+  storeName: string;
+  order: AdminOrderDetail;
+  readOnly?: boolean;
+}) {
   const base = `/admin/stores/${storeId}`;
   const { address } = order;
   const place = [address.city, address.region, address.countryCode].filter(Boolean).join(", ");
@@ -41,7 +51,10 @@ export function DbOrderDetail({ storeId, storeName, order }: { storeId: string; 
             </ul>
             <dl className="space-y-1.5 border-t border-slate-200 px-5 py-4 text-sm sm:px-6">
               <Row label="Subtotal" value={order.subtotalDisplay} />
-              <Row label="Delivery" value={order.shippingDisplay} />
+              <Row
+                label={order.fulfillmentMethod === "PICKUP" ? "Pickup" : "Delivery"}
+                value={order.fulfillmentMethod === "PICKUP" ? "No delivery fee" : order.shippingDisplay}
+              />
               {order.discountDisplay && <Row label="Discount" value={`− ${order.discountDisplay}`} />}
               <Row label="Tax" value={order.taxDisplay} />
               <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 text-base font-semibold">
@@ -52,26 +65,29 @@ export function DbOrderDetail({ storeId, storeName, order }: { storeId: string; 
           </Card>
 
           <Card className="p-5 sm:p-6">
-            <h2 className="text-lg font-semibold">Customer & delivery</h2>
+            <h2 className="text-lg font-semibold">Customer & fulfillment</h2>
             <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
               <div><dt className="text-slate-500">Name</dt><dd className="font-medium">{order.customerName}</dd></div>
               <div><dt className="text-slate-500">Email</dt><dd className="break-words font-medium">{order.customerEmail}</dd></div>
               <div><dt className="text-slate-500">Phone</dt><dd className="font-medium">{order.customerPhone || "—"}</dd></div>
-              <div><dt className="text-slate-500">City / emirate</dt><dd className="font-medium">{place || "—"}</dd></div>
-              <div className="sm:col-span-2">
-                <dt className="text-slate-500">Address</dt>
-                <dd className="font-medium">
-                  {address.recipientName && address.recipientName !== order.customerName && <span className="block">{address.recipientName}</span>}
-                  {address.line1 || "—"}
-                </dd>
-              </div>
+              <div><dt className="text-slate-500">Fulfillment</dt><dd className="font-medium">{order.fulfillmentMethod === "PICKUP" ? "Pickup at the store" : "Delivery"}</dd></div>
+              {order.fulfillmentMethod === "DELIVERY" && (
+                <>
+                  <div><dt className="text-slate-500">City / emirate</dt><dd className="font-medium">{place || "—"}</dd></div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-slate-500">Address</dt>
+                    <dd className="font-medium">
+                      {address.recipientName && address.recipientName !== order.customerName && <span className="block">{address.recipientName}</span>}
+                      {address.line1 || "—"}
+                    </dd>
+                  </div>
+                </>
+              )}
             </dl>
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <OrderControls storeId={storeId} order={order} />
-        </div>
+        {!readOnly && <div className="space-y-6"><OrderControls storeId={storeId} order={order} /></div>}
       </div>
     </>
   );

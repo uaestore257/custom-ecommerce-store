@@ -12,17 +12,26 @@ TypeScript and Tailwind CSS.
 > record payment. The admin requires signing in as
 > the platform owner ([docs/authentication.md](docs/authentication.md)).
 > Admin customers and agency settings still use sample data saved in the
-> browser's `localStorage`. There is no payment provider, email or domain/DNS
-> integration. See [Demo limitations](#demo-limitations).
+> browser's `localStorage`. Email can be configured through SMTP but is
+> disabled until configured; online payment providers are not connected.
+> Store Owners and Managers can manage custom storefront domains after DNS
+> ownership verification. See [Demo limitations](#demo-limitations).
 
-## Getting started
+## New Developer Setup
 
-```bash
-npm install
-npm run dev      # a store: http://<store-slug>.localhost:3000 (e.g. nest-and-oak), admin http://admin.localhost:3000/admin
-npm run lint
-npm run build
-```
+Dependencies and exact versions are managed by `package.json` and
+`package-lock.json` (npm); there is no separate requirements file. Use
+Node.js `>=22.12 <23` and its bundled npm. Clone this repository, then run
+`npm run setup` from the project directory. Setup creates `.env` only if
+missing, generates a local auth secret without printing it, preserves any
+existing `.env`, and runs `npm ci`.
+
+Next, follow [docs/local-development.md](docs/local-development.md) to start
+an isolated local PostgreSQL instance and review `.env`. `npm run db:migrate`
+and optional `npm run db:seed` show the exact local target and require typing
+`yes` before changing it. Neither command resets the database. Create a
+platform-owner account separately and manually only if you need admin access;
+setup never creates one. Then start the app with `npm run dev`.
 
 ## Database (Phase 1)
 
@@ -30,65 +39,34 @@ An international, multi-store PostgreSQL schema (Prisma 7) sits alongside the
 demo: ISO country and currency codes, BigInt minor-unit money (0/2/3-decimal
 currencies), per-store languages with translations, default product variants,
 per-store customers and order numbers, and database-enforced store isolation.
-Full details: [docs/database.md](docs/database.md).
+Full details are in [docs/database.md](docs/database.md). Verify the exact
+database target before running any database-writing command.
 
-```bash
-docker compose up -d   # local PostgreSQL 16
-cp .env.example .env
-npm install            # also generates the Prisma client
-npm run db:migrate && npm run db:seed
-npm run platform:create-owner   # admin login; see docs/authentication.md
-npm run test:unit      # no database needed
-npm run test:db        # resets the TEST database, then runs database tests
-```
+## Canonical local URLs
 
-## How it is organised
+| Purpose | Local URL |
+| --- | --- |
+| UAE Store business/portfolio website | <http://localhost:3000> |
+| Platform Owner control panel and sign-in | <http://admin.localhost:3000/admin> |
+| Storefront for a store | `http://<store-slug>.localhost:3000/` |
+| Store Owner sign-in and admin | `http://<store-slug>.localhost:3000/login` and `/admin` |
 
-```
-Level 1  Agency Admin (/admin)              manages many client store projects
-             │
-Level 2  Master Ecommerce Template          one shared codebase (this repo)
-             │
-Level 3  Client stores (store-a, store-b…)  own branding, settings and data
-```
+The bare `localhost` host is the business website, never a default store.
+Each store host is resolved dynamically from `Store.slug`; a browser cookie or
+manually supplied store ID cannot switch it to a different store. Public
+storefronts show active, non-archived stores only; draft/paused/suspended
+stores are not public. The shared storefront and store-admin code is under
+`app/(storefront)` and `app/admin/stores/[storeId]`.
 
-- **Agency Admin** — `/admin`: dashboard, client store list, create store,
-  template overview and agency settings.
-- **Master template** — the storefront pages (`app/(storefront)`) and store
-  admin pages (`app/admin/stores/[storeId]`) are shared by every store.
-- **Client stores** — each store has its own settings (name, logo, accent
-  colour, currency, country, domain, delivery, payment methods, page content)
-  and its own products, categories, orders and customers.
+The Platform Owner creates stores and their OWNER login from the existing
+Create Store form. Store members manage only their own store; server-side
+authorization checks the membership role and store resolved from the
+current hostname. See [docs/authentication.md](docs/authentication.md) for
+credential provisioning and role access controls.
 
-### Routes
-
-| Storefront | Agency admin | Store admin (per store) |
-| --- | --- | --- |
-| `/` | `/admin` | `/admin/stores/[storeId]` |
-| `/shop` | `/admin/stores` | `…/products`, `…/products/new`, `…/products/[productId]` |
-| `/products/[id]` | `/admin/stores/new` | `…/categories` (add, rename, image, reorder, delete) |
-| | | `…/orders`, `…/orders/[orderId]` |
-| `/cart`, `/checkout` | `/admin/template` | `…/customers` |
-| `/about`, `/contact` | `/admin/settings` | `…/settings` |
-
-The storefront shows one client store at a time, read from the database:
-its branding, content, categories and **active** products, with prices in the
-store's own currency. Draft, paused, suspended and archived stores are never
-shown, and draft or archived products return a 404.
-
-Which store is shown is a **temporary** choice until domain-based store
-resolution exists: the dark demo bar lists the active stores and remembers
-your pick in a `storefront_store` cookie. The server only honours that cookie
-if it names an active store; otherwise it falls back to
-`DEFAULT_STOREFRONT_STORE_ID` in `lib/config.ts` (if that store is active too),
-and otherwise shows a "not available" page. The cookie is a preference, not
-access control — it can only ever show a store that is already public.
-
-A cart only ever holds products from one store, so switching store asks
-before emptying the cart. The browser keeps only which products and how many;
-prices, stock and availability are always taken from the database, and the
-cart and checkout re-check them when opened and point out anything that
-changed. Nothing is reserved while it sits in a cart.
+The browser keeps only which products and how many; prices, stock and
+availability are always taken from the database, and checkout re-checks them.
+Nothing is reserved while it sits in a cart.
 
 The demo bar's admin/contact disclosure uses the configured `ADMIN_HOST` to
 show **Agency Admin** on the admin host and **Contact admin** on the storefront
@@ -105,7 +83,7 @@ host. Set real platform contact details in `PLATFORM_CONTACT` in
 | `lib/checkout.ts` | Checkout input validation (shared by the form and the server) and the order result shape |
 | `lib/server/orders.ts` | Server-side order placement: re-validation, atomic stock, idempotency |
 | `lib/server/admin/orders.ts` | The admin's orders: list, order page, status, cancellation and payment (one store at a time) |
-| `lib/server/storefront/catalog.ts` | Public storefront reads from the database (active stores/products only) and the store choice |
+| `lib/server/storefront/catalog.ts` | Public storefront reads from the active store named by the request host |
 | `lib/storefront-types.ts` | Plain data shapes the storefront receives (money as exact minor units) |
 | `lib/storefront-cart.ts` | Cart maths: current prices, stock caps, change detection, totals (pure, tested) |
 | `lib/storefront-cookie.ts` | The temporary store-choice cookie |
@@ -124,10 +102,6 @@ store's data.
 
 These parts are **not** implemented and need a backend:
 
-- **Store-owner logins.** Only the platform owner can sign in so far
-  ([docs/authentication.md](docs/authentication.md)). Store owners,
-  invitations and store-level permissions arrive in Phase 2b. The admin is
-  served only on `ADMIN_HOST` (locally <http://admin.localhost:3000>).
 - **Orders are placed and managed, but simply.** Checkout creates a real
   order in the database: the server re-checks the store, products, prices,
   delivery and stock, reduces stock atomically (no overselling) and ignores
@@ -137,15 +111,20 @@ These parts are **not** implemented and need a backend:
   order moves Pending → Processing → Shipped → Delivered; a pending or
   processing, unpaid order can be cancelled, which returns its stock; and
   staff mark payment as paid (or back to unpaid) by hand once money arrives.
-  There are no refunds, returns or item edits, and no emails are sent to the
-  customer or store. Admin customers and agency settings are still browser
-  demo data. A store without a delivery rate can't take orders.
+  There are no refunds, returns or item edits. Order emails are sent only
+  after SMTP is configured. Admin customers and agency settings are still
+  browser demo data. A store without a delivery rate can't take orders.
 - **Stores are chosen by hostname.** Each active store is served at
-  `<slug>.<PLATFORM_ROOT_DOMAIN>`, or at a client domain listed in
-  `STORE_DOMAINS` (see `.env.example`); other hosts show no store. Custom
-  domains are configuration, not yet stored per store in the database, and
-  changing a store's slug changes its address. Draft stores can't be
+  `<slug>.<PLATFORM_ROOT_DOMAIN>`, an operator-configured `STORE_DOMAINS`
+  alias, or a database-managed custom hostname after TXT verification.
+  Unrecognized or unverified hosts show no store. A verified primary custom
+  hostname is used for canonical storefront URLs; otherwise the existing
+  platform slug host or trusted operator alias is used. Draft stores can't be
   previewed on the storefront yet.
+- **Custom-domain access.** Store Owners and Managers can add, verify, set a
+  primary hostname, or disable domains at `/admin/domains` on their store's
+  platform tenant host. Domain actions derive the store from the authenticated
+  host and are unavailable to Staff and Platform Admin sessions.
 - **Payments.** Nothing is paid online and no card details are collected.
   "Online card payment" can't be switched on because no payment provider is
   connected, and "card on delivery" isn't offered at checkout yet.
@@ -155,8 +134,10 @@ These parts are **not** implemented and need a backend:
   saved to the database for that store, but there is no admin page to read
   them yet and no email is sent. The store is chosen by the visitor's browser,
   not yet by domain.
-- **Domains.** The domain field is just a setting. Nothing is registered, no
-  DNS is changed and nothing is deployed.
+- **Domains.** Adding a custom hostname does not register it, alter DNS, or
+  provision hosting. The Store Owner or Manager must configure DNS with their
+  hosting provider and publish the displayed TXT proof record before the
+  hostname routes to the store.
 - **Template versioning.** There is none. Every store uses the current code.
 
 Use made-up details when testing checkout locally. To go back to the original

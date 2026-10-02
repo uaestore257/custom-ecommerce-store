@@ -1,7 +1,63 @@
 # Handover: store-owner access (Code X Store)
 
-Last updated 2026-09-29, when work stopped mid-implementation.
-**This is a snapshot — re-check the live repository before acting.**
+Historical implementation notes follow; current status is summarized below.
+Re-check the live repository before acting.
+
+## Current implementation update (2026-09-30)
+
+The earlier incomplete-state notes below are historical. Store Owner
+credentials are now created with stores, Store Owners can authenticate on
+their own recognized host, and the existing host/store guards restrict
+them to their own store. Legacy/demo owners without credentials can be
+provisioned through the Platform Owner's Store settings page. Account
+changes and the remaining limitations are documented in
+`docs/authentication.md`. No schema migration is needed for this flow.
+
+## Team and role update (2026-10-01)
+
+OWNER/MANAGER/STAFF permissions and the secure invitation lifecycle are now
+implemented as documented in `docs/authentication.md`. Invitations use the
+new additive `StoreInvitation` migration; apply pending migrations through
+the guarded local migration command before using Team invitation status.
+SMTP delivery remains disabled until configured, and the Team UI reports
+that state without creating invitations or exposing tokens.
+
+## Product delivery and Store Owner completion
+
+Product delivery is configured per product as a delivery fee, free delivery,
+or pickup-only. Checkout recalculates fees from database product data and
+requires pickup when any cart item is pickup-only. Store Owner Settings now
+edit payment methods only; profile, ownership, slug and lifecycle controls
+remain platform-controlled. The Customers page is read-only and scoped to the
+authorized store (Owner and Platform Owner access only). The old
+store-level fixed fee / free-delivery threshold and shipping-rate checkout
+path are no longer used; existing `ShippingZone` / `ShippingRate` schema
+objects are retained for compatibility.
+
+## Payment phase status (2026-10-02)
+
+Bank Transfer, Cash on Delivery, and Pay on Pickup are store-scoped. Hosted
+Stripe Checkout and the documented JazzCash sandbox adapter are wired to
+store-scoped transactions, with server-side totals, account checks, return
+verification, and Stripe signature-verified webhook processing. JazzCash
+checkout is explicitly unavailable: its current browser-post flow would
+expose the merchant password, so credential-bearing redirects are blocked
+until an official credential-safe server-side handoff is supported. Payment
+references shown in Store Owner order details are non-secret provider
+identifiers only.
+
+Store Payment Settings accept each store's Stripe and JazzCash metadata and
+opaque, provider/store-scoped credential reference; they never display or
+accept provider secrets. Runtime resolution uses the server-only
+`PaymentSecretStore` adapter, installed by deployment infrastructure through
+`configurePaymentSecretStore()`. The application intentionally includes no
+database-backed or `.env`-backed secret store. Stripe checkout remains
+unavailable until that adapter is installed and credentials are provisioned
+externally. JazzCash also remains unavailable regardless of credentials until
+its checkout handoff can keep the merchant password server-side. JazzCash
+returns use the documented return contract; no separate callback/webhook
+behavior is assumed. Easypaisa remains unavailable because no official
+merchant API and response-verification contract is implemented.
 
 ## 1. Project overview
 
@@ -97,13 +153,14 @@ rest was written but has had only a type-check since.
 | Session authorization | Implemented, not verified | `auth.ts` session `create.before` → `sessionAllowed(db, userId, host)`; old `lib/server/auth/policy.ts` deleted |
 | Platform-owner host restriction | Implemented, not verified | `lib/server/auth/guards.ts` `requirePlatformOwner()` requires `ADMIN_HOST` |
 | Shared store guard | Implemented, not verified | `guards.ts` `requireStoreAccess(storeId, "read" \| "write")` → `AccessDenied("unauthenticated" \| "forbidden" \| "read-only")`; `requireAdminViewer()`; `StoreActor` |
-| Page guards | Partially implemented | `lib/server/auth/page-guards.ts`, `lib/server/admin/request.ts` (`requireAdminPage`, `requireStorePage`, `requireAdminViewer`). 8 store pages + store layout switched. **Not yet:** `app/admin/stores/[storeId]/settings/page.tsx`, `app/admin/stores/[storeId]/customers/page.tsx` (still `requireAdminPage()`, i.e. platform-only — safe but wrong) |
+| Page guards | Implemented | Store pages use `requireStorePage(storeId, section)`; Customers is restricted to the Owner and Platform Owner. |
 | Admin layout / navigation / dashboard | Implemented, not verified | `app/admin/layout.tsx` (owner sees only own store), `app/admin/page.tsx` (owner redirected to own store), `components/admin/AdminShell.tsx` (`platform` prop hides agency nav and "Create New Store") |
 | Server actions | **Implemented, not verified** | `app/admin/actions.ts`: `guarded()` + `asPlatformOwner` (6 platform-only: create/update store, owner, status, archive, restore) + `asStoreWriter(label, storeId, …)` = `requireStoreAccess(storeId, "write")` (11: products ×3, categories ×4, orders ×3, messages ×1). New `READ_ONLY` message for suspended stores. |
 | Action permissions | Implemented, not verified | `lib/server/admin/permissions.ts`: `"platform-owner" \| "store-owner"`; the 11 store actions are `"store-owner"` |
 | Orders / messages actor | Implemented, not verified | `lib/server/admin/orders.ts`, `lib/server/admin/inquiries.ts` take `actor: StoreActor` (audit `actorUserId` is the owner or platform owner) |
-| Delivery / payment settings | **Partially implemented** | `lib/admin/validation.ts`: new `validateCommerceSettings()` + `CleanCommerceSettings` (reused by `validateStoreSettings`). **Missing:** the save function (plan: extract the zone/rate/payment block of `updateAdminStore` in `lib/server/admin/stores.ts:322–343` into `writeCommerceSettings`, add `updateStoreCommerceSettings(actor: StoreActor, …)` with audit), an `updateStoreCommerceAction` (`"store-owner"`), and an owner-only settings UI. Owners must never get slug/status/owner/profile fields; `online_card` stays off. |
-| Customers page | Not started | still browser demo data (`DemoStoreData`); build a read-only, store-scoped list from `Customer` (unique per store+email) |
+| Product delivery | Implemented | Product-level fee/free-delivery/pickup-only fields, server validation, store-scoped product actions, storefront display and server-recalculated checkout totals. |
+| Delivery / payment settings | Implemented | Store Owner can change payment methods only. Platform-controlled store profile fields stay platform-only; legacy store-level delivery rates are not used by checkout or seed code. |
+| Customers page | Implemented | Read-only database-backed list uses a bounded exact-store query and is available to Owners and Platform Owners; MANAGER/STAFF are denied. |
 | Proxy rules | **Not started** | `proxy.ts:56` still 404s the admin off `ADMIN_HOST` and refuses admin Server Actions there. **Store owners cannot sign in yet.** |
 | Login page | Not started | `app/login/page.tsx` only redirects platform owners; copy says "platform administrator only" |
 | Store creation with client email + password | Not started | `createAdminStore` / `setOwner` (`stores.ts:157`) create owners without a login. Hash like `lib/server/auth/platform-owner.ts` (Better Auth scrypt, "credential" account); validate with `passwordProblem` (`lib/auth/password-policy.ts`); masked field in `components/admin/NewStoreView.tsx` |
@@ -120,63 +177,62 @@ rest was written but has had only a type-check since.
 3. Platform owner creates a store and enters the client's email + initial password.
 4. Existing email → assign the new store to that account; never change its password; clear error if not eligible.
 5. Existing owners without login → platform-owner-only initial-password setup.
-6. Owners manage only their own products & categories, orders, messages, shipping/delivery settings, payment-method settings, customers.
+6. Owners manage only their own products & categories, orders, messages,
+   payment-method settings and read-only customers. Delivery is configured
+   per product, not at store level.
 7. Draft and paused → full owner access. 8. Suspended → read-only. 9. Archived → no owner access.
-10. Store creation, archive/restore, ownership, status, slug/domain, platform-wide settings → platform owner only.
-11. No email invitations; no card-payment integration.
-12. No cross-store access via URL, request data, store id or domain. MANAGER/STAFF get nothing.
+10. Store creation, archive/restore, ownership, status, store slug and platform-wide settings → platform owner only. Custom hostnames are managed by that store's OWNER or MANAGER after DNS ownership verification.
+11. Store invitations are single-use, expiring and store-scoped; SMTP delivery
+    remains disabled until configured. No card-payment integration.
+12. No cross-store access via URL, request data, store id or domain. MANAGER gets operational access; STAFF is read-only for orders/messages.
 
 ## 6. Tests and checks
 
-**Run in the store-owner phase (this and the previous session):**
-- Start of this session: `npx tsc --noEmit --incremental false` ✅, `npm run lint` ✅, `npm run test:unit` 96/97 (only the old page-guard test failed, as expected).
-- `tests/unit/auth.test.ts` page-guard test rewritten to be **stricter** (layout/dashboard → `requireAdminViewer()`, store pages → `requireStorePage(storeId)`, platform pages → `requireAdminPage()`). It now fails **only** on `app/admin/stores/[storeId]/customers/page.tsx` (and will on `settings/page.tsx`) — the two unfinished pages. This failure is the to-do list, not a bug in the test.
-- After switching the actions and adding `validateCommerceSettings`: `npx tsc --noEmit --incremental false` ✅.
-- **Not re-run after those edits:** `npm run lint`, full `npm run test:unit`, any DB test.
+Latest safe checks on the primary checkout:
+- `npm run typecheck` ✅
+- `npm run lint` ✅ (3 existing unused-symbol warnings)
+- `npm run test:unit` ✅ (159 passed)
+- `npx prisma validate` ✅
+- `npx prisma migrate status` ✅ (all 7 migrations applied)
+- `git diff --check` ✅
 
-**Known to need updating before DB tests can pass:**
-- `tests/db/auth-helpers.ts`: `actAs()` sends only `host: ADMIN_HOST`; add a host parameter, and set `process.env.PLATFORM_ROOT_DOMAIN` in `setTestAuthEnv()` (e.g. `"test.local"`, stores at `<slug>.test.local`).
-- `tests/db/auth-actions.test.ts`: add store-owner cases (below). Existing expectations should still hold (non-platform-owner on `ADMIN_HOST` is refused for every action) — verify.
-
-**Must add:** proxy tests (store host allowed for `/login`, `/api/auth`, `/admin` + admin Server Actions; look-alike/unknown hosts refused); DB tests: owner on own host OK; other store / other host / mismatched storeId / no membership / MANAGER refused; platform-only actions refused for owners; draft & paused writable; suspended → every mutation `READ_ONLY`; archived denied; store list shows only own store; real sign-in on a store host (session hook + trusted origin); account creation (new OWNER, not platform owner; existing email reused, password unchanged; no duplicate membership; password absent from audit/logs); customers scoped by store.
-
-**Safe checks to use:** `npx tsc --noEmit --incremental false` (not `npm run typecheck`, which runs `next typegen` and writes generated files), `npm run lint`, `npm run test:unit`.
+Database integration tests were not run because `npm run test:db` resets and
+seeds its test database. The primary local development database reports all
+seven migrations applied, including Product delivery and StoreDomain.
 
 ## 7. Database safety (mandatory)
 
 - The one approved `npm run test:db` run has been **used**. Any further run needs the user's **fresh, explicit approval**.
 - `npm run test:db` = `tsx scripts/test-db.ts`: `prisma migrate reset --force` + `prisma db seed` on `TEST_DATABASE_URL`, then all `tests/db/*.test.ts`. Guards: `scripts/test-db.ts:18`, `tests/db/helpers.ts:8`.
-- Preflight before asking (report names only, never credentials/full URLs): `TEST_DATABASE_URL` → `localhost:5433/shop_test`; `DATABASE_URL` → `localhost:5433/shop_dev`; distinct; no `DATABASE_URL`/`TEST_DATABASE_URL`/`DOTENV_CONFIG_PATH` in the shell; only `.env` and `.env.example` exist.
+- Preflight before asking (report names only, never credentials/full URLs): `TEST_DATABASE_URL` → `localhost:5435/shop_test`; `DATABASE_URL` → `localhost:5435/shop_dev`; distinct; no `DATABASE_URL`/`TEST_DATABASE_URL`/`DOTENV_CONFIG_PATH` in the shell; only `.env` and `.env.example` exist.
 - Prisma refuses AI-driven resets unless `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` is set to the user's exact approval message.
-- Never run migrations, seeds, resets or cleanup on `shop_dev`. **No migration is needed** (StoreMembership, User, Better Auth tables and store statuses already exist).
+- Never reset, seed, drop or clean `shop_dev`. The Product delivery and
+  StoreDomain migrations have been applied to the primary local development
+  database using the approved deploy process; this does not imply they are
+  applied to any other environment.
 
-## 8. Security-sensitive next steps — required order
+The additive StoreDomain migration has been applied to the primary local
+development database, and Prisma reports the schema up to date. Other
+environments still need to apply it through the repository's approved
+migration process; never reset or seed a database as part of this feature.
 
-The current partial state **fails closed**: the proxy still blocks the admin off `ADMIN_HOST`, so no store owner can sign in; on `ADMIN_HOST` only the platform owner gets access. Keep it that way until steps 1–3 are done.
+## 8. Current follow-up
 
-1. **Finish server-side authorization first:** switch the Customers and store Settings pages to `requireStorePage(storeId)` *together with* their owner-safe content (owner settings = delivery/payments only; customers read-only). Add the commerce save + `updateStoreCommerceAction` (`"store-owner"`, `requireStoreAccess(storeId, "write")`). Confirm every page under `app/admin/stores/[storeId]/` and every action is guarded (the unit test + a grep for `requirePlatformOwner`/`asPlatformOwner` uses).
-2. **Tests for authorization** (unit + DB, §6) — including suspended read-only on every mutation.
-3. **Only then open the proxy** for store hosts (`/login`, `/api/auth`, `/admin`, admin Server Actions) using `adminHostOf(...).kind === "store"`; store-host login redirect to the same host; update the login page. Add proxy tests.
-4. Account flows: store creation with email + password, existing-email reuse, initial-password setup for owners without login. Never log/audit passwords.
-5. DB-test preflight → ask approval → run once → fix → review full diff → commit (access work only) → push `feat/store-owner-access`. No merge/PR/deploy without explicit approval.
+1. Run the safe checks for pending code changes: TypeScript, lint, unit tests,
+   Prisma validation and `git diff --check`.
+2. The additive Product delivery and StoreDomain migrations are applied in
+   the primary local development database. Apply pending migrations in other
+   environments only through the repository's guarded process and with
+   explicit approval; never reset, seed or drop a database as part of this
+   feature.
+3. Keep authorization coverage for store-host access, role-specific sections,
+   suspended-store read-only behavior, invitations and cross-store denial.
+   Database integration tests require fresh approval before any run that resets
+   `TEST_DATABASE_URL`.
+4. Do not commit, push, merge, open a PR or deploy without explicit approval.
 
-## 9. Known gaps and risks
-
-- Opening the proxy before step 1 would expose store hosts to pages/actions that aren't owner-scoped yet.
-- `baseURL` is static (admin URL); store-host sign-in relies on the `trustedOrigins` function and host-only cookies — prove it with a real sign-in DB test. Better Auth's `baseURL.allowedHosts` exists if needed (avoid wildcards).
-- `setStoreOwnerAction` creates owners without login → needs the initial-password flow.
-- `validateStoreProfile` includes `slug` (= the store's address); owners must never reach it.
-- Owners of several stores sign in separately per store domain (host-only cookies) — expected.
-- Cosmetic, out of scope: admin "Dubai, Dubai, AE"; footer "Demo storefront…" wording.
-
-## 10. Exact recommended continuation task
-
-In the worktree above, on `feat/store-owner-access`: run the safe checks
-(§6), then do **§8 step 1** — owner-safe store Settings (delivery &
-payments only: `writeCommerceSettings` + `updateStoreCommerceSettings` +
-`updateStoreCommerceAction` + owner form) and a read-only, store-scoped
-Customers page, both on `requireStorePage(storeId)` — until
-`tests/unit/auth.test.ts` passes. Then §8 step 2.
+The old continuation prompt below is retained as history only; its paths and
+instructions are not current and must not be followed.
 
 ---
 

@@ -16,6 +16,7 @@ const data = (overrides: Partial<OrderEmailData> = {}): OrderEmailData => ({
   customerName: "Jane Visitor",
   customerEmail: "jane@example.com",
   customerPhone: "+971501234567",
+  fulfillmentMethod: "DELIVERY",
   deliveryTo: "Villa 12, Dubai",
   paymentMethod: "cash_on_delivery",
   lines: [{ name: "Oak chair", quantity: 2, total: "AED 200.00" }],
@@ -43,6 +44,14 @@ test("the store gets an alert with the customer's details and the admin link", (
   assert.equal(store.message.to, "orders@store.example");
   for (const part of ["jane@example.com", "+971501234567", "Villa 12, Dubai", "(unpaid)", "https://admin.example/admin/stores/s1/orders/o1"]) {
     assert.ok(store.message.text.includes(part), part);
+  }
+});
+
+test("pickup order emails do not describe a delivery address", () => {
+  const emails = buildOrderEmails(data({ fulfillmentMethod: "PICKUP", deliveryTo: "Store pickup" }));
+  for (const email of emails) {
+    assert.ok(email.message.text.includes("Pickup at the store"));
+    assert.ok(!email.message.text.includes("Delivery to:"));
   }
 });
 

@@ -3,14 +3,26 @@ import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@/lib/generated/prisma/client";
 import {
   CHECKOUT_PAYMENT_METHODS,
+  calculateDeliveryMinor,
   validateCheckout,
   type CheckoutPaymentMethod,
   type CleanCheckout,
   type PlacedOrder,
   type PlaceOrderResult,
+  type ProviderCheckoutRedirect,
 } from "@/lib/checkout";
 import { withinRateLimit } from "./rate-limit";
 import { storeScope } from "./store-scope";
+import {
+  paymentCredentialsAvailable,
+  runtimePaymentCredentialResolver,
+} from "./payments/credentials";
+import { bankTransferConfigurationIsValid } from "./payments/methods";
+import { paymentProviderAdapter } from "./payments/providers";
+import { createProviderCheckout } from "./payments/service";
+import type { PaymentCredentialResolver } from "./payments/types";
+import { isProviderMarketSupported, paymentProviderForMethod } from "@/lib/payments/rules";
+import type { PaymentMethodId } from "@/lib/types";
 
 // ---------------------------------------------------------------
 // ORDER PLACEMENT (public storefront — cash on delivery and bank transfer)
@@ -48,8 +60,9 @@ export const ORDER_MESSAGES = {
   tooMany: "Too many orders were placed recently. Please try again in a few minutes.",
   storeUnavailable: "This store isn't accepting orders right now.",
   otherStore: "Your cart is from a different store. Please review your cart and try again.",
-  noDelivery: "This store hasn't set up delivery yet, so orders can't be placed.",
+  pickupOnly: "Your cart contains a pickup-only product. Choose pickup to place this order.",
   paymentUnavailable: "This payment method isn't available for this store.",
+  paymentCredentialsUnavailable: "This store's online payment credentials are not configured on the server. Choose another payment method or contact the store.",
   unavailable: "Some items in your cart are no longer available. Please review your cart.",
   stock: "There isn't enough stock for some items in your cart. Please review your cart.",
   priceChanged: "Prices or delivery changed since you opened checkout. Please review your cart and try again.",
@@ -71,6 +84,7 @@ class OrderRefused extends Error {
  */
 export interface PlaceOrderTestHooks {
   beforeCommit?: () => Promise<void>;
+  paymentCredentialResolver?: PaymentCredentialResolver;
 }
 
 /** Identifies what was ordered, so a reused idempotency key with a different request is refused. */
@@ -80,6 +94,7 @@ export function requestFingerprint(values: CleanCheckout): string {
     items: values.items,
     customer: values.customer,
     address: values.address,
+    fulfillmentMethod: values.fulfillmentMethod,
     paymentMethod: values.paymentMethod,
   });
   return createHash("sha256").update(canonical).digest("hex");
@@ -93,18 +108,36 @@ function refuse(error: string): PlaceOrderResult {
 const orderInclude = {
   items: { orderBy: { id: "asc" } },
   store: { select: { orderNumberPrefix: true } },
+  paymentTransactions: {
+    take: 1,
+    include: { providerAccount: { select: { publicConfig: true } } },
+  },
 } satisfies Prisma.OrderInclude;
 
 type OrderRow = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
 function toPlacedOrder(order: OrderRow): PlacedOrder {
-  const address = (order.shippingAddress ?? {}) as { line1?: unknown; city?: unknown };
+  const address = (order.shippingAddress ?? {}) as Record<string, unknown>;
+  const fulfillmentMethod = address.fulfillmentMethod === "PICKUP" ? "PICKUP" : "DELIVERY";
   const prefix = order.store.orderNumberPrefix;
+  const paymentConfig = order.paymentTransactions[0]?.providerAccount?.publicConfig;
+  const paymentInfo =
+    order.paymentMethod === "bank_transfer" && paymentConfig && typeof paymentConfig === "object" && !Array.isArray(paymentConfig)
+      ? Object.entries(paymentConfig)
+          .filter(([key, value]) =>
+            ["bankName", "accountName", "accountNumber", "iban", "swiftCode", "instructions"].includes(key) &&
+            typeof value === "string" &&
+            value.trim().length > 0,
+          )
+          .map(([label, value]) => ({ label, value: value as string }))
+      : undefined;
   return {
     orderNumber: prefix ? `${prefix}-${order.number}` : String(order.number),
+    ...(order.paymentTransactions[0]?.id ? { paymentTransactionId: order.paymentTransactions[0].id } : {}),
     status: "PENDING",
     paymentStatus: "UNPAID",
     paymentMethod: order.paymentMethod as CheckoutPaymentMethod,
+    fulfillmentMethod,
     currency: order.currency,
     lines: order.items.map((item) => ({
       name: item.productName,
@@ -114,7 +147,11 @@ function toPlacedOrder(order: OrderRow): PlacedOrder {
     subtotalMinor: order.subtotalMinor.toString(),
     shippingMinor: order.shippingMinor.toString(),
     totalMinor: order.totalMinor.toString(),
-    deliveryTo: [address.line1, address.city].filter((part) => typeof part === "string" && part).join(", "),
+    deliveryTo:
+      fulfillmentMethod === "PICKUP"
+        ? "Store pickup"
+        : [address.line1, address.city].filter((part) => typeof part === "string" && part).join(", "),
+    ...(paymentInfo?.length ? { paymentInfo } : {}),
   };
 }
 
@@ -190,22 +227,60 @@ export async function placeOrder(
       const store = await tx.store.findUniqueOrThrow({
         where: { id: publicStore.id },
         include: {
-          paymentMethods: { where: { enabled: true } },
-          shippingZones: {
-            orderBy: { id: "asc" },
-            take: 1,
-            include: { rates: { where: { active: true }, orderBy: { id: "asc" }, take: 1 } },
-          },
+          paymentMethods: { where: { enabled: true }, include: { providerAccount: true } },
         },
       });
 
       const allowed = (CHECKOUT_PAYMENT_METHODS as readonly string[]).includes(values.paymentMethod);
-      if (!allowed || !store.paymentMethods.some((m) => m.method === values.paymentMethod)) {
+      const selectedMethod = store.paymentMethods.find((m) => m.method === values.paymentMethod);
+      if (!allowed || !selectedMethod) {
         throw new OrderRefused(ORDER_MESSAGES.paymentUnavailable);
       }
-      const rate = store.shippingZones[0]?.rates[0];
-      if (!rate) throw new OrderRefused(ORDER_MESSAGES.noDelivery);
-
+      const resolver = testHooks.paymentCredentialResolver ?? runtimePaymentCredentialResolver;
+      let providerAccountId: string | null = null;
+      let provider: ReturnType<typeof paymentProviderForMethod> = null;
+      provider = paymentProviderForMethod(values.paymentMethod as PaymentMethodId);
+      if (provider) {
+        const account = selectedMethod.providerAccountId
+          ? await tx.paymentProviderAccount.findFirst({
+              where: {
+                id: selectedMethod.providerAccountId,
+                storeId: store.id,
+                provider,
+                enabled: true,
+                mode: "TEST",
+              },
+              select: { id: true, secretRef: true },
+            })
+          : null;
+        if (
+          !account ||
+          !account.secretRef ||
+          !isProviderMarketSupported(provider, publicStore.countryCode, store.baseCurrency) ||
+          !paymentProviderAdapter(provider)
+        ) {
+          throw new OrderRefused(ORDER_MESSAGES.paymentUnavailable);
+        }
+        const configured = await paymentCredentialsAvailable(resolver, {
+          secretRef: account.secretRef,
+          provider,
+          storeId: store.id,
+          providerAccountId: account.id,
+        });
+        if (!configured) throw new OrderRefused(ORDER_MESSAGES.paymentCredentialsUnavailable);
+        providerAccountId = account.id;
+      } else if (values.paymentMethod === "bank_transfer") {
+        const bankAccount = selectedMethod.providerAccountId
+          ? await tx.paymentProviderAccount.findFirst({
+              where: { id: selectedMethod.providerAccountId, storeId: store.id, provider: "bank_transfer", enabled: true },
+              select: { id: true, publicConfig: true },
+            })
+          : null;
+        if (!bankAccount || !bankTransferConfigurationIsValid(bankAccount.publicConfig)) {
+          throw new OrderRefused(ORDER_MESSAGES.paymentUnavailable);
+        }
+        providerAccountId = bankAccount.id;
+      }
       // Current products: ACTIVE, of THIS store, with their default variant.
       const products = await tx.product.findMany({
         where: { id: { in: values.items.map((i) => i.productId) }, storeId: store.id, status: "ACTIVE" },
@@ -221,10 +296,23 @@ export async function placeOrder(
         return { item, product, variant, lineTotalMinor: variant.priceMinor * BigInt(item.quantity) };
       });
 
-      // Totals from database values only.
+      // Totals and product delivery options come only from the database.
       const subtotalMinor = lines.reduce((sum, l) => sum + l.lineTotalMinor, BigInt(0));
-      const shippingMinor =
-        rate.freeOverMinor !== null && subtotalMinor >= rate.freeOverMinor ? BigInt(0) : rate.priceMinor;
+      const delivery = calculateDeliveryMinor(
+        lines.map(({ product, item }) => ({
+          deliveryFeeMinor: product.deliveryFeeMinor,
+          freeDelivery: product.freeDelivery,
+          pickupOnly: product.pickupOnly,
+          quantity: item.quantity,
+        })),
+        values.fulfillmentMethod,
+      );
+      if (!delivery.ok) {
+        throw new OrderRefused(
+          delivery.reason === "pickup-required" ? ORDER_MESSAGES.pickupOnly : ORDER_MESSAGES.unavailable,
+        );
+      }
+      const shippingMinor = delivery.deliveryMinor;
       const totalMinor = subtotalMinor + shippingMinor;
       if (totalMinor !== values.expectedTotalMinor) throw new OrderRefused(ORDER_MESSAGES.priceChanged);
 
@@ -275,14 +363,17 @@ export async function placeOrder(
           customerName: values.customer.name,
           customerEmail: values.customer.email,
           customerPhone: values.customer.phone,
-          shippingAddress: {
-            recipientName: values.customer.name,
-            line1: values.address.line1,
-            city: values.address.city,
-            region: values.address.region,
-            countryCode: store.countryCode,
-            phone: values.customer.phone,
-          },
+          shippingAddress: values.address
+            ? {
+                fulfillmentMethod: "DELIVERY",
+                recipientName: values.customer.name,
+                line1: values.address.line1,
+                city: values.address.city,
+                region: values.address.region,
+                countryCode: store.countryCode,
+                phone: values.customer.phone,
+              }
+            : { fulfillmentMethod: "PICKUP" },
           idempotencyKey: values.idempotencyKey,
           requestFingerprint: fingerprint,
           isDemo: false,
@@ -304,9 +395,34 @@ export async function placeOrder(
           lineTotalMinor: l.lineTotalMinor,
         })),
       });
+      const paymentTransaction = await tx.paymentTransaction.create({
+        data: {
+          storeId: store.id,
+          orderId: order.id,
+          currency: store.baseCurrency,
+          providerAccountId,
+          method: values.paymentMethod,
+          amountMinor: totalMinor,
+          status: "PENDING",
+          idempotencyKey: values.idempotencyKey,
+        },
+      });
+
+      let checkoutRedirect: ProviderCheckoutRedirect | undefined;
+      if (provider) {
+        const session = await createProviderCheckout(tx as PrismaClient, store.id, paymentTransaction.id, resolver);
+        if (!session) throw new OrderRefused(ORDER_MESSAGES.paymentCredentialsUnavailable);
+        checkoutRedirect = session.session.redirect;
+      }
+
       const created = await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
       await testHooks.beforeCommit?.();
-      return { ok: true, order: toPlacedOrder(created), duplicate: false } satisfies PlaceOrderResult;
+      return {
+        ok: true,
+        order: toPlacedOrder(created),
+        duplicate: false,
+        ...(checkoutRedirect ? { checkout: checkoutRedirect } : {}),
+      } satisfies PlaceOrderResult;
     }, TX_OPTIONS);
     return outcome;
   } catch (error) {

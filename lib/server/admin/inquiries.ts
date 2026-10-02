@@ -3,14 +3,14 @@ import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { isInquiryStatus, nextInquiryStatuses } from "@/lib/admin/inquiry-rules";
 import type { AdminInquiry } from "@/lib/admin/types";
 import { recordAudit } from "../audit";
-import type { PlatformOwner } from "../auth/guards";
+import type { StoreActor } from "../auth/guards";
 import { fail, NOT_FOUND, ok, type Client } from "./common";
 
 // ---------------------------------------------------------------
 // CONTACT MESSAGES (admin inbox) — always inside ONE store.
 // The storeId comes from the route; a message of another store is "not
-// found". Callers must already have passed requireAdminPage() (reads) or
-// requirePlatformOwner() (changes, which take the PlatformOwner).
+// found". Callers must already have passed requireStorePage(storeId) (reads) or
+// requireStoreAccess(storeId, "write") (changes, which take its actor).
 //
 // A status change names the status the admin saw ("from") and only
 // applies while the message still has it (a conditional update), so a
@@ -49,7 +49,7 @@ export async function listAdminInquiries(client: Client, storeId: string): Promi
 
 /** Marks a message of this store Read or Archived (or brings an archived one back as Read). */
 export async function setAdminInquiryStatus(
-  actor: PlatformOwner,
+  actor: StoreActor,
   client: PrismaClient,
   storeId: string,
   inquiryId: string,

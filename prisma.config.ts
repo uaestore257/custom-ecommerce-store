@@ -2,8 +2,9 @@
 // dotenv loads DATABASE_URL here (copy .env.example to .env).
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
+import { prismaCliDatabaseUrl } from "./lib/database-urls";
 
-const url = process.env.DATABASE_URL;
+const url = prismaCliDatabaseUrl();
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -11,8 +12,7 @@ export default defineConfig({
     path: "prisma/migrations",
     seed: "tsx prisma/seed.ts",
   },
-  // Only needed by migrate/seed/studio. Leaving it out when DATABASE_URL is
-  // unset lets `npm install` (which runs `prisma generate`) work on a fresh
-  // clone or CI machine without a database.
+  // Only needed by Prisma CLI commands. Leaving it out when neither URL is
+  // set lets `prisma generate` work without a database connection.
   ...(url && { datasource: { url } }),
 });

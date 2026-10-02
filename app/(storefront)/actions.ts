@@ -55,7 +55,7 @@ export async function submitInquiryAction(storeId: unknown, input: unknown): Pro
 }
 
 /**
- * Places a real order (cash on delivery or bank transfer) in the store
+ * Places a real order using a method enabled for the store
  * the request's Host serves; the storeId inside `input` is only compared
  * with it (placeOrder refuses a cart from another store).
  */

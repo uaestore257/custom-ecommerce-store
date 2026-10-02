@@ -7,6 +7,8 @@ import {
   validateCategory,
   validateProduct,
   validateStoreBase,
+  validateStorePaymentMethods,
+  validateStoreSettings,
   type StoreReference,
 } from "../../lib/admin/validation";
 
@@ -22,6 +24,7 @@ const store = {
   status: "DRAFT",
   ownerName: "Jamie Lee",
   ownerEmail: "Jamie@Example.com",
+  ownerPassword: "a safe owner passphrase 2026",
   countryCode: "GB",
   baseCurrency: "GBP",
   timezone: "Europe/London",
@@ -45,6 +48,7 @@ test("store input: valid values are normalised", () => {
   const { values, errors } = validateStoreBase(store, reference);
   assert.deepEqual(errors, {});
   assert.equal(values.ownerEmail, "jamie@example.com");
+  assert.equal(values.ownerPassword, "a safe owner passphrase 2026");
   assert.equal(values.accentColor, "#0f766e");
 });
 
@@ -57,21 +61,101 @@ test("store input: every rule is enforced on untrusted data", () => {
     assert.ok(errors[field], field);
   }
   assert.ok(validateStoreBase(null, reference).errors.name, "non-object input is handled");
+  assert.ok(validateStoreBase({ ...store, ownerPassword: "short" }, reference).errors.ownerPassword);
+});
+
+test("platform store settings validate localization and supported payment methods", () => {
+  const settings = {
+    ...store,
+    countryCode: "GB",
+    baseCurrency: "GBP",
+    timezone: "Europe/London",
+    languages: ["en", "ar"],
+    defaultLanguage: "en",
+    heroTitle: "Welcome",
+    paymentMethods: { cash_on_delivery: true, card_on_delivery: false, bank_transfer: true, online_card: true },
+    contactPhone: "+44 (20) 7946-0000",
+  };
+  const valid = validateStoreSettings(settings, reference);
+  assert.deepEqual(valid.errors, {});
+  assert.equal(valid.values.contactPhone, "+442079460000");
+  assert.equal(valid.values.paymentMethods.bank_transfer, true);
+  assert.equal(valid.values.paymentMethods.online_card, false);
+
+  const invalid = validateStoreSettings({
+    ...settings,
+    countryCode: "ZZ",
+    baseCurrency: "XXX",
+    timezone: "Not/A_Timezone",
+    languages: [],
+    defaultLanguage: "fr",
+    paymentMethods: { cash_on_delivery: "yes", unknown_gateway: true },
+  }, reference);
+  for (const field of ["countryCode", "baseCurrency", "timezone", "languages", "defaultLanguage"]) {
+    assert.ok(invalid.errors[field], field);
+  }
+  assert.equal(invalid.values.paymentMethods.cash_on_delivery, false);
+  assert.equal("unknown_gateway" in invalid.values.paymentMethods, false);
+  assert.equal("deliveryFeeMinor" in valid.values, false);
+  assert.equal("freeDeliveryOverMinor" in valid.values, false);
+});
+
+test("Store Owner payment settings accept only supported boolean methods", () => {
+  const valid = validateStorePaymentMethods({
+    paymentMethods: { cash_on_delivery: true, card_on_delivery: false, bank_transfer: true, online_card: true },
+    name: "attempted profile edit",
+    slug: "attempted-slug",
+    status: "ACTIVE",
+  });
+  assert.deepEqual(valid.errors, {});
+  assert.deepEqual(valid.values.paymentMethods, {
+    cash_on_delivery: true,
+    card_on_delivery: false,
+    bank_transfer: true,
+    online_card: false,
+  });
+  assert.deepEqual(validateStorePaymentMethods({ paymentMethods: { cash_on_delivery: "true" } }).errors, {
+    paymentMethods: "Choose valid payment methods.",
+  });
 });
 
 test("product input: store-currency money, limits and statuses", () => {
   const ok = validateProduct(
-    { name: "Lamp", sku: "lamp-1", categoryId: "c1", description: "A warm brass lamp.", price: "12.345", stock: "4", status: "ACTIVE" },
+    { name: "Lamp", sku: "lamp-1", categoryId: "c1", description: "A warm brass lamp.", price: "12.345", deliveryFee: "1.250", stock: "4", status: "ACTIVE" },
     3,
   );
   assert.deepEqual(ok.errors, {});
   assert.equal(ok.values.priceMinor, 12345n);
+  assert.equal(ok.values.deliveryFeeMinor, 1250n);
+  assert.equal(ok.values.freeDelivery, false);
+  assert.equal(ok.values.pickupOnly, false);
   assert.equal(ok.values.sku, "LAMP-1");
 
   const bad = validateProduct({ price: "12.345", compareAtPrice: "10", stock: "1.5", status: "SOLD" }, 2);
   for (const field of ["name", "sku", "categoryId", "description", "price", "stock", "status"]) {
     assert.ok(bad.errors[field], field);
   }
+});
+
+test("product delivery supports exactly fee, free delivery, or pickup only", () => {
+  const base = { name: "Lamp", sku: "L1", categoryId: "c1", description: "A warm brass lamp.", price: "12.345", stock: "1", status: "ACTIVE" };
+  const standard = validateProduct({ ...base, deliveryFee: "1.234" }, 3);
+  assert.deepEqual(standard.errors, {});
+  assert.equal(standard.values.deliveryFeeMinor, 1234n);
+
+  const free = validateProduct({ ...base, freeDelivery: true }, 3);
+  assert.deepEqual(free.errors, {});
+  assert.equal(free.values.freeDelivery, true);
+  assert.equal(free.values.deliveryFeeMinor, 0n);
+
+  const pickup = validateProduct({ ...base, pickupOnly: true }, 3);
+  assert.deepEqual(pickup.errors, {});
+  assert.equal(pickup.values.pickupOnly, true);
+
+  assert.ok(validateProduct({ ...base, freeDelivery: true, pickupOnly: true }, 3).errors.deliveryOptions);
+  assert.ok(validateProduct({ ...base, freeDelivery: true, deliveryFee: "1.000" }, 3).errors.deliveryFee);
+  assert.ok(validateProduct({ ...base, pickupOnly: true, deliveryFee: "1.000" }, 3).errors.deliveryFee);
+  assert.ok(validateProduct({ ...base, deliveryFee: "1.2345" }, 3).errors.deliveryFee);
 });
 
 test("unknown fields such as storeId are ignored", () => {

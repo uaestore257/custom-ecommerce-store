@@ -2,18 +2,38 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { StoreOverviewView } from "@/components/admin/StoreOverviewView";
 import { countActiveProducts } from "@/lib/server/admin/products";
-import { requireAdminPage } from "@/lib/server/admin/request";
+import { requireStorePage } from "@/lib/server/admin/request";
 import { getAdminStoreDetail } from "@/lib/server/admin/stores";
+import { storefrontUrlForSlug, storeHostConfig } from "@/lib/store-host";
+import { storefrontOriginForDomain } from "@/lib/storefront-seo";
 
 export const metadata: Metadata = { title: "Store overview" };
 
 export default async function StoreOverviewPage({ params, searchParams }: PageProps<"/admin/stores/[storeId]">) {
   const [{ storeId }, { created }] = await Promise.all([params, searchParams]);
-  const { db: client } = await requireAdminPage();
+  const { db: client, grant } = await requireStorePage(storeId, "overview");
   const [store, activeProducts] = await Promise.all([
     getAdminStoreDetail(client, storeId),
     countActiveProducts(client, storeId),
   ]);
   if (!store) notFound();
-  return <StoreOverviewView store={store} activeProducts={activeProducts} justCreated={created === "1"} />;
+  const config = storeHostConfig();
+  const baseUrl = process.env.BETTER_AUTH_URL ?? "";
+  const primaryDomain = await client.storeDomain.findFirst({
+    where: { storeId, status: "VERIFIED", isPrimary: true },
+    select: { hostname: true },
+  });
+  const previewUrl =
+    (primaryDomain && storefrontOriginForDomain(primaryDomain.hostname, baseUrl, config)?.toString()) ??
+    storefrontUrlForSlug(store.slug, baseUrl, config);
+  return (
+    <StoreOverviewView
+      store={store}
+      previewUrl={previewUrl}
+      activeProducts={activeProducts}
+      justCreated={created === "1"}
+      platform={grant.user.isPlatformOwner}
+      role={grant.role}
+    />
+  );
 }

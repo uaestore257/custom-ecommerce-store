@@ -8,10 +8,14 @@ import type { ShellStore } from "./AdminShell";
  * another one. Changing the selection navigates to that store's own URL,
  * so the store ID in the address bar always matches the data on screen.
  */
-export function StoreSelector({ stores }: { stores: ShellStore[] }) {
+export function StoreSelector({ stores, platform }: { stores: ShellStore[]; platform: boolean }) {
   const router = useRouter();
   const params = useParams<{ storeId?: string }>();
-  const selected = params.storeId ? stores.find((s) => s.id === params.storeId) : undefined;
+  const selected = params.storeId
+    ? stores.find((s) => s.id === params.storeId)
+    : platform
+      ? undefined
+      : stores[0];
 
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -26,7 +30,7 @@ export function StoreSelector({ stores }: { stores: ShellStore[] }) {
           selected ? "border-teal-300 bg-teal-50 text-teal-900" : "border-slate-300 bg-white text-slate-700"
         }`}
       >
-        <option value="">All stores (agency view)</option>
+        {platform && <option value="">All stores (agency view)</option>}
         {stores.map((store) => (
           <option key={store.id} value={store.id}>
             {store.name}

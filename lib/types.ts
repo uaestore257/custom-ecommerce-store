@@ -15,13 +15,17 @@ export type StoreType =
   | "grocery"
   | "other";
 
-export type CurrencyCode = "AED" | "SAR" | "USD" | "EUR" | "GBP";
+export type CurrencyCode = "AED" | "SAR" | "USD" | "EUR" | "GBP" | "PKR";
 
 export type PaymentMethodId =
   | "cash_on_delivery"
   | "card_on_delivery"
   | "bank_transfer"
-  | "online_card";
+  | "online_card"
+  | "cash_on_pickup"
+  | "stripe_checkout"
+  | "jazzcash"
+  | "easypaisa";
 
 export interface PaymentMethodSetting {
   id: PaymentMethodId;

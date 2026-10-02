@@ -6,16 +6,15 @@ import { normalizeHost } from "./auth/constants";
 // request's Host on the server, never from anything the browser sends.
 //
 //   <slug>.<PLATFORM_ROOT_DOMAIN>   -> the store with that slug
-//   a host listed in STORE_DOMAINS  -> the store with the mapped slug
-//                                      (a client's own domain)
-//   ADMIN_HOST                      -> "platform": the platform owner's
-//                                      preview (store cookie, else the
-//                                      configured default)
-//   PLATFORM_ROOT_DOMAIN itself     -> "platform" too, outside production
-//                                      only (local development)
+//   a host listed in STORE_DOMAINS  -> a trusted operator-configured alias
+//                                      (database ownership/status overrides it)
+//   ADMIN_HOST                      -> platform host
+//   PLATFORM_ROOT_DOMAIN itself     -> platform business website in local
+//                                      development; it does not name a store
 //   anything else                   -> unknown: no store is shown
 //
-// STORE_DOMAINS is a comma-separated list of host=slug pairs, e.g.
+// STORE_DOMAINS is a trusted, operator-managed comma-separated list of
+// host=slug pairs, e.g.
 // "shop.example.com=client-a,www.shop.example.com=client-a".
 // ---------------------------------------------------------------
 
@@ -60,6 +59,17 @@ export function storeHostConfig(env: NodeJS.ProcessEnv = process.env): StoreHost
   };
 }
 
+/** The bare development root belongs to the platform website, not a store preview. */
+export function isPlatformBusinessHost(rawHost: string, env: NodeJS.ProcessEnv = process.env) {
+  const config = storeHostConfig(env);
+  return Boolean(
+    config.rootDomain &&
+      !config.production &&
+      hostname(normalizeHost(rawHost)) === config.rootDomain &&
+      normalizeHost(rawHost) !== config.adminHost,
+  );
+}
+
 export function matchStoreHost(rawHost: string, config: StoreHostConfig): StoreHostMatch {
   const host = normalizeHost(rawHost);
   if (!host) return { kind: "unknown" };
@@ -79,4 +89,25 @@ export function matchStoreHost(rawHost: string, config: StoreHostConfig): StoreH
     if (SLUG.test(label) && !RESERVED.has(label)) return { kind: "store", slug: label };
   }
   return { kind: "unknown" };
+}
+
+/** Absolute storefront homepage URL for a store slug, using the same host mapping as requests. */
+export function storefrontUrlForSlug(slug: string, baseUrl: string, config: StoreHostConfig): string | null {
+  if (!SLUG.test(slug)) return null;
+
+  const customHost = [...config.customDomains].find(([, mappedSlug]) => mappedSlug === slug)?.[0];
+  const storefrontHost = customHost ?? (config.rootDomain ? `${slug}.${config.rootDomain}` : null);
+  if (!storefrontHost) return null;
+
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.hostname = storefrontHost;
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
 }

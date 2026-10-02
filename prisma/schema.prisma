@@ -39,6 +39,12 @@ enum StoreStatus {
   SUSPENDED
 }
 
+enum StoreDomainStatus {
+  PENDING
+  VERIFIED
+  DISABLED
+}
+
 enum StoreRole {
   OWNER
   MANAGER
@@ -71,6 +77,14 @@ enum PaymentStatus {
   PAID
 }
 
+enum PaymentTransactionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 enum InquiryStatus {
   NEW
   READ
@@ -100,6 +114,7 @@ model Currency {
 
   stores Store[]
   orders Order[]
+  paymentTransactions PaymentTransaction[]
 }
 
 /// BCP 47 language tag, with its writing direction (Arabic = RTL).
@@ -144,6 +159,7 @@ model User {
   updatedAt       DateTime  @updatedAt
 
   memberships StoreMembership[]
+  invitations StoreInvitation[] @relation("StoreInvitationSender")
   sessions    Session[]
   accounts    Account[]
   auditEvents AuditEvent[]
@@ -252,6 +268,27 @@ model StoreMembership {
   @@index([storeId])
 }
 
+/// A single-use, store-scoped invitation. Only a hash of the bearer token
+/// is persisted; the raw token is delivered once and never returned to UI.
+model StoreInvitation {
+  id              String     @id @default(cuid())
+  storeId         String
+  invitedByUserId String
+  email           String     @db.VarChar(254)
+  role            StoreRole
+  tokenHash       String     @unique @db.Char(64)
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime   @default(now())
+
+  store      Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invitedBy  User  @relation("StoreInvitationSender", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+  @@index([storeId, email])
+}
+
 // ---------------------------------------------------------------------
 // Store (tenant) and its configuration
 // ---------------------------------------------------------------------
@@ -302,6 +339,8 @@ model Store {
   language Language @relation("StoreDefaultLanguage", fields: [defaultLanguage], references: [code])
 
   memberships     StoreMembership[]
+  invitations     StoreInvitation[]
+  domains         StoreDomain[]
   languages       StoreLanguage[]
   categories      Category[]
   products        Product[]
@@ -313,12 +352,34 @@ model Store {
   shippingRates   ShippingRate[]
   paymentAccounts PaymentProviderAccount[]
   paymentMethods  StorePaymentMethod[]
+  paymentTransactions PaymentTransaction[]
+  paymentWebhookEvents PaymentWebhookEvent[]
   auditEvents     AuditEvent[]
   inquiries       Inquiry[]
 
   // Lets prices reference (storeId, currency) so they must be in the
   // store's base currency. Changing baseCurrency is blocked while prices exist.
   @@unique([id, baseCurrency])
+}
+
+/// A hostname owned by exactly one store. Verification tokens are public DNS
+/// proof identifiers, never credentials. Only VERIFIED domains route traffic.
+model StoreDomain {
+  id                String            @id @default(cuid())
+  storeId           String
+  hostname          String            @unique @db.VarChar(253)
+  status            StoreDomainStatus @default(PENDING)
+  isPrimary         Boolean           @default(false)
+  verificationToken String            @db.VarChar(64)
+  verifiedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, status])
+  // Database migration also enforces that only VERIFIED domains can be primary,
+  // with at most one verified primary hostname per store.
 }
 
 /// Languages a store offers. Content can only be written in these.
@@ -393,6 +454,9 @@ model Product {
   categoryId String?
   status     ProductStatus @default(DRAFT)
   featured   Boolean       @default(false)
+  deliveryFeeMinor BigInt  @default(0)
+  freeDelivery     Boolean @default(false)
+  pickupOnly       Boolean @default(false)
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -548,6 +612,7 @@ model Order {
   // Composite: the customer must belong to the SAME store.
   customer    Customer?   @relation(fields: [customerId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
   items       OrderItem[]
+  paymentTransactions PaymentTransaction[]
 
   @@unique([storeId, number])
   @@unique([id, storeId, currency])
@@ -683,6 +748,8 @@ model PaymentProviderAccount {
 
   store   Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   methods StorePaymentMethod[]
+  transactions PaymentTransaction[]
+  webhookEvents PaymentWebhookEvent[]
 
   @@unique([id, storeId])
 }
@@ -700,4 +767,54 @@ model StorePaymentMethod {
   providerAccount PaymentProviderAccount? @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
 
   @@unique([storeId, method])
+}
+
+/// One store-scoped payment attempt. Provider secrets and callback payloads
+/// are never persisted here; provider references are non-secret identifiers.
+model PaymentTransaction {
+  id                String                   @id @default(cuid())
+  storeId           String
+  orderId           String
+  currency          String                   @db.Char(3)
+  providerAccountId String?
+  method            String
+  amountMinor       BigInt
+  status            PaymentTransactionStatus @default(PENDING)
+  idempotencyKey    String                   @db.VarChar(64)
+  providerReference String?                  @db.VarChar(255)
+  failureCode       String?                  @db.VarChar(80)
+  settledAt         DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  store           Store                  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order                  @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Cascade, onUpdate: Restrict)
+  currencyRef     Currency               @relation(fields: [currency], references: [code])
+  providerAccount PaymentProviderAccount? @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
+  webhookEvents  PaymentWebhookEvent[]
+
+  @@unique([storeId, idempotencyKey])
+  @@unique([id, storeId])
+  @@unique([providerAccountId, providerReference])
+  @@index([storeId, orderId, createdAt])
+}
+
+/// A signed provider event is recorded only after it has been authenticated;
+/// the unique provider event ID makes retries idempotent without retaining raw payloads.
+model PaymentWebhookEvent {
+  id                String   @id @default(cuid())
+  storeId           String
+  providerAccountId String
+  transactionId     String?
+  eventId           String   @db.VarChar(255)
+  eventType         String   @db.VarChar(120)
+  processedAt       DateTime?
+  createdAt         DateTime @default(now())
+
+  store           Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  providerAccount PaymentProviderAccount @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  transaction     PaymentTransaction? @relation(fields: [transactionId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([providerAccountId, eventId])
+  @@index([storeId, createdAt])
 }

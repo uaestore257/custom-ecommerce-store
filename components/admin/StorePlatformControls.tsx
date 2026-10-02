@@ -16,7 +16,12 @@ import { hasErrors, validateStoreOwner } from "@/lib/admin/validation";
 
 export function StoreOwnerCard({ store }: { store: AdminStoreDetail }) {
   const router = useRouter();
-  const [values, setValues] = useState({ ownerName: store.ownerName, ownerEmail: store.ownerEmail });
+  const [values, setValues] = useState({
+    ownerName: store.ownerName,
+    ownerEmail: store.ownerEmail,
+    ownerPassword: "",
+    ownerPasswordConfirm: "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -25,10 +30,15 @@ export function StoreOwnerCard({ store }: { store: AdminStoreDetail }) {
     event.preventDefault();
     setMessage(null);
     const found = validateStoreOwner(values).errors;
+    if (values.ownerPassword && values.ownerPassword !== values.ownerPasswordConfirm) {
+      found.ownerPasswordConfirm = "The passwords don't match.";
+    }
     setErrors(found);
     if (hasErrors(found)) return;
     startTransition(async () => {
-      const result = await setStoreOwnerAction(store.id, values);
+      const submitted = { ...values };
+      setValues((current) => ({ ...current, ownerPassword: "", ownerPasswordConfirm: "" }));
+      const result = await setStoreOwnerAction(store.id, submitted);
       if (result.ok) {
         setMessage({ ok: true, text: result.message ?? "Saved." });
         router.refresh();
@@ -46,7 +56,8 @@ export function StoreOwnerCard({ store }: { store: AdminStoreDetail }) {
         Store owner
       </h2>
       <p className="mt-1 text-sm text-slate-600">
-        The person responsible for this store. Store owners can&apos;t sign in yet; invitations arrive in a later phase.
+        The assigned Store Owner can sign in on this store&apos;s hostname. Leave the password blank to keep an existing password;
+        set one to provision a legacy owner or reset access.
       </p>
       <form onSubmit={submit} noValidate className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field label="Owner name" htmlFor="owner-name" required error={errors.ownerName}>
@@ -64,6 +75,26 @@ export function StoreOwnerCard({ store }: { store: AdminStoreDetail }) {
             value={values.ownerEmail}
             onChange={(e) => setValues({ ...values, ownerEmail: e.target.value })}
             className={inputClass(!!errors.ownerEmail)}
+          />
+        </Field>
+        <Field label="New owner password" htmlFor="owner-password" error={errors.ownerPassword} hint="Required when provisioning or changing the owner; blank keeps the current password.">
+          <input
+            {...errorProps("owner-password", errors.ownerPassword)}
+            type="password"
+            autoComplete="new-password"
+            value={values.ownerPassword}
+            onChange={(e) => setValues({ ...values, ownerPassword: e.target.value })}
+            className={inputClass(!!errors.ownerPassword)}
+          />
+        </Field>
+        <Field label="Confirm new password" htmlFor="owner-password-confirm" error={errors.ownerPasswordConfirm}>
+          <input
+            {...errorProps("owner-password-confirm", errors.ownerPasswordConfirm)}
+            type="password"
+            autoComplete="new-password"
+            value={values.ownerPasswordConfirm}
+            onChange={(e) => setValues({ ...values, ownerPasswordConfirm: e.target.value })}
+            className={inputClass(!!errors.ownerPasswordConfirm)}
           />
         </Field>
         <div className="flex flex-wrap items-center gap-3 sm:col-span-2">

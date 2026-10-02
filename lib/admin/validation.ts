@@ -8,6 +8,7 @@
 import { MoneyError, toMinorUnits } from "@/lib/money";
 import { isCountryCode, isCurrencyCode, isE164Phone, isLanguageTag, isTimeZone } from "@/lib/standards";
 import { isEmail, isHexColor, isHttpUrl, isSlug } from "@/lib/validation";
+import { passwordProblem } from "@/lib/auth/password-policy";
 import type { DbProductStatus, DbStoreStatus } from "./types";
 
 export type Errors = Record<string, string>;
@@ -105,6 +106,7 @@ export interface CleanStoreProfile {
 export interface CleanStoreOwner {
   ownerName: string;
   ownerEmail: string;
+  ownerPassword: string;
 }
 
 /** Everything needed to create a store. */
@@ -112,24 +114,52 @@ export interface CleanStoreBase extends CleanStoreProfile, CleanStoreOwner {
   status: DbStoreStatus;
 }
 
-export interface CleanStoreSettings extends CleanStoreProfile {
+/** Payment settings are the only store settings a Store Owner may change. */
+export interface CleanStorePaymentSettings {
+  paymentMethods: Record<(typeof PAYMENT_METHOD_IDS)[number], boolean>;
+}
+
+export interface CleanStoreSettings extends CleanStoreProfile, CleanStorePaymentSettings {
   logoUrl: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   contactAddress: string | null;
   content: { tagline: string; heroTitle: string; heroText: string; aboutText: string };
-  deliveryFeeMinor: bigint;
-  freeDeliveryOverMinor: bigint | null;
-  paymentMethods: Record<(typeof PAYMENT_METHOD_IDS)[number], boolean>;
 }
 
-export function validateStoreOwner(input: unknown) {
+/** Online card payment is always off until a provider is connected. */
+export function validateStorePaymentMethods(input: unknown) {
   const raw = record(input);
   const errors: Errors = {};
-  const v: CleanStoreOwner = { ownerName: str(raw, "ownerName"), ownerEmail: str(raw, "ownerEmail").toLowerCase() };
+  const methodsRaw = record(raw.paymentMethods);
+  for (const id of PAYMENT_METHOD_IDS) {
+    if (id !== "online_card" && typeof methodsRaw[id] !== "boolean") {
+      errors.paymentMethods = "Choose valid payment methods.";
+    }
+  }
+  const paymentMethods = Object.fromEntries(
+    PAYMENT_METHOD_IDS.map((id) => [id, id === "online_card" ? false : bool(methodsRaw, id)]),
+  ) as CleanStorePaymentSettings["paymentMethods"];
+
+  const values: CleanStorePaymentSettings = { paymentMethods };
+  return { values, errors: clean(errors) };
+}
+
+export function validateStoreOwner(input: unknown, options: { requirePassword?: boolean } = {}) {
+  const raw = record(input);
+  const errors: Errors = {};
+  const v: CleanStoreOwner = {
+    ownerName: str(raw, "ownerName"),
+    ownerEmail: str(raw, "ownerEmail").toLowerCase(),
+    ownerPassword: typeof raw.ownerPassword === "string" ? raw.ownerPassword : "",
+  };
   if (v.ownerName.length < 2) errors.ownerName = "Enter the owner or contact name.";
   else errors.ownerName = tooLong(v.ownerName, LIMITS.personName) as string;
   if (!isEmail(v.ownerEmail) || v.ownerEmail.length > LIMITS.email) errors.ownerEmail = "Enter a valid email address.";
+  if (options.requirePassword || v.ownerPassword) {
+    const problem = passwordProblem(v.ownerPassword, v.ownerEmail);
+    if (problem) errors.ownerPassword = problem;
+  }
   return { values: v, errors: clean(errors) };
 }
 
@@ -137,7 +167,7 @@ export function validateStoreOwner(input: unknown) {
 export function validateStoreBase(input: unknown, ref: StoreReference) {
   const raw = record(input);
   const profile = validateStoreProfile(input, ref);
-  const owner = validateStoreOwner(input);
+  const owner = validateStoreOwner(input, { requirePassword: true });
   const status = str(raw, "status") as DbStoreStatus;
   const errors: Errors = { ...profile.errors, ...owner.errors };
   if (!STORE_STATUS_VALUES.includes(status)) errors.status = "Choose a valid status.";
@@ -185,8 +215,6 @@ export function validateStoreSettings(input: unknown, ref: StoreReference) {
   const raw = record(input);
   const base = validateStoreProfile(input, ref);
   const errors: Errors = { ...base.errors };
-  const minorUnits = ref.currencies.get(base.values.baseCurrency) ?? 2;
-
   const logoUrl = str(raw, "logoUrl");
   const contactEmail = str(raw, "contactEmail").toLowerCase();
   const contactPhone = normalizePhone(str(raw, "contactPhone"));
@@ -210,17 +238,8 @@ export function validateStoreSettings(input: unknown, ref: StoreReference) {
   errors.heroText = tooLong(content.heroText, LIMITS.heroText) as string;
   errors.aboutText = tooLong(content.aboutText, LIMITS.aboutText) as string;
 
-  const fee = parseMoney(str(raw, "deliveryFee"), minorUnits);
-  if (fee.error) errors.deliveryFee = fee.error;
-  const freeOverRaw = str(raw, "freeDeliveryThreshold");
-  const freeOver = freeOverRaw && freeOverRaw !== "0" ? parseMoney(freeOverRaw, minorUnits) : { minor: null };
-  if ("error" in freeOver && freeOver.error) errors.freeDeliveryThreshold = freeOver.error;
-
-  const methodsRaw = record(raw.paymentMethods);
-  const paymentMethods = Object.fromEntries(
-    // Online card payment needs a payment provider, which is not connected.
-    PAYMENT_METHOD_IDS.map((id) => [id, id === "online_card" ? false : bool(methodsRaw, id)]),
-  ) as CleanStoreSettings["paymentMethods"];
+  const paymentSettings = validateStorePaymentMethods(input);
+  Object.assign(errors, paymentSettings.errors);
 
   const values: CleanStoreSettings = {
     ...base.values,
@@ -229,9 +248,7 @@ export function validateStoreSettings(input: unknown, ref: StoreReference) {
     contactPhone: contactPhone || null,
     contactAddress: contactAddress || null,
     content,
-    deliveryFeeMinor: fee.minor ?? BigInt(0),
-    freeDeliveryOverMinor: "minor" in freeOver && freeOver.minor ? freeOver.minor : null,
-    paymentMethods,
+    ...paymentSettings.values,
   };
   return { values, errors: clean(errors) };
 }
@@ -245,6 +262,9 @@ export interface CleanProduct {
   description: string;
   priceMinor: bigint;
   compareAtMinor: bigint | null;
+  deliveryFeeMinor: bigint;
+  freeDelivery: boolean;
+  pickupOnly: boolean;
   imageUrl: string | null;
   stock: number;
   status: DbProductStatus;
@@ -283,6 +303,14 @@ export function validateProduct(input: unknown, minorUnits: number) {
 
   const price = parseMoney(str(raw, "price"), minorUnits, { allowZero: false });
   if (price.error) errors.price = price.error;
+  const deliveryFee = parseMoney(str(raw, "deliveryFee") || "0", minorUnits);
+  const freeDelivery = bool(raw, "freeDelivery");
+  const pickupOnly = bool(raw, "pickupOnly");
+  if (deliveryFee.error) errors.deliveryFee = deliveryFee.error;
+  if (freeDelivery && pickupOnly) errors.deliveryOptions = "Choose free delivery or pickup only, not both.";
+  if ((freeDelivery || pickupOnly) && deliveryFee.minor !== undefined && deliveryFee.minor !== BigInt(0)) {
+    errors.deliveryFee = "A delivery fee can only be set for standard delivery.";
+  }
   const compareRaw = str(raw, "compareAtPrice");
   let compareAtMinor: bigint | null = null;
   if (compareRaw) {
@@ -308,6 +336,9 @@ export function validateProduct(input: unknown, minorUnits: number) {
     description,
     priceMinor: price.minor ?? BigInt(0),
     compareAtMinor,
+    deliveryFeeMinor: deliveryFee.minor ?? BigInt(0),
+    freeDelivery,
+    pickupOnly,
     imageUrl: imageUrl || null,
     stock: Number(stockRaw) || 0,
     status,

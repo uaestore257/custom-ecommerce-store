@@ -3,13 +3,16 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { DEFAULT_STOREFRONT_STORE_ID, PAYMENT_METHODS } from "@/lib/config";
 import { storeFormatLocale } from "@/lib/standards";
+import { normalizeRequestHostname } from "@/lib/store-domains";
 import { isStoreIdCookieValue, STOREFRONT_STORE_COOKIE } from "@/lib/storefront-cookie";
-import { matchStoreHost, storeHostConfig } from "@/lib/store-host";
+import { isPlatformBusinessHost, matchStoreHost, storeHostConfig } from "@/lib/store-host";
 import type { StorefrontCatalog, StorefrontProduct, StorefrontStore } from "@/lib/storefront-types";
 import type { PaymentMethodId } from "@/lib/types";
 import type { Client } from "../admin/common";
 import { getDb } from "../db";
 import { storeScope } from "../store-scope";
+import { bankTransferConfigurationIsValid, isOnlinePaymentMethodAvailable } from "../payments/methods";
+import type { PaymentProviderAccountConfig } from "../payments/types";
 
 // ---------------------------------------------------------------
 // PUBLIC STOREFRONT READS (no sign-in)
@@ -23,9 +26,9 @@ import { storeScope } from "../store-scope";
 // browser.
 //
 // Which store to show comes from the request's hostname
-// (resolveStoreForHost, rules in lib/store-host.ts). Only the platform
-// host (ADMIN_HOST, and the bare root domain in development) still uses
-// the preview cookie plus a configured default (lib/storefront-cookie.ts).
+// (resolveStoreForHost, rules in lib/store-host.ts). The bare development
+// root is the business website, not a storefront. Only ADMIN_HOST may use
+// the platform preview cookie plus configured default.
 // ---------------------------------------------------------------
 
 const PUBLIC_STORE = { status: "ACTIVE", archivedAt: null } as const;
@@ -62,8 +65,27 @@ export async function resolveStoreForHost(
   previewCookie: unknown,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
-  const match = matchStoreHost(host, storeHostConfig(env));
+  if (isPlatformBusinessHost(host, env)) return null;
+  const config = storeHostConfig(env);
+  const match = matchStoreHost(host, config);
   if (match.kind === "platform") return resolveStorefrontStoreId(client, previewCookie, DEFAULT_STOREFRONT_STORE_ID);
+  const hostname = normalizeRequestHostname(host);
+  if (hostname) {
+    // Database ownership overrides an operator alias, including PENDING or
+    // DISABLED rows, so a reused hostname can never fall back to another store.
+    const customDomain = await client.storeDomain.findUnique({
+      where: { hostname },
+      select: { storeId: true, status: true },
+    });
+    if (customDomain) {
+      if (customDomain.status !== "VERIFIED") return null;
+      const store = await client.store.findFirst({
+        where: { id: customDomain.storeId, ...PUBLIC_STORE },
+        select: { id: true },
+      });
+      return store?.id ?? null;
+    }
+  }
   if (match.kind === "unknown") return null;
   const store = await client.store.findFirst({ where: { slug: match.slug, ...PUBLIC_STORE }, select: { id: true } });
   return store?.id ?? null;
@@ -83,6 +105,9 @@ function toStorefrontProduct(row: ScopedProduct, storeId: string): StorefrontPro
     categoryId: row.categoryId ?? "",
     priceMinor: variant.priceMinor.toString(),
     compareAtMinor: variant.compareAtMinor === null ? null : variant.compareAtMinor.toString(),
+    deliveryFeeMinor: row.deliveryFeeMinor.toString(),
+    freeDelivery: row.freeDelivery,
+    pickupOnly: row.pickupOnly,
     imageUrl: row.images[0]?.url ?? "",
     stock: variant.stock,
     featured: row.featured,
@@ -98,11 +123,10 @@ export async function getStorefrontCatalog(client: Client, storeId: string): Pro
     include: {
       currency: true,
       country: { select: { name: true } },
-      paymentMethods: { where: { enabled: true }, orderBy: { position: "asc" } },
-      shippingZones: {
-        orderBy: { id: "asc" },
-        take: 1,
-        include: { rates: { where: { active: true }, orderBy: { id: "asc" }, take: 1 } },
+      paymentMethods: {
+        where: { enabled: true },
+        orderBy: { position: "asc" },
+        include: { providerAccount: true },
       },
     },
   });
@@ -117,11 +141,32 @@ export async function getStorefrontCatalog(client: Client, storeId: string): Pro
     scope.listProducts({ locale: store.defaultLanguage, status: "ACTIVE" }),
   ]);
 
-  const rate = store.shippingZones[0]?.rates[0];
   const address = (store.businessAddress ?? {}) as { line1?: unknown };
+
+  const paymentMethods: PaymentMethodId[] = [];
+  for (const method of store.paymentMethods) {
+    if (!KNOWN_PAYMENT_METHODS.has(method.method)) continue;
+    if (method.method === "bank_transfer") {
+      if (bankTransferConfigurationIsValid(method.providerAccount?.publicConfig)) paymentMethods.push("bank_transfer");
+      continue;
+    }
+    const providerMethod = method.method as PaymentMethodId;
+    if (
+      ["stripe_checkout", "jazzcash", "easypaisa"].includes(method.method) &&
+      !(await isOnlinePaymentMethodAvailable(
+        providerMethod,
+        method.providerAccount as PaymentProviderAccountConfig | null,
+        { id: store.id, countryCode: store.countryCode, currency: store.baseCurrency },
+      ))
+    ) {
+      continue;
+    }
+    paymentMethods.push(providerMethod);
+  }
 
   const storefrontStore: StorefrontStore = {
     id: store.id,
+    slug: store.slug,
     name: store.name,
     logoUrl: store.logoUrl ?? "",
     accentColor: store.accentColor ?? "#0f766e",
@@ -137,11 +182,7 @@ export async function getStorefrontCatalog(client: Client, storeId: string): Pro
     contactEmail: store.contactEmail ?? "",
     contactPhone: store.contactPhone ?? "",
     contactAddress: typeof address.line1 === "string" ? address.line1 : "",
-    deliveryFeeMinor: rate ? rate.priceMinor.toString() : null,
-    freeDeliveryOverMinor: rate?.freeOverMinor != null ? rate.freeOverMinor.toString() : null,
-    paymentMethods: store.paymentMethods
-      .map((m) => m.method)
-      .filter((method): method is PaymentMethodId => KNOWN_PAYMENT_METHODS.has(method)),
+    paymentMethods,
   };
 
   return {

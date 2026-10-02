@@ -14,6 +14,7 @@ import type { StorefrontCatalog, StorefrontProduct, StorefrontStore } from "../.
 
 const store = (overrides: Partial<StorefrontStore> = {}): StorefrontStore => ({
   id: "store-1",
+  slug: "store-1",
   name: "Oak & Co",
   logoUrl: "",
   accentColor: "#0f766e",
@@ -29,8 +30,6 @@ const store = (overrides: Partial<StorefrontStore> = {}): StorefrontStore => ({
   contactEmail: "",
   contactPhone: "",
   contactAddress: "",
-  deliveryFeeMinor: "2500",
-  freeDeliveryOverMinor: "50000",
   paymentMethods: ["cash_on_delivery"],
   ...overrides,
 });
@@ -44,6 +43,9 @@ const product = (id: string, overrides: Partial<StorefrontProduct> = {}): Storef
   categoryId: "",
   priceMinor: "10000",
   compareAtMinor: null,
+  deliveryFeeMinor: "2500",
+  freeDelivery: false,
+  pickupOnly: false,
   imageUrl: "",
   stock: 10,
   featured: false,
@@ -129,35 +131,41 @@ test("duplicate entries for one product are merged, and non-positive or broken q
   assert.equal(cart.lines[0].quantity, 5);
 });
 
-test("delivery: flat fee below the threshold, free at or above it, none for an empty cart", () => {
-  const below = computeCart(catalog([product("a", { priceMinor: "10000" })]), session([item("a", 1)]));
+test("delivery: sum each product fee for the purchased quantity; free products contribute zero", () => {
+  const below = computeCart(catalog([product("a", { priceMinor: "10000", deliveryFeeMinor: "2500" })]), session([item("a", 1)]));
   assert.equal(below.deliveryMinor, BigInt(2500));
   assert.equal(below.totalMinor, BigInt(12500));
 
-  const atThreshold = computeCart(catalog([product("a", { priceMinor: "10000" })]), session([item("a", 5)]));
-  assert.equal(atThreshold.deliveryMinor, BigInt(0));
-  assert.equal(atThreshold.totalMinor, BigInt(50000));
+  const multiple = computeCart(
+    catalog([
+      product("a", { deliveryFeeMinor: "2500" }),
+      product("b", { deliveryFeeMinor: "1500" }),
+      product("free", { freeDelivery: true, deliveryFeeMinor: "0" }),
+    ]),
+    session([item("a", 2), item("b", 1), item("free", 5)]),
+  );
+  assert.equal(multiple.deliveryMinor, BigInt(6500));
 
   const empty = computeCart(catalog([product("a")]), session([]));
   assert.equal(empty.deliveryMinor, BigInt(0));
 });
 
-test("a store with no delivery rate reports delivery as not configured, never as free", () => {
+test("pickup-only products require pickup and zero all delivery contributions", () => {
   const cart = computeCart(
-    catalog([product("a")], store({ deliveryFeeMinor: null, freeDeliveryOverMinor: null })),
-    session([item("a", 1)]),
+    catalog([product("a", { deliveryFeeMinor: "2500" }), product("b", { pickupOnly: true, deliveryFeeMinor: "0" })]),
+    session([item("a", 1), item("b", 1)]),
   );
-  assert.equal(cart.deliveryConfigured, false);
+  assert.equal(cart.requiresPickup, true);
   assert.equal(cart.deliveryMinor, BigInt(0));
-  assert.equal(cart.totalMinor, BigInt(10000));
 });
 
 test("3-decimal currencies (KWD) stay exact end to end", () => {
-  const kwd = store({ currency: "KWD", minorUnits: 3, locale: "en-KW", deliveryFeeMinor: "1500", freeDeliveryOverMinor: null });
-  const cart = computeCart(catalog([product("a", { priceMinor: "12345" })], kwd), session([item("a", 3)]));
+  const kwd = store({ currency: "KWD", minorUnits: 3, locale: "en-KW" });
+  const cart = computeCart(catalog([product("a", { priceMinor: "12345", deliveryFeeMinor: "1500" })], kwd), session([item("a", 3)]));
   assert.equal(cart.subtotalMinor, BigInt(37035));
-  assert.equal(cart.totalMinor, BigInt(38535));
-  assert.match(formatStoreMoney(kwd, cart.totalMinor), /38\.535/);
+  assert.equal(cart.deliveryMinor, BigInt(4500));
+  assert.equal(cart.totalMinor, BigInt(41535));
+  assert.match(formatStoreMoney(kwd, cart.totalMinor), /41\.535/);
 });
 
 test("acceptedSession saves the cart as it is now: capped, filtered, current prices marked as seen", () => {

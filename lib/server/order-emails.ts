@@ -26,6 +26,7 @@ export interface OrderEmailData {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  fulfillmentMethod: "DELIVERY" | "PICKUP";
   deliveryTo: string;
   paymentMethod: string;
   lines: { name: string; quantity: number; total: string }[];
@@ -54,13 +55,13 @@ export function buildOrderEmails(data: OrderEmailData): { kind: "customer" | "st
     text: [
       `Hello ${data.customerName},`,
       "",
-      `Thank you for your order at ${data.storeName}. We have received it and will contact you about delivery.`,
+      `Thank you for your order at ${data.storeName}. We have received it and will contact you about fulfillment.`,
       "",
       `Order ${data.orderNumber}`,
       ...orderLines(data),
       "",
       `Payment: ${method}. ${paymentInstructions(data.paymentMethod as CheckoutPaymentMethod, data.storeName, data.orderNumber)}`,
-      `Delivery to: ${data.deliveryTo}`,
+      data.fulfillmentMethod === "PICKUP" ? "Pickup at the store" : `Delivery to: ${data.deliveryTo}`,
       "",
       data.storeContact ? `Questions? Contact ${data.storeName}: ${data.storeContact}` : `Questions? Reply to this email.`,
     ].join("\n"),
@@ -82,7 +83,7 @@ export function buildOrderEmails(data: OrderEmailData): { kind: "customer" | "st
           `Customer: ${data.customerName}`,
           `Email: ${data.customerEmail}`,
           `Phone: ${data.customerPhone || "—"}`,
-          `Delivery to: ${data.deliveryTo}`,
+          data.fulfillmentMethod === "PICKUP" ? "Pickup at the store" : `Delivery to: ${data.deliveryTo}`,
           ...(data.adminOrderUrl ? ["", `Manage it in the admin: ${data.adminOrderUrl}`] : []),
         ].join("\n"),
       },
@@ -124,6 +125,7 @@ export async function sendOrderEmails(
     const locale = storeFormatLocale(store);
     const money = (minor: bigint) => formatMinorUnits(minor, order.currency, order.currencyRef.minorUnits, locale);
     const address = (order.shippingAddress ?? {}) as Record<string, unknown>;
+    const fulfillmentMethod = address.fulfillmentMethod === "PICKUP" ? "PICKUP" : "DELIVERY";
     const adminUrl = process.env.BETTER_AUTH_URL;
     const storeEmail = store.contactEmail || store.memberships[0]?.user.email || null;
     const emails = buildOrderEmails({
@@ -135,7 +137,11 @@ export async function sendOrderEmails(
       customerName: order.customerName,
       customerEmail: order.customerEmail,
       customerPhone: order.customerPhone ?? "",
-      deliveryTo: [text(address.line1), text(address.city)].filter(Boolean).join(", "),
+      fulfillmentMethod,
+      deliveryTo:
+        fulfillmentMethod === "PICKUP"
+          ? "Store pickup"
+          : [text(address.line1), text(address.city)].filter(Boolean).join(", "),
       paymentMethod: order.paymentMethod ?? "",
       lines: order.items.map((item) => ({ name: item.productName, quantity: item.quantity, total: money(item.lineTotalMinor) })),
       subtotal: money(order.subtotalMinor),
