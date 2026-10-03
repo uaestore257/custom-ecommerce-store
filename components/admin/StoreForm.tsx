@@ -4,9 +4,12 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { createStoreAction, updateStoreAction } from "@/app/admin/actions";
 import { buttonClass, errorProps, Field, inputClass, Notice } from "@/components/ui";
+import { SearchableLanguageList } from "@/components/admin/SearchableLanguageList";
+import { SearchableSelect } from "@/components/admin/SearchableSelect";
 import { PAYMENT_METHODS, STORE_STATUSES, STORE_TYPES } from "@/lib/config";
 import { slugify } from "@/lib/format";
 import type { AdminStoreDetail, ReferenceOptions } from "@/lib/admin/types";
+import { toggleSelectedOption } from "@/lib/admin/search-options";
 import {
   hasErrors,
   PAYMENT_METHOD_IDS,
@@ -95,14 +98,22 @@ export function StoreForm({
   const isEdit = mode === "edit";
   const currencyLocked = Boolean(isEdit && store?.hasPrices);
 
+  const languageOptions = useMemo(() => {
+    const availableCodes = new Set(reference.languages.map((language) => language.code));
+    const existingLanguages = (store?.languages ?? [])
+      .filter((code) => !availableCodes.has(code))
+      .map((code) => ({ code, name: code, nativeName: code, direction: "LTR" as const }));
+    return [...reference.languages, ...existingLanguages];
+  }, [reference.languages, store?.languages]);
+
   // Lookup sets for the shared validators (the server has its own copy).
   const lookup: StoreReference = useMemo(
     () => ({
       countries: new Set(reference.countries.map((c) => c.code)),
       currencies: new Map(reference.currencies.map((c) => [c.code, c.minorUnits])),
-      languages: new Set(reference.languages.map((l) => l.code)),
+      languages: new Set(languageOptions.map((language) => language.code)),
     }),
-    [reference],
+    [languageOptions, reference],
   );
   const minorUnits = lookup.currencies.get(values.baseCurrency);
 
@@ -119,7 +130,7 @@ export function StoreForm({
   }
 
   function toggleLanguage(code: string, checked: boolean) {
-    const languages = checked ? [...values.languages, code] : values.languages.filter((l) => l !== code);
+    const languages = toggleSelectedOption(values.languages, code, checked);
     set("languages", languages);
     if (!checked && values.defaultLanguage === code) set("defaultLanguage", "");
   }
@@ -183,24 +194,39 @@ export function StoreForm({
     key: keyof StoreFormValues,
     label: string,
     options: { value: string; label: string }[],
-    opts: { required?: boolean; hint?: ReactNode; placeholder?: string; disabled?: boolean } = {},
+    opts: { required?: boolean; hint?: ReactNode; placeholder?: string; disabled?: boolean; searchable?: boolean } = {},
   ) => (
     <Field label={label} htmlFor={`store-${key}`} required={opts.required} error={errors[key]} hint={opts.hint}>
-      <select
-        {...errorProps(`store-${key}`, errors[key])}
-        value={values[key] as string}
-        disabled={opts.disabled}
-        onChange={(e) => set(key, e.target.value as never)}
-        className={`${inputClass(!!errors[key])} disabled:bg-slate-100 disabled:text-slate-500`}
-      >
-        {opts.placeholder !== undefined && <option value="">{opts.placeholder}</option>}
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      {opts.searchable ? (
+        <SearchableSelect
+          id={`store-${key}`}
+          label={label}
+          value={values[key] as string}
+          options={options}
+          placeholder={opts.placeholder ?? "Search options…"}
+          disabled={opts.disabled}
+          required={opts.required}
+          invalid={!!errors[key]}
+          describedBy={errors[key] ? `store-${key}-error` : undefined}
+          onChange={(value) => set(key, value as never)}
+        />
+      ) : (
+        <select
+          {...errorProps(`store-${key}`, errors[key])}
+          value={values[key] as string}
+          disabled={opts.disabled}
+          onChange={(event) => set(key, event.target.value as never)}
+          className={`${inputClass(!!errors[key])} disabled:bg-slate-100 disabled:text-slate-500`}
+        >
+          {opts.placeholder !== undefined && <option value="">{opts.placeholder}</option>}
+          {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      )}
     </Field>
   );
 
   const languageName = (code: string) => {
-    const l = reference.languages.find((x) => x.code === code);
+    const l = languageOptions.find((x) => x.code === code);
     return l ? `${l.name}${l.nativeName && l.nativeName !== l.name ? ` — ${l.nativeName}` : ""}` : code;
   };
 
@@ -238,6 +264,7 @@ export function StoreForm({
         {select("countryCode", "Country / region", reference.countries.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })), {
           required: true,
           placeholder: "Choose country…",
+          searchable: true,
         })}
         {select(
           "baseCurrency",
@@ -246,6 +273,7 @@ export function StoreForm({
           {
             required: true,
             placeholder: "Choose currency…",
+            searchable: true,
             disabled: currencyLocked,
             hint: currencyLocked
               ? "Locked: products or delivery rates already have prices in this currency."
@@ -257,6 +285,7 @@ export function StoreForm({
         {select("timezone", "Timezone", reference.timeZones.map((t) => ({ value: t, label: t.replaceAll("_", " ") })), {
           required: true,
           placeholder: "Choose timezone…",
+          searchable: true,
         })}
       </Section>
 
@@ -265,29 +294,37 @@ export function StoreForm({
           <legend className="mb-2 text-sm font-medium text-slate-700">
             Store languages <span className="text-red-600">*</span>
           </legend>
-          <div id="store-languages" tabIndex={-1} className="grid gap-2 sm:grid-cols-3">
-            {reference.languages.map((l) => (
-              <label key={l.code} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-teal-700"
-                  checked={values.languages.includes(l.code)}
-                  onChange={(e) => toggleLanguage(l.code, e.target.checked)}
-                />
-                <span>
-                  {l.name}
-                  {l.direction === "RTL" && <span className="ml-1 text-xs text-slate-500">(right-to-left)</span>}
-                </span>
-              </label>
-            ))}
+          <div
+            id="store-languages"
+            tabIndex={-1}
+            aria-invalid={!!errors.languages}
+            aria-describedby={errors.languages ? "store-languages-error" : undefined}
+          >
+            <SearchableLanguageList
+              id="store-languages"
+              options={languageOptions}
+              selected={values.languages}
+              invalid={!!errors.languages}
+              describedBy={errors.languages ? "store-languages-error" : undefined}
+              onChange={toggleLanguage}
+            />
           </div>
-          {errors.languages && <p className="mt-1.5 text-sm text-red-600">{errors.languages}</p>}
+          {errors.languages && <p id="store-languages-error" className="mt-1.5 text-sm text-red-600">{errors.languages}</p>}
         </fieldset>
-        {select("defaultLanguage", "Default language", values.languages.map((code) => ({ value: code, label: languageName(code) })), {
-          required: true,
-          placeholder: values.languages.length ? "Choose default language…" : "Choose store languages first",
-          hint: "Store text below is written in this language.",
-        })}
+        {select(
+          "defaultLanguage",
+          "Default language",
+          values.languages.map((code) => ({ value: code, label: languageName(code) })),
+          {
+            required: true,
+            placeholder: values.languages.length ? "Choose default language…" : "Enable a store language first…",
+            searchable: true,
+            disabled: values.languages.length === 0,
+            hint: values.languages.length
+              ? "Store text below is written in this language."
+              : "Choose one or more store languages above to enable this list.",
+          },
+        )}
       </Section>
 
       <Section title="Branding & web address">

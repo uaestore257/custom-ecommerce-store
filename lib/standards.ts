@@ -4,6 +4,7 @@
 // checks the basic format (see the migration), and codes must exist in
 // the Country / Currency / Language reference tables.
 // ---------------------------------------------------------------
+import { TIME_ZONE_SET } from "@/lib/time-zones";
 
 /** ISO 3166-1 alpha-2 country code, e.g. "AE", "US", "GB", "SA". */
 export function isCountryCode(value: string) {
@@ -30,13 +31,9 @@ export function isLanguageTag(value: string) {
   }
 }
 
-let timeZones: Set<string> | null = null;
-
 /** IANA timezone, e.g. "Asia/Dubai", "America/New_York", "Europe/London". */
 export function isTimeZone(value: string) {
-  if (value === "UTC") return true;
-  timeZones ??= new Set(Intl.supportedValuesOf("timeZone"));
-  if (timeZones.has(value)) return true;
+  if (TIME_ZONE_SET.has(value)) return true;
   // Also accept valid aliases (e.g. "Asia/Calcutta") that the runtime understands.
   try {
     new Intl.DateTimeFormat("en", { timeZone: value });

@@ -1,6 +1,8 @@
 import "server-only";
+import { LANGUAGE_CODES } from "@/prisma/reference-data";
 import type { ReferenceOptions } from "@/lib/admin/types";
 import type { StoreReference } from "@/lib/admin/validation";
+import { TIME_ZONES } from "@/lib/time-zones";
 import type { Client } from "./common";
 
 /** Country, currency and language choices come from the reference tables. */
@@ -13,8 +15,10 @@ export async function getReferenceOptions(client: Client): Promise<ReferenceOpti
   return {
     countries: countries.map((c) => ({ code: c.code, name: c.name })),
     currencies: currencies.map((c) => ({ code: c.code, name: c.name, minorUnits: c.minorUnits })),
-    languages: languages.map((l) => ({ code: l.code, name: l.name, nativeName: l.nativeName, direction: l.direction })),
-    timeZones: Intl.supportedValuesOf("timeZone"),
+    languages: languages
+      .filter((language) => LANGUAGE_CODES.includes(language.code))
+      .map((l) => ({ code: l.code, name: l.name, nativeName: l.nativeName, direction: l.direction })),
+    timeZones: TIME_ZONES,
   };
 }
 
