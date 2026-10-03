@@ -42,6 +42,20 @@ per-store customers and order numbers, and database-enforced store isolation.
 Full details are in [docs/database.md](docs/database.md). Verify the exact
 database target before running any database-writing command.
 
+### Store localization reference data
+
+Before creating or editing stores, populate the standard country, currency,
+language and timezone choices with `npm run db:reference-data`. This dedicated
+command upserts only ISO reference rows and never deletes existing rows,
+creates demo records, runs migrations or changes environment variables; it is
+safe to run again when updating the pinned datasets. Country, ISO-4217 currency
+and ISO-639-1 language data come from the exact-pinned `countries-list`
+dependency; IANA timezone names come from exact-pinned `@vvo/tzdb`. Run the
+command against the already-migrated database selected by the app's existing
+`DATABASE_URL`. For production, run it as an explicit deployment step after
+schema migrations and before opening store setup; do not use `npm run db:seed`
+as a substitute.
+
 ## Canonical local URLs
 
 | Purpose | Local URL |
