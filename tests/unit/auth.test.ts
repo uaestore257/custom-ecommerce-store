@@ -117,7 +117,7 @@ test("proxy: the admin is only served on ADMIN_HOST", () => {
   // The server may see its internal address in request.url; the redirect must still use the admin URL.
   const out = proxy(request("http://10.0.0.5:3000/admin", "admin.codexstore.com"));
   assert.equal(out.status, 307);
-  assert.equal(out.headers.get("location"), "https://admin.codexstore.com/login");
+  assert.equal(out.headers.get("location"), "https://admin.codexstore.com/login?returnTo=%2Fadmin");
   assert.equal(proxy(request("https://admin.codexstore.com/admin", "Admin.CodexStore.com", cookie)).headers.get("x-middleware-next"), "1");
   assert.equal(proxy(request("https://admin.codexstore.com/login", "admin.codexstore.com")).headers.get("x-middleware-next"), "1");
 

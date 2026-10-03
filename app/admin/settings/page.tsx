@@ -13,6 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AgencySettingsPage() {
   const { db, viewer } = await requireAdminViewer();
   if (viewer.kind === "platform") return <AgencySettingsView />;
+  if (viewer.kind !== "store") notFound();
   if (viewer.role !== "OWNER") notFound();
 
   const store = await getAdminStorePaymentSettings(db, viewer.store.id);

@@ -17,6 +17,8 @@ import type { DbStoreStatus } from "./types";
 //                  operational access; STAFF is read-only. Suspended:
 //                  read-only. Archived: no access. The platform owner
 //                  does not use store hosts (admin-host-only).
+//   business root -> a signed-in store member with a server-validated
+//                    store selection; the selection never grants access.
 //   other host  -> nobody.
 // ---------------------------------------------------------------
 
@@ -24,12 +26,23 @@ export type StoreAccess = "write" | "read" | "none";
 export type StoreMembershipRole = "OWNER" | "MANAGER" | "STAFF";
 export type StoreSection = "overview" | "products" | "categories" | "orders" | "messages" | "settings" | "team" | "customers" | "domains";
 
-export type AdminHost = { kind: "admin" } | { kind: "store"; slug: string } | { kind: "other" };
+export type AdminHost =
+  | { kind: "admin" }
+  | { kind: "store"; slug: string }
+  | { kind: "store-portal" }
+  | { kind: "other" };
 
 /** Which kind of admin host a request's Host is. Only the exact ADMIN_HOST is the platform admin. */
 export function adminHostOf(rawHost: string, config: StoreHostConfig): AdminHost {
   const host = normalizeHost(rawHost);
   if (config.adminHost && host === config.adminHost) return { kind: "admin" };
+  if (
+    config.rootDomain &&
+    normalizeHost(host.split(":")[0]) === config.rootDomain &&
+    host !== config.adminHost
+  ) {
+    return { kind: "store-portal" };
+  }
   const match = matchStoreHost(host, config);
   return match.kind === "store-admin" ? { kind: "store", slug: match.slug } : { kind: "other" };
 }
@@ -44,7 +57,7 @@ export interface AccessFacts {
   /** The signed-in user, or null. */
   user: { isPlatformOwner: boolean; disabled: boolean } | null;
   host: AdminHost;
-  /** On a store host: the store its slug/domain names (looked up by the server), or null. */
+  /** Store resolved from a dedicated host or a validated root-portal selection, or null. */
   hostStore: StoreFacts | null;
   /** The store the page or action is about (from the route), or null if it doesn't exist. */
   routeStore: StoreFacts | null;
@@ -59,9 +72,9 @@ export function decideStoreAccess(facts: AccessFacts): StoreAccess {
   if (!user || user.disabled || !routeStore || routeStore.archived) return "none";
 
   if (host.kind === "admin") return user.isPlatformOwner ? "write" : "none";
-  if (host.kind !== "store" || user.isPlatformOwner) return "none";
+  if ((host.kind !== "store" && host.kind !== "store-portal") || user.isPlatformOwner) return "none";
 
-  // Store host: the route's store must be exactly the store this host serves.
+  // Store hosts and the root portal must resolve to exactly the selected store.
   if (!hostStore || hostStore.archived || hostStore.id !== routeStore.id) return "none";
   const role = facts.membershipRole ?? (facts.ownsRouteStore ? "OWNER" : null);
   if (role === "OWNER" && !facts.ownsRouteStore) return "none";
@@ -81,7 +94,7 @@ export function mayOpenSession(facts: {
   const { user, host, hostStore } = facts;
   if (!user || user.disabled) return false;
   if (host.kind === "admin") return user.isPlatformOwner;
-  if (host.kind !== "store" || user.isPlatformOwner) return false;
+  if ((host.kind !== "store" && host.kind !== "store-portal") || user.isPlatformOwner) return false;
   const role = facts.membershipRole ?? (facts.ownsHostStore ? "OWNER" : null);
   if (!hostStore || hostStore.archived || !role) return false;
   return role !== "OWNER" || facts.ownsHostStore;

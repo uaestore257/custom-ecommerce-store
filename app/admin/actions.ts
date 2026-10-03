@@ -51,7 +51,7 @@ import {
   updateStoreOwnerSettings,
 } from "@/lib/server/admin/stores";
 import { requestRuntime } from "@/lib/server/request-runtime";
-import { storeAdminUrlForSlug, storeHostConfig } from "@/lib/store-host";
+import { platformRootUrl, storeHostConfig } from "@/lib/store-host";
 import { isManagedStoreTeamRole } from "@/lib/admin/team";
 import {
   createStoreInvitation,
@@ -60,7 +60,6 @@ import {
   updateStoreTeamMemberRole,
 } from "@/lib/server/admin/team";
 import { getMailer } from "@/lib/server/mailer";
-import { hostContext } from "@/lib/server/auth/store-access";
 import {
   addStoreDomain,
   disableStoreDomain,
@@ -288,22 +287,16 @@ export async function createStoreInvitationAction(email: unknown, role: unknown)
   if (typeof email !== "string" || !isManagedStoreTeamRole(role)) return badRequest;
   return asCurrentStoreManager("createStoreInvitation", "team-management", async (viewer) => {
     const db = getDb();
-    const headers = await requestRuntime().headers();
-    const rawHost = headers.get("host");
-    const { host, hostStore } = await hostContext(db, rawHost ?? "");
-    if (host.kind !== "store" || !hostStore || hostStore.id !== viewer.store.id) return FORBIDDEN;
-    if (!rawHost) return FORBIDDEN;
     const store = await db.store.findUnique({
       where: { id: viewer.store.id },
       select: { name: true },
     });
     if (!store) return FORBIDDEN;
-    const storeAdminUrl = storeAdminUrlForSlug(host.slug, process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
-    if (!storeAdminUrl) return FORBIDDEN;
-    const acceptUrl = new URL("/accept-invitation", storeAdminUrl);
+    const acceptUrl = platformRootUrl("/accept-invitation", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
+    if (!acceptUrl) return FORBIDDEN;
     return createStoreInvitation(
       db,
-      { storeId: viewer.store.id, actorUserId: viewer.user.id, email, role, storeName: store.name, acceptUrl: acceptUrl.toString() },
+      { storeId: viewer.store.id, actorUserId: viewer.user.id, email, role, storeName: store.name, acceptUrl },
       getMailer(),
     );
   });

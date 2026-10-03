@@ -15,6 +15,6 @@ export default async function AcceptInvitationPage() {
   await connection();
   const requestHeaders = await headers();
   const { host, hostStore } = await hostContext(getDb(), requestHeaders.get("host") ?? "");
-  if (host.kind !== "store" || !hostStore) notFound();
+  if (host.kind !== "store-portal" && (host.kind !== "store" || !hostStore)) notFound();
   return <InvitationAcceptanceForm />;
 }

@@ -11,7 +11,7 @@ const GENERIC = "The email or password is incorrect.";
  * limit applies. The same message is shown for an unknown email and a
  * wrong password, so the form doesn't reveal which accounts exist.
  */
-export function LoginForm() {
+export function LoginForm({ returnTo }: { returnTo: string | null }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +35,7 @@ export function LoginForm() {
       });
       if (response.ok) {
         // The session cookie is set; render the admin with it.
-        router.replace("/admin");
+        router.replace(returnTo ?? "/admin");
         router.refresh();
         return;
       }

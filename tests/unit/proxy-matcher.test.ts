@@ -96,7 +96,7 @@ test("store admin and sign-in routes are served only on recognized store hosts",
   assert.equal(proxyModule.proxy(unknown).status, 404);
 });
 
-test("production platform root serves portfolio pages regardless of preview cookie; admin roots go to their panels", () => {
+test("production platform root serves portfolio pages and central Store Admin login without becoming a tenant", () => {
   process.env.ADMIN_HOST = "admin.localhost:3000";
   process.env.PLATFORM_ROOT_DOMAIN = "localhost";
   (process.env as Record<string, string | undefined>).NODE_ENV = "production";
@@ -114,6 +114,8 @@ test("production platform root serves portfolio pages regardless of preview cook
 
   process.env.ADMIN_HOST = "admin.custom-ecommerce-store.vercel.app";
   process.env.PLATFORM_ROOT_DOMAIN = "custom-ecommerce-store.vercel.app";
+  process.env.BETTER_AUTH_URL = "https://admin.custom-ecommerce-store.vercel.app";
+  process.env.STOREFRONT_PREVIEW_MODE = "";
   const productionRoot = new NextRequest("https://custom-ecommerce-store.vercel.app/portfolio", {
     headers: { host: "custom-ecommerce-store.vercel.app", cookie: "storefront_store=preview-store" },
   });
@@ -121,7 +123,22 @@ test("production platform root serves portfolio pages regardless of preview cook
   const bareLogin = new NextRequest("https://custom-ecommerce-store.vercel.app/login", {
     headers: { host: "custom-ecommerce-store.vercel.app" },
   });
-  assert.equal(proxyModule.proxy(bareLogin).status, 404, "platform login is unavailable on the business root");
+  assert.equal(proxyModule.proxy(bareLogin).headers.get("x-middleware-next"), "1", "Store Owner login is available on the root");
+  const centralAdmin = new NextRequest("https://custom-ecommerce-store.vercel.app/admin", {
+    headers: { host: "custom-ecommerce-store.vercel.app" },
+  });
+  const loginRedirect = proxyModule.proxy(centralAdmin);
+  assert.equal(loginRedirect.status, 307);
+  assert.equal(new URL(loginRedirect.headers.get("location")!).host, "custom-ecommerce-store.vercel.app");
+  assert.equal(new URL(loginRedirect.headers.get("location")!).pathname, "/login");
+  assert.equal(
+    new URL(loginRedirect.headers.get("location")!).searchParams.get("returnTo"),
+    "/admin",
+  );
+  const platformAdminLogin = new NextRequest("https://admin.custom-ecommerce-store.vercel.app/login", {
+    headers: { host: "admin.custom-ecommerce-store.vercel.app" },
+  });
+  assert.equal(proxyModule.proxy(platformAdminLogin).headers.get("x-middleware-next"), "1");
 });
 
 test("temporary path-preview root renders the landing host and keeps admin protected", () => {

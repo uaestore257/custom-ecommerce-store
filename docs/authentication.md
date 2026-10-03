@@ -49,21 +49,23 @@ and never changes the Platform Owner.
 
 ## Store Owner sign-in and account settings
 
-A Store Owner signs in on the dedicated store-admin host, separate from the
-public storefront and any customer custom domain, for example:
+The business-site header links to the central Store Owner/team sign-in on the
+bare platform root, separate from the public storefront and Platform Admin:
 
 ```text
-http://admin.nest-and-oak.localhost:3000/login
+http://localhost:3000/login
 ```
 
-After sign-in, `/admin` redirects to that store's admin page. The store
-admin host is resolved only from the reserved
-`admin.<store-slug>.<PLATFORM_ROOT_DOMAIN>` hostname; public storefront
-subdomains and custom domains cannot serve Store Admin routes or open
-Store Owner sessions. The session is opened only when that user is a member
-of the store named by the admin hostname. Database-managed verified custom
-domains serve the public storefront only. The shared **Account** link lets
-the user change their name, email, and password after confirming their current password.
+After sign-in, a user chooses from their current non-archived store
+memberships; a single-store member is sent directly to that store's admin.
+All store pages and actions recheck membership and the selected route store.
+The selection is held in an HttpOnly, host-only cookie, but that cookie is
+only a navigation hint and cannot grant access by itself. Platform Owner
+sign-in and platform-level administration remain isolated on exact
+`ADMIN_HOST`; Platform Owner accounts cannot use the Store Admin portal.
+Public storefront subdomains and custom domains cannot serve Store Admin
+routes or open Store Owner sessions. The shared **Account** link lets the
+user change their name, email, and password after confirming their current password.
 Changing email or password revokes all sessions, so the user must sign
 in again. A changed email is marked unverified; email verification and
 email-based password recovery are not configured.
@@ -72,14 +74,15 @@ email-based password recovery are not configured.
 
 | Layer | Enforcement |
 | --- | --- |
-| `proxy.ts` | Platform routes are allowed only on exact `ADMIN_HOST`; store admin/login/auth routes are allowed only on the matching reserved `admin.<slug>.<root>` host. Public storefront and custom-domain hosts return 404 for admin routes. |
-| Better Auth | Uses host-only, httpOnly session cookies. Trusted origins include only the configured platform admin origin and a recognized store-admin origin. Sign-up stays disabled and auth HTTP endpoints are allow-listed. |
-| Session creation | A server hook allows the Platform Owner only on `ADMIN_HOST`, or a non-platform user with a membership for the non-archived store resolved from this request's Host. |
-| Admin pages and actions | Store pages/actions check membership and require that the route's `storeId` equals the store resolved from Host. Platform-only pages/actions independently require the Platform Owner on `ADMIN_HOST`. |
+| `proxy.ts` | Platform administration is allowed only on exact `ADMIN_HOST`. Store login/admin routes are allowed on the exact business-root portal or the optional recognized nested Store Admin host. Public storefront and custom-domain hosts return 404 for admin routes. |
+| Better Auth | Uses host-only, httpOnly session cookies. Trusted origins include the configured platform admin origin, exact business root, and recognized nested Store Admin origins. Sign-up stays disabled and auth HTTP endpoints are allow-listed. |
+| Session creation | A server hook allows the Platform Owner only on `ADMIN_HOST`, or a non-platform user with an eligible membership on the business root/nested Store Admin host. |
+| Admin pages and actions | Store pages/actions recheck membership, the validated selected store, and route `storeId`. Platform-only pages/actions independently require the Platform Owner on `ADMIN_HOST`. |
 | Data access | Store reads and writes include the authorized `storeId`; audit events include actor/store identifiers and changed-field names only. |
 
-Store members sign in on the dedicated admin hostname for their store. The
-host determines the store; a submitted store ID or role never grants access.
+Store members sign in on the business root and can select only a store
+returned by the server's membership query. The cookie and any submitted
+store ID never grant access without that live membership check.
 
 | Role | Store admin access |
 | --- | --- |
@@ -97,11 +100,13 @@ data, and agency settings remain Platform-Owner-only.
 ## Manager/Staff invitations
 
 The Store Team page lets an authorized Store Owner or Manager invite only
-`MANAGER` or `STAFF` to the current store. Invitation rows bind the email,
+`MANAGER` or `STAFF` to the current store. Invitation links use the business
+root, and their unguessable tokens resolve the invited store server-side.
+Invitation rows bind the email,
 store and role server-side. Tokens contain 256 random bits, expire after
 72 hours, are single-use, and only their SHA-256 hashes are persisted.
 Replacing an outstanding invitation revokes the previous one. Acceptance
-is checked and claimed atomically against the current store host and expiry;
+is checked and claimed atomically against the invitation's store and expiry;
 the token is exchanged from the email-link fragment for a short-lived,
 HttpOnly, host-only cookie, then removed from the address bar. It is never
 rendered in the page, returned to the Team UI, logged, or written to audit

@@ -10,52 +10,48 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// The platform owner (on ADMIN_HOST) sees every store; a store member (on
-// that store's dedicated admin host) sees only that store. Each page checks
-// access itself (requireAdminPage / requireStorePage).
+// The platform owner sees every store; portal members see only their
+// memberships; dedicated Store Admin hosts see only the named store.
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const { db, viewer } = await requireAdminViewer();
   const config = storeHostConfig();
   const baseUrl = process.env.BETTER_AUTH_URL ?? "";
-  const stores =
+  const rows: { id: string; name: string; slug: string; role?: "OWNER" | "MANAGER" | "STAFF" }[] =
     viewer.kind === "platform"
-      ? await (async () => {
-          const rows = await listAdminStores(db);
-          const domains = rows.length
-            ? await db.storeDomain.findMany({
-                where: { storeId: { in: rows.map(({ id }) => id) }, status: "VERIFIED", isPrimary: true },
-                select: { storeId: true, hostname: true },
-              })
-            : [];
-          const primaryDomainByStore = new Map(domains.map(({ storeId, hostname }) => [storeId, hostname]));
-          return rows.map(({ id, name, slug }) => ({
-            id,
-            name,
-            slug,
-            storefrontUrl: storefrontPreviewUrlForSlug(slug, baseUrl, config, primaryDomainByStore.get(id)),
-          }));
-        })()
-      : await (async () => {
-          const store = await db.store.findUnique({
-            where: { id: viewer.store.id },
-            select: { id: true, name: true, slug: true },
-          });
-          if (!store) return [];
-          const primaryDomain = await db.storeDomain.findFirst({
-            where: { storeId: store.id, status: "VERIFIED", isPrimary: true },
-            select: { hostname: true },
-          });
-          return [{
-            ...store,
-            storefrontUrl: storefrontPreviewUrlForSlug(store.slug, baseUrl, config, primaryDomain?.hostname),
-          }];
-        })();
+      ? (await listAdminStores(db)).map(({ id, name, slug }) => ({ id, name, slug, role: undefined }))
+      : viewer.kind === "store-portal"
+        ? viewer.stores.map(({ store, role }) => ({ ...store, role }))
+        : viewer.portal && viewer.availableStores
+          ? viewer.availableStores.map(({ store, role }) => ({ ...store, role }))
+          : await (async () => {
+              const store = await db.store.findUnique({
+                where: { id: viewer.store.id },
+                select: { id: true, name: true, slug: true },
+              });
+              return store ? [{ ...store, role: viewer.role }] : [];
+            })();
+  const domains = rows.length
+    ? await db.storeDomain.findMany({
+        where: { storeId: { in: rows.map(({ id }) => id) }, status: "VERIFIED", isPrimary: true },
+        select: { storeId: true, hostname: true },
+      })
+    : [];
+  const primaryDomainByStore = new Map(domains.map(({ storeId, hostname }) => [storeId, hostname]));
+  const stores = rows.map(({ id, name, slug, role }) => ({
+    id,
+    name,
+    slug,
+    role,
+    storefrontUrl: storefrontPreviewUrlForSlug(slug, baseUrl, config, primaryDomainByStore.get(id)),
+  }));
   return (
     <AdminShell
       stores={stores}
       user={{ name: viewer.user.name, email: viewer.user.email }}
       platform={viewer.kind === "platform"}
-      role={viewer.kind === "store" ? viewer.role : null}
+      role={viewer.kind === "store" && !viewer.portal ? viewer.role : null}
+      portal={viewer.kind === "store-portal" || (viewer.kind === "store" && viewer.portal)}
+      selectedStoreId={viewer.kind === "store" && viewer.portal ? viewer.store.id : null}
     >
       {children}
     </AdminShell>

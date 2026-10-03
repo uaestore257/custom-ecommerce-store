@@ -13,7 +13,7 @@ import {
 import { getDb } from "@/lib/server/db";
 import { requestRuntime } from "@/lib/server/request-runtime";
 import { getAuth } from "./auth";
-import { hostContext, isStoreOwner, storeFacts, storeMembershipRole } from "./store-access";
+import { hostContext, isStoreOwner, storeFacts, storeMembershipRole, storePortalMemberships } from "./store-access";
 
 // ---------------------------------------------------------------
 // ACCESS GUARDS — the only way admin code learns who is calling.
@@ -23,7 +23,8 @@ import { hostContext, isStoreOwner, storeFacts, storeMembershipRole } from "./st
 //    are rejected by Better Auth).
 // 2. The user is then RE-READ from our database, so a disabled user or a
 //    removed platform-owner flag takes effect on the very next request.
-// 3. Nothing the browser sends (store IDs, roles, flags) is consulted.
+// 3. Browser-supplied roles/flags are never consulted. A portal selection
+//    cookie is treated as an untrusted pointer and revalidated by membership.
 //
 // requirePlatformOwner() returns a PlatformOwner value that can only be
 // created here. Platform-only data functions require it as an argument,
@@ -32,9 +33,9 @@ import { hostContext, isStoreOwner, storeFacts, storeMembershipRole } from "./st
 // store's host.
 //
 // requireStoreAccess(storeId) checks role-based access inside ONE store.
-// The platform owner acts on ADMIN_HOST; store members act only on their
-// own admin.<slug>.<root> host. Suspended stores are read-only; archived stores are
-// closed to members.
+// The platform owner acts on ADMIN_HOST; store members use the exact root
+// portal or optional dedicated admin host. Suspended stores are read-only;
+// archived stores are closed to members.
 // ---------------------------------------------------------------
 
 declare const platformOwnerBrand: unique symbol;
@@ -112,19 +113,20 @@ export async function requireStoreAccess(
   const user = await getSignedInUser();
   if (!user) throw new AccessDenied("unauthenticated");
   const db = getDb();
-  const { host, hostStore } = await hostContext(db, await requestHost());
+  const { host, hostStore } = await hostContext(db, await requestHost(), user.id);
   const routeStore = await storeFacts(db, { id: storeId });
-  const role = routeStore && host.kind === "store"
+  const role = routeStore &&
+    (host.kind === "store-portal" || (host.kind === "store" && hostStore?.id === routeStore.id))
     ? await storeMembershipRole(db, user.id, routeStore.id)
     : null;
   const ownsRouteStore =
-    routeStore && role === "OWNER" && host.kind === "store"
+    routeStore && role === "OWNER" && (host.kind === "store" || host.kind === "store-portal")
       ? await isStoreOwner(db, user.id, routeStore.id)
       : false;
   const access = decideStoreAccess({
     user: { isPlatformOwner: user.isPlatformOwner, disabled: false },
     host,
-    hostStore,
+    hostStore: host.kind === "store-portal" ? routeStore : hostStore,
     routeStore,
     membershipRole: role,
     ownsRouteStore,
@@ -139,12 +141,15 @@ export async function requireStoreAccess(
 
 export type AdminViewer =
   | { kind: "platform"; user: SignedInUser }
+  | { kind: "store-portal"; user: SignedInUser; stores: Awaited<ReturnType<typeof storePortalMemberships>> }
   | {
       kind: "store";
       user: SignedInUser;
       store: StoreFacts;
       access: Exclude<StoreAccess, "none">;
       role: StoreMembershipRole;
+      portal: boolean;
+      availableStores?: Awaited<ReturnType<typeof storePortalMemberships>>;
     };
 
 /**
@@ -156,10 +161,39 @@ export async function requireAdminViewer(): Promise<AdminViewer> {
   const user = await getSignedInUser();
   if (!user) throw new AccessDenied("unauthenticated");
   const db = getDb();
-  const { host, hostStore } = await hostContext(db, await requestHost());
+  const { host, hostStore } = await hostContext(db, await requestHost(), user.id);
   if (host.kind === "admin") {
     if (!user.isPlatformOwner) throw new AccessDenied("forbidden");
     return { kind: "platform", user };
+  }
+  if (host.kind === "store-portal") {
+    const stores = await storePortalMemberships(db, user.id);
+    if (user.isPlatformOwner || stores.length === 0) throw new AccessDenied("forbidden");
+    const selected = hostStore
+      ? stores.find(({ store }) => store.id === hostStore.id)
+      : stores.length === 1
+        ? stores[0]
+        : undefined;
+    if (!selected) return { kind: "store-portal", user, stores };
+    const selectedStore = hostStore ?? selected.store;
+    const access = decideStoreAccess({
+      user: { isPlatformOwner: false, disabled: false },
+      host,
+      hostStore: selectedStore,
+      routeStore: selectedStore,
+      membershipRole: selected.role,
+      ownsRouteStore: selected.role === "OWNER",
+    });
+    if (access === "none") throw new AccessDenied("forbidden");
+    return {
+      kind: "store",
+      user,
+      store: selectedStore,
+      access,
+      role: selected.role,
+      portal: true,
+      availableStores: stores,
+    };
   }
   if (host.kind !== "store" || !hostStore) throw new AccessDenied("forbidden");
   const role = await storeMembershipRole(db, user.id, hostStore.id);
@@ -173,7 +207,7 @@ export async function requireAdminViewer(): Promise<AdminViewer> {
     ownsRouteStore: owns,
   });
   if (access === "none") throw new AccessDenied("forbidden");
-  return { kind: "store", user, store: hostStore, access, role: role ?? "STAFF" };
+  return { kind: "store", user, store: hostStore, access, role: role ?? "STAFF", portal: false };
 }
 
 export async function requireStoreSection(storeId: string, section: StoreSection): Promise<StoreAccessGrant> {
