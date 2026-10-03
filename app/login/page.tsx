@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 // Platform-owner sign-in is on ADMIN_HOST; Store Owner sign-in is on the
-// store's own hostname. Public sign-up is disabled.
+// reserved store-admin hostname. Public sign-up is disabled.
 export default async function LoginPage() {
   await connection();
   const host = (await headers()).get("host") ?? "";

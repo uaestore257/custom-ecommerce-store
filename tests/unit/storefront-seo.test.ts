@@ -76,6 +76,37 @@ test("storefront origin and metadata use only the selected store host", () => {
   assert.ok(JSON.stringify(metadata.openGraph).includes(store.logoUrl));
 });
 
+test("production tenant canonical and discovery URLs never use the path-preview host", () => {
+  const productionConfig = storeHostConfig({
+    ADMIN_HOST: "admin.custom-ecommerce-store.vercel.app",
+    PLATFORM_ROOT_DOMAIN: "custom-ecommerce-store.vercel.app",
+    NODE_ENV: "production",
+  });
+  const productionOrigin = storefrontOriginForSlug(
+    store,
+    "https://admin.custom-ecommerce-store.vercel.app",
+    productionConfig,
+  );
+  assert.equal(productionOrigin?.toString(), "https://nest-and-oak.custom-ecommerce-store.vercel.app/");
+  const productionContext = { ...context, config: productionConfig, origin: productionOrigin! };
+  const metadata = buildStorefrontMetadata(productionContext, {
+    title: store.name,
+    description: store.tagline,
+    path: "/",
+  });
+  assert.deepEqual(metadata.alternates, {
+    canonical: "https://nest-and-oak.custom-ecommerce-store.vercel.app/",
+  });
+  assert.equal(metadata.openGraph?.url, "https://nest-and-oak.custom-ecommerce-store.vercel.app/");
+  assert.deepEqual(
+    buildStorefrontSitemapUrls(productionContext, [], []),
+    [
+      "https://nest-and-oak.custom-ecommerce-store.vercel.app/",
+      "https://nest-and-oak.custom-ecommerce-store.vercel.app/shop",
+    ],
+  );
+});
+
 test("a verified custom-domain origin preserves the development port and removes production ports", () => {
   const local = storefrontOriginForDomain("shop.example.test", "http://admin.localhost:3001", config);
   assert.equal(local?.toString(), "http://shop.example.test:3001/");

@@ -5,9 +5,19 @@ import { StorefrontShell } from "@/components/storefront/StorefrontShell";
 import { BusinessSiteShell } from "@/components/platform/BusinessSite";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
-import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
 
 export async function generateMetadata(): Promise<Metadata> {
+  const host = (await headers()).get("host") ?? "";
+  if (isPlatformBusinessHost(host) && !isStorefrontPathPreviewHost(host)) {
+    const baseUrl = process.env.BETTER_AUTH_URL ?? "";
+    const origin = platformRootUrl("/", baseUrl, storeHostConfig());
+    return {
+      metadataBase: origin ? new URL(origin) : undefined,
+      title: { default: "UAE Store", template: "%s | UAE Store" },
+      description: "Ecommerce services and store portfolio.",
+    };
+  }
   const context = await getPublicStorefrontSeoContext();
   if (!context) return { robots: { index: false, follow: false } };
   const description = context.store.tagline || context.store.heroText || `${context.store.name} online store.`;

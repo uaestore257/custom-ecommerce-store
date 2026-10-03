@@ -8,8 +8,8 @@ import { isPlatformBusinessHost, isStorefrontPathPreviewHost, storeHostConfig } 
 // PROXY (Next.js 16's replacement for middleware). Runs before routing.
 //
 // 1. The platform admin (/admin, /login, /api/auth) is served on the exact
-//    ADMIN_HOST. Store admin routes are also served on recognized store
-//    hosts; their actual store and OWNER membership are verified server-side.
+//    ADMIN_HOST. Store admin routes are served only on the reserved
+//    admin.<slug>.<root> host; membership is verified server-side.
 // 2. Off the admin and recognized store hosts, a Server Action ("next-action" header) is refused
 //    UNLESS its pathname is in the small, explicit PUBLIC_ACTION_PATHS
 //    allowlist (lib/auth/constants.ts). This is deny-by-default on
@@ -68,7 +68,9 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const pathPreviewHost = isStorefrontPathPreviewHost(host);
 
-  if (onAdminHost && pathname === "/" && !pathPreviewHost) return NextResponse.redirect(new URL("/admin", request.url));
+  if ((onAdminHost || storeHost) && pathname === "/" && !pathPreviewHost) {
+    return NextResponse.redirect(new URL("/admin", request.url));
+  }
   if (isAdminPath(pathname) && !allowedAdminHost) return notFound();
   if (
     isPlatformBusinessHost(host) &&

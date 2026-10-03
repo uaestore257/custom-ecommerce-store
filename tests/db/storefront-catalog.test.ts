@@ -3,7 +3,6 @@
 // Every store here is created fresh, so nothing depends on seeded data.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { DEFAULT_STOREFRONT_STORE_ID } from "../../lib/config";
 import { listAdminCategories } from "../../lib/server/admin/categories";
 import { createAdminProduct, updateAdminProduct } from "../../lib/server/admin/products";
 import { archiveAdminStore, createAdminStore, setAdminStoreStatus } from "../../lib/server/admin/stores";
@@ -148,9 +147,10 @@ test("a non-public store's host, an unknown slug or an unknown domain serves no 
   }
 });
 
-test("only the platform host uses the preview cookie (falling back to the default)", async () => {
-  assert.equal(await resolveStoreForHost(db, "admin.shops.test", active, HOST_ENV), active);
-  assert.equal(await resolveStoreForHost(db, "admin.shops.test", draft, HOST_ENV), await resolveStorefrontStoreId(db, undefined, DEFAULT_STOREFRONT_STORE_ID));
+test("platform admin and business roots never use a preview cookie or default storefront", async () => {
+  assert.equal(await resolveStoreForHost(db, "admin.shops.test", active, HOST_ENV), null);
+  assert.equal(await resolveStoreForHost(db, "admin.shops.test", draft, HOST_ENV), null);
+  assert.equal(await resolveStoreForHost(db, "shops.test", active, HOST_ENV), null);
 });
 
 // ---------- Catalog contents ----------

@@ -93,7 +93,7 @@ export function isNavActive(pathname: string, item: { href: string; exact?: bool
 }
 
 /** Minimal store info for the sidebar and store selector (from the database). */
-export type ShellStore = Pick<AdminStoreSummary, "id" | "name">;
+export type ShellStore = Pick<AdminStoreSummary, "id" | "name" | "slug"> & { storefrontUrl: string | null };
 
 /** The signed-in admin user (name and email only). */
 export interface ShellUser {
@@ -219,13 +219,15 @@ function SidebarContent({
       )}
 
       <div className="mt-auto space-y-3 border-t border-slate-200 p-4 text-xs text-slate-500">
-        <Link
-          href="/"
-          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-        >
-          <ExternalLink className="h-4 w-4" aria-hidden />
-          View storefront
-        </Link>
+        {selected?.storefrontUrl && (
+          <Link
+            href={selected.storefrontUrl}
+            className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            <ExternalLink className="h-4 w-4" aria-hidden />
+            View storefront
+          </Link>
+        )}
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">
           <strong>Partly sample data.</strong> Customers and agency settings are still saved in this browser only. Stores,
           products, categories and orders are saved in the database.

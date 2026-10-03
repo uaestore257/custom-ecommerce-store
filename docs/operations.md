@@ -11,9 +11,11 @@ plus one PostgreSQL 16 database. Use Node.js `>=22.12 <23`, as declared
 in `package.json`. Any host that runs Node.js 22 and
 offers managed PostgreSQL works. Choose one that provides:
 
-* **Custom domains with automatic TLS**, including a wildcard certificate
-  for `*.<PLATFORM_ROOT_DOMAIN>` (every store's subdomain) and each
-  database-managed custom domain.
+* **Custom domains with automatic TLS**, including routing for tenant
+  storefronts at `*.<PLATFORM_ROOT_DOMAIN>`, nested Store Admin hosts at
+  `admin.<slug>.<PLATFORM_ROOT_DOMAIN>`, and each database-managed custom
+  domain. Verify the nested Store Admin coverage separately; a one-label
+  wildcard does not establish it.
 * **A trusted client-IP header** (set `TRUSTED_IP_HEADER` to it, e.g.
   `x-real-ip`), so rate limits apply per visitor.
 * **Managed PostgreSQL with point-in-time recovery** (see Backups), in a
@@ -31,8 +33,10 @@ Required by the production application runtime:
 
 `DATABASE_URL` is the runtime/application connection and may use Neon
 pooling. `BETTER_AUTH_URL` is the public HTTPS URL of the platform admin host;
-`ADMIN_HOST` is that exact host without a scheme or path. Store subdomains use
-`<slug>.<PLATFORM_ROOT_DOMAIN>`.
+`ADMIN_HOST` is that exact host without a scheme or path. The bare
+`PLATFORM_ROOT_DOMAIN` is always the business/portfolio site. Storefronts use
+`<slug>.<PLATFORM_ROOT_DOMAIN>`; Store Admin uses the distinct reserved host
+`admin.<slug>.<PLATFORM_ROOT_DOMAIN>`.
 
 Only an intentional migration/release terminal needs `DIRECT_URL` and
 `NODE_ENV=production`. `DIRECT_URL` is the direct PostgreSQL connection used
@@ -92,7 +96,7 @@ In Vercel, configure each environment independently:
 | Vercel environment | Required configuration |
 | --- | --- |
 | Production | Set `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN` to production values. Add the SMTP variables only after authenticated SMTP is provisioned. Do not set `DIRECT_URL` or `TEST_DATABASE_URL` on the application runtime. |
-| Preview | Use a separate Neon non-production branch/database for `DATABASE_URL` and a distinct `BETTER_AUTH_SECRET`; never reuse production database or authentication secrets. Set `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN` to a stable preview admin host and preview tenant root. Attach that preview domain (including its tenant wildcard if testing tenant subdomains) to Vercel's Preview environment. Per-deployment `*.vercel.app` URLs are not a substitute for a stable auth/admin hostname in this host-based app. |
+| Preview | Use a separate Neon non-production branch/database for `DATABASE_URL` and a distinct `BETTER_AUTH_SECRET`; never reuse production database or authentication secrets. Set `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN` to stable preview hosts. Attach the storefront wildcard and confirm nested `admin.<slug>.<root>` routing/TLS before testing store-admin login. Per-deployment `*.vercel.app` URLs are not a substitute for stable hostnames in this host-based app. |
 | Development | For `vercel dev`, use only an isolated development database and development auth values (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN`). Ordinary local development may continue to use the private local `.env` and local PostgreSQL setup instead. Never pull production variables into local development. |
 
 `DIRECT_URL` is not needed by the Vercel application or its build: Prisma
@@ -103,19 +107,31 @@ Production or point it at customer data. Vercel's built-in `NODE_ENV` is
 managed by the platform; explicitly set `NODE_ENV=production` in the
 production migration terminal.
 
-The application resolves `<slug>.<PLATFORM_ROOT_DOMAIN>` from the request
-host and independently checks database-verified custom-domain ownership.
-Vercel still needs the project domain, admin hostname, wildcard tenant
-hostname, and each customer custom hostname attached/routed to the project;
-the DNS provider must publish the records Vercel specifies and Vercel must
-issue TLS certificates. Attaching a hostname and its DNS/TLS configuration
-does not replace the application's custom-domain ownership verification.
-Configure the production `admin.<root>` host and `*.<root>` wildcard, and
-attach each customer domain through Vercel and its DNS provider before
-verification in the Store Admin. The app uses the request `Host` header and
+The application resolves the platform root, exact platform admin host,
+`<slug>.<PLATFORM_ROOT_DOMAIN>` storefronts, and the distinct
+`admin.<slug>.<PLATFORM_ROOT_DOMAIN>` Store Admin hosts. It independently
+checks database-verified custom-domain ownership. Vercel still needs each
+hostname routed to the project and covered by TLS; attaching a hostname and
+its DNS/TLS configuration does not replace the application's custom-domain
+ownership verification. The app uses the request `Host` header and
 deliberately ignores `X-Forwarded-Host`; confirm the hosting layer preserves
 the intended host. Leave `TRUSTED_IP_HEADER` unset unless the chosen hosting
 proxy documents a trustworthy client-IP header for this deployment.
+
+**Infrastructure limitation for the requested `*.vercel.app` URLs:** the
+code can parse and generate the requested hosts, but it cannot register
+subdomains or certificates for Vercel's shared `vercel.app` domain. The
+project-assigned `custom-ecommerce-store.vercel.app` URL does not by itself
+make `admin.custom-ecommerce-store.vercel.app`, arbitrary tenant
+subdomains, or the two-label `admin.<slug>.custom-ecommerce-store.vercel.app`
+hosts route to this deployment. Have Vercel confirm that it can assign and
+serve all of those names (including wildcard/certificate coverage for the
+nested Store Admin name); otherwise use a domain you control, attach its
+platform/admin and tenant hostnames to the project, and configure DNS/TLS
+wildcards or per-store records as required. The one-label
+`*.<PLATFORM_ROOT_DOMAIN>` wildcard alone does not prove that a nested
+`admin.<slug>.<PLATFORM_ROOT_DOMAIN>` hostname will work. Do not advertise
+the nested Store Admin URL as live until Vercel and DNS have been verified.
 
 The Vercel deployment serves the existing API and webhook routes. Provider
 webhooks must be configured with their public HTTPS endpoint after a

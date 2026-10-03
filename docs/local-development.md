@@ -157,7 +157,8 @@ store's owner name, email, and password in the Create Store form. The bare
 `http://localhost:3000` is the UAE Store business website, not a storefront.
 Each public store is resolved dynamically at
 `http://<store-slug>.localhost:3000/`; its Store Owner signs in at
-`http://<store-slug>.localhost:3000/login` and administers it at `/admin`.
+`http://admin.<store-slug>.localhost:3000/login` and administers it at
+`/admin`.
 
 To provision the existing local demo stores, first inspect `DATABASE_URL` and
 the target using the same safety checks as other writes. This explicitly

@@ -38,12 +38,20 @@ const facts = (overrides: Partial<AccessFacts> = {}): AccessFacts => ({
   ...overrides,
 });
 
-test("adminHostOf: only the exact ADMIN_HOST is the platform admin; store hosts by subdomain or mapped domain", () => {
+test("adminHostOf: exact platform admin and reserved tenant admin hosts only; storefront/custom hosts are public", () => {
   assert.deepEqual(adminHostOf("admin.shops.test", config), { kind: "admin" });
   assert.deepEqual(adminHostOf("ADMIN.shops.test.", config), { kind: "admin" });
-  assert.deepEqual(adminHostOf("nest-and-oak.shops.test", config), { kind: "store", slug: "nest-and-oak" });
-  assert.deepEqual(adminHostOf("shop.client.test", config), { kind: "store", slug: "nest-and-oak" });
-  for (const host of ["shops.test", "admin.shops.test:4000", "evil.example", "admin.shops.test.evil.com", ""]) {
+  assert.deepEqual(adminHostOf("admin.nest-and-oak.shops.test", config), { kind: "store", slug: "nest-and-oak" });
+  for (const host of [
+    "nest-and-oak.shops.test",
+    "shop.client.test",
+    "shops.test",
+    "admin.nest-and-oak.shops.test.evil.com",
+    "admin.shops.test:4000",
+    "evil.example",
+    "admin.shops.test.evil.com",
+    "",
+  ]) {
     assert.deepEqual(adminHostOf(host, config), { kind: "other" }, host);
   }
 });

@@ -3,7 +3,7 @@ import { HomeView } from "@/components/storefront/HomeView";
 import { BusinessHomePage } from "@/components/platform/BusinessSite";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { headers } from "next/headers";
-import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
 import { storefrontPageMetadata, getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
 import { buildStoreOrganizationJsonLd, serializeJsonLd } from "@/lib/storefront-seo";
 
@@ -12,10 +12,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const isBusinessHost = isPlatformBusinessHost(host);
   const isPathPreviewHost = isStorefrontPathPreviewHost(host);
   if (isBusinessHost && !isPathPreviewHost) {
+    const canonical = platformRootUrl("/", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
     return {
       title: { absolute: "UAE Store" },
       description: "Ecommerce services and store portfolio.",
-      robots: { index: false, follow: false },
+      alternates: canonical ? { canonical } : undefined,
     };
   }
   if (isPathPreviewHost) {

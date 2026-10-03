@@ -4,11 +4,16 @@ import { BusinessContentPage } from "@/components/platform/BusinessSite";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
 import { headers } from "next/headers";
-import { isPlatformBusinessHost } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
 
 export async function generateMetadata(): Promise<Metadata> {
-  if (isPlatformBusinessHost((await headers()).get("host") ?? "")) {
+  const host = (await headers()).get("host") ?? "";
+  if (isPlatformBusinessHost(host) && isStorefrontPathPreviewHost(host)) {
     return { title: "About UAE Store", robots: { index: false, follow: false } };
+  }
+  if (isPlatformBusinessHost(host)) {
+    const canonical = platformRootUrl("/about", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
+    return { title: "About UAE Store", alternates: canonical ? { canonical } : undefined };
   }
   const context = await getPublicStorefrontSeoContext();
   if (!context) return { title: "About", robots: { index: false, follow: false } };

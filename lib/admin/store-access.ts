@@ -31,7 +31,7 @@ export function adminHostOf(rawHost: string, config: StoreHostConfig): AdminHost
   const host = normalizeHost(rawHost);
   if (config.adminHost && host === config.adminHost) return { kind: "admin" };
   const match = matchStoreHost(host, config);
-  return match.kind === "store" ? { kind: "store", slug: match.slug } : { kind: "other" };
+  return match.kind === "store-admin" ? { kind: "store", slug: match.slug } : { kind: "other" };
 }
 
 export interface StoreFacts {

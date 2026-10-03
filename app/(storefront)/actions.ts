@@ -29,7 +29,7 @@ function isId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 64 && /^[A-Za-z0-9_-]+$/.test(value);
 }
 
-/** The public store this request's Host serves (the preview cookie only counts on the platform host). */
+/** The public store this Host serves (a preview cookie only counts on the explicit temporary preview host). */
 function storeForRequest(db: ReturnType<typeof getDb>, headers: Headers) {
   return resolveStoreForHost(db, headers.get("host") ?? "", storeIdFromCookieHeader(headers.get("cookie")));
 }

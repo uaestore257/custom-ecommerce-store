@@ -2,9 +2,21 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { BusinessContentPage } from "@/components/platform/BusinessSite";
-import { isPlatformBusinessHost } from "@/lib/store-host";
+import {
+  isPlatformBusinessHost,
+  isStorefrontPathPreviewHost,
+  platformRootUrl,
+  storeHostConfig,
+} from "@/lib/store-host";
 
-export const metadata: Metadata = { title: "Services" };
+export async function generateMetadata(): Promise<Metadata> {
+  const host = (await headers()).get("host") ?? "";
+  if (!isPlatformBusinessHost(host) || isStorefrontPathPreviewHost(host)) {
+    return { title: "Services", robots: { index: false, follow: false } };
+  }
+  const canonical = platformRootUrl("/services", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
+  return { title: "Services", alternates: canonical ? { canonical } : undefined };
+}
 
 export default async function ServicesPage() {
   if (!isPlatformBusinessHost((await headers()).get("host") ?? "")) notFound();

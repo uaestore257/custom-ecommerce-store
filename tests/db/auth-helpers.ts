@@ -8,7 +8,7 @@ import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
 
 export const BASE_URL = "http://admin.test.local";
 export const ADMIN_HOST = "admin.test.local";
-export const STORE_HOST = "nest-and-oak.test.local";
+export const STORE_HOST = "admin.nest-and-oak.test.local";
 export const OWNER_EMAIL = "platform-owner@test.example";
 export const OWNER_PASSWORD = "correct horse battery staple 42";
 
