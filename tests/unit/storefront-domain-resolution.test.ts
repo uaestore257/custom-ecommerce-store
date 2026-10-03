@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { DEFAULT_STOREFRONT_STORE_ID } from "@/lib/config";
 import type { Client } from "@/lib/server/admin/common";
 import { resolveStoreForHost } from "@/lib/server/storefront/catalog";
 
@@ -85,4 +86,69 @@ test("unknown hosts cannot select a store using the platform preview cookie", as
     store: { findFirst: async () => assert.fail("unknown hosts must not resolve a store") },
   } as unknown as Client;
   assert.equal(await resolveStoreForHost(client, "unknown.example.test", "store-a", env), null);
+});
+
+test("disabled path mode preserves the ADMIN_HOST default-store behavior", async () => {
+  const client = {
+    storeDomain: {
+      findUnique: async () => assert.fail("the ordinary platform host does not resolve through custom domains"),
+    },
+    store: {
+      findFirst: async ({ where }: { where: { id: string; status: string; archivedAt: null } }) => {
+        assert.deepEqual(where, { id: DEFAULT_STOREFRONT_STORE_ID, status: "ACTIVE", archivedAt: null });
+        return { id: where.id };
+      },
+    },
+  } as unknown as Client;
+
+  assert.equal(await resolveStoreForHost(client, "admin.localhost:3001", undefined, env), DEFAULT_STOREFRONT_STORE_ID);
+});
+
+test("path preview host resolves only its validated public cookie and has no default-store fallback", async () => {
+  const previewEnv = {
+    ADMIN_HOST: "preview.example.test",
+    PLATFORM_ROOT_DOMAIN: "preview.example.test",
+    STOREFRONT_PREVIEW_MODE: "path",
+    NODE_ENV: "production",
+  } as unknown as NodeJS.ProcessEnv;
+  const queriedIds: string[] = [];
+  const client = {
+    storeDomain: {
+      findUnique: async () => null,
+    },
+    store: {
+      findFirst: async ({ where }: { where: { id: string; status: string; archivedAt: null } }) => {
+        queriedIds.push(where.id);
+        assert.deepEqual(where, { id: "store-a", status: "ACTIVE", archivedAt: null });
+        return { id: where.id };
+      },
+    },
+  } as unknown as Client;
+
+  assert.equal(await resolveStoreForHost(client, "preview.example.test", "store-a", previewEnv), "store-a");
+  assert.deepEqual(queriedIds, ["store-a"]);
+  assert.equal(await resolveStoreForHost(client, "preview.example.test", undefined, previewEnv), null);
+  assert.deepEqual(queriedIds, ["store-a"], "a missing cookie must not query a default store");
+});
+
+test("a verified StoreDomain still takes precedence on a path-preview host", async () => {
+  const previewEnv = {
+    ADMIN_HOST: "preview.example.test",
+    PLATFORM_ROOT_DOMAIN: "preview.example.test",
+    STOREFRONT_PREVIEW_MODE: "path",
+    NODE_ENV: "production",
+  } as unknown as NodeJS.ProcessEnv;
+  const client = {
+    storeDomain: {
+      findUnique: async () => ({ storeId: "verified-store", status: "VERIFIED" }),
+    },
+    store: {
+      findFirst: async ({ where }: { where: { id: string; status: string; archivedAt: null } }) => {
+        assert.deepEqual(where, { id: "verified-store", status: "ACTIVE", archivedAt: null });
+        return { id: where.id };
+      },
+    },
+  } as unknown as Client;
+
+  assert.equal(await resolveStoreForHost(client, "preview.example.test", "cookie-store", previewEnv), "verified-store");
 });

@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   isPlatformBusinessHost,
+  isStorefrontPathPreviewHost,
   matchStoreHost,
   parseStoreDomains,
+  storefrontPathPreviewUrl,
   storefrontUrlForSlug,
   storeHostConfig,
 } from "../../lib/store-host";
@@ -69,6 +71,40 @@ test("the bare development root is the business site, distinct from store and ad
   assert.equal(isPlatformBusinessHost("admin.localhost:3000", localEnv), false);
   assert.equal(isPlatformBusinessHost("nest-and-oak.localhost:3000", localEnv), false);
   assert.equal(isPlatformBusinessHost("localhost", { ...localEnv, NODE_ENV: "production" }), false);
+});
+
+test("path preview mode is limited to the configured temporary root host", () => {
+  const previewEnv = {
+    ADMIN_HOST: "preview.shops.test",
+    PLATFORM_ROOT_DOMAIN: "preview.shops.test",
+    STOREFRONT_PREVIEW_MODE: "path",
+    NODE_ENV: "production",
+  } as unknown as NodeJS.ProcessEnv;
+  assert.equal(isStorefrontPathPreviewHost("preview.shops.test", previewEnv), true);
+  assert.equal(isPlatformBusinessHost("preview.shops.test", previewEnv), true);
+  assert.equal(isStorefrontPathPreviewHost("shops.test", previewEnv), false);
+  assert.equal(isStorefrontPathPreviewHost("other.preview.shops.test", previewEnv), false);
+  assert.equal(isStorefrontPathPreviewHost("preview.shops.test", { ...previewEnv, ADMIN_HOST: "admin.shops.test" }), false);
+  assert.equal(isStorefrontPathPreviewHost("preview.shops.test", { ...previewEnv, STOREFRONT_PREVIEW_MODE: "" }), false);
+});
+
+test("path preview URLs stay on the configured origin even when a verified domain is mapped", () => {
+  const previewConfig = config({
+    ADMIN_HOST: "preview.shops.test",
+    PLATFORM_ROOT_DOMAIN: "preview.shops.test",
+    STOREFRONT_PREVIEW_MODE: "path",
+    STORE_DOMAINS: "shop.client.test=store-a",
+  });
+  assert.equal(
+    storefrontPathPreviewUrl("store-a", "https://preview.shops.test/admin", previewConfig),
+    "https://preview.shops.test/preview/store-a",
+  );
+  assert.equal(storefrontPathPreviewUrl("bad_slug", "https://preview.shops.test", previewConfig), null);
+  assert.equal(storefrontPathPreviewUrl("store-a", "https://elsewhere.test", previewConfig), null);
+  assert.equal(
+    storefrontPathPreviewUrl("store-a", "https://preview.shops.test", config({ ADMIN_HOST: "preview.shops.test" })),
+    null,
+  );
 });
 
 test("unknown, nested, reserved, malformed or look-alike hosts name no store", () => {
