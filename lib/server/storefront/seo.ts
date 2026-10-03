@@ -16,6 +16,7 @@ export async function getPublicStorefrontSeoContext(): Promise<StorefrontSeoCont
   const host = (await headers()).get("host") ?? "";
   const config = storeHostConfig();
   const match = matchStoreHost(host, config);
+  if (match.kind === "platform" || match.kind === "store-admin") return null;
   const hostname = normalizeRequestHostname(host);
   const domain = hostname
     ? await getDb().storeDomain.findUnique({

@@ -49,19 +49,21 @@ and never changes the Platform Owner.
 
 ## Store Owner sign-in and account settings
 
-A Store Owner signs in on their own store host, for example:
+A Store Owner signs in on the dedicated store-admin host, separate from the
+public storefront and any customer custom domain, for example:
 
 ```text
-http://nest-and-oak.localhost:3000/login
+http://admin.nest-and-oak.localhost:3000/login
 ```
 
 After sign-in, `/admin` redirects to that store's admin page. The store
-host is resolved from its slug or a legacy operator-configured
-`STORE_DOMAINS` alias; the session is opened only when that user has an
-`OWNER` membership for the resolved store. Database-managed verified
-custom domains serve the public storefront; Store Admin sign-in remains
-on the store's tenant host. The shared **Account** link lets the user
-change their name, email, and password after confirming their current password.
+admin host is resolved only from the reserved
+`admin.<store-slug>.<PLATFORM_ROOT_DOMAIN>` hostname; public storefront
+subdomains and custom domains cannot serve Store Admin routes or open
+Store Owner sessions. The session is opened only when that user is a member
+of the store named by the admin hostname. Database-managed verified custom
+domains serve the public storefront only. The shared **Account** link lets
+the user change their name, email, and password after confirming their current password.
 Changing email or password revokes all sessions, so the user must sign
 in again. A changed email is marked unverified; email verification and
 email-based password recovery are not configured.
@@ -70,14 +72,14 @@ email-based password recovery are not configured.
 
 | Layer | Enforcement |
 | --- | --- |
-| `proxy.ts` | Platform routes are allowed only on exact `ADMIN_HOST`; admin/login/auth routes on recognized store hosts are served on that host. Requests for those routes from unknown hosts return 404. |
-| Better Auth | Uses host-only, httpOnly session cookies. Trusted origins include only the configured admin origin and the request's recognized store-host origin. Sign-up stays disabled and auth HTTP endpoints are allow-listed. |
+| `proxy.ts` | Platform routes are allowed only on exact `ADMIN_HOST`; store admin/login/auth routes are allowed only on the matching reserved `admin.<slug>.<root>` host. Public storefront and custom-domain hosts return 404 for admin routes. |
+| Better Auth | Uses host-only, httpOnly session cookies. Trusted origins include only the configured platform admin origin and a recognized store-admin origin. Sign-up stays disabled and auth HTTP endpoints are allow-listed. |
 | Session creation | A server hook allows the Platform Owner only on `ADMIN_HOST`, or a non-platform user with a membership for the non-archived store resolved from this request's Host. |
 | Admin pages and actions | Store pages/actions check membership and require that the route's `storeId` equals the store resolved from Host. Platform-only pages/actions independently require the Platform Owner on `ADMIN_HOST`. |
 | Data access | Store reads and writes include the authorized `storeId`; audit events include actor/store identifiers and changed-field names only. |
 
-Store members sign in on the hostname for their store. The host determines
-the store; a submitted store ID or role never grants access.
+Store members sign in on the dedicated admin hostname for their store. The
+host determines the store; a submitted store ID or role never grants access.
 
 | Role | Store admin access |
 | --- | --- |

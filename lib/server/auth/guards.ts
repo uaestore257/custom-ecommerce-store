@@ -33,7 +33,7 @@ import { hostContext, isStoreOwner, storeFacts, storeMembershipRole } from "./st
 //
 // requireStoreAccess(storeId) checks role-based access inside ONE store.
 // The platform owner acts on ADMIN_HOST; store members act only on their
-// own store host. Suspended stores are read-only; archived stores are
+// own admin.<slug>.<root> host. Suspended stores are read-only; archived stores are
 // closed to members.
 // ---------------------------------------------------------------
 
@@ -149,7 +149,7 @@ export type AdminViewer =
 
 /**
  * Who is using the admin on this host: the platform owner on ADMIN_HOST,
- * or a member of the store this store host serves. Throws AccessDenied
+ * or a member of the store this store-admin host names. Throws AccessDenied
  * otherwise (the admin layout turns that into /login or a 404).
  */
 export async function requireAdminViewer(): Promise<AdminViewer> {

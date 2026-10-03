@@ -23,7 +23,7 @@ export async function storeFacts(db: Db, where: { id: string } | { slug: string 
   return row ? { id: row.id, status: row.status, archived: row.archivedAt !== null } : null;
 }
 
-/** The kind of admin host this Host header is, and (for a store host) the store it names, archived or not. */
+/** The kind of admin host this Host header is, and (for a store-admin host) the store it names, archived or not. */
 export async function hostContext(db: Db, rawHost: string): Promise<{ host: AdminHost; hostStore: StoreFacts | null }> {
   const host = adminHostOf(rawHost, storeHostConfig());
   if (host.kind !== "store") return { host, hostStore: null };
@@ -55,7 +55,8 @@ export async function storeMembershipRole(
 /**
  * Whether a session may be opened for this user on this host (Better
  * Auth's session hook): the platform owner on ADMIN_HOST, or a member of
- * the (non-archived) store a store host serves. Disabled users never.
+ * the (non-archived) store named by its dedicated admin host. Disabled
+ * users never.
  */
 export async function sessionAllowed(db: Db, userId: string, rawHost: string): Promise<boolean> {
   const user = await db.user.findUnique({ where: { id: userId }, select: { isPlatformOwner: true, disabledAt: true } });

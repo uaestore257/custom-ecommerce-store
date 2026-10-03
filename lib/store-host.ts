@@ -5,13 +5,12 @@ import { normalizeHost } from "./auth/constants";
 // lib/server/storefront/catalog.ts). The store always comes from the
 // request's Host on the server, never from anything the browser sends.
 //
-//   <slug>.<PLATFORM_ROOT_DOMAIN>   -> the store with that slug
+//   <slug>.<PLATFORM_ROOT_DOMAIN>   -> the store's public storefront
+//   admin.<slug>.<PLATFORM_ROOT_DOMAIN> -> that store's admin
 //   a host listed in STORE_DOMAINS  -> a trusted operator-configured alias
 //                                      (database ownership/status overrides it)
 //   ADMIN_HOST                      -> platform host
-//   PLATFORM_ROOT_DOMAIN itself     -> platform business website in local
-//                                      development, or the configured
-//                                      temporary path-preview host
+//   PLATFORM_ROOT_DOMAIN itself     -> platform business website
 //   anything else                   -> unknown: no store is shown
 //
 // STORE_DOMAINS is a trusted, operator-managed comma-separated list of
@@ -19,7 +18,11 @@ import { normalizeHost } from "./auth/constants";
 // "shop.example.com=client-a,www.shop.example.com=client-a".
 // ---------------------------------------------------------------
 
-export type StoreHostMatch = { kind: "store"; slug: string } | { kind: "platform" } | { kind: "unknown" };
+export type StoreHostMatch =
+  | { kind: "store"; slug: string }
+  | { kind: "store-admin"; slug: string }
+  | { kind: "platform" }
+  | { kind: "unknown" };
 
 export interface StoreHostConfig {
   adminHost: string;
@@ -93,13 +96,12 @@ export function storefrontPathPreviewUrl(slug: string, baseUrl: string, config: 
   }
 }
 
-/** The bare development root is the business site; path mode also uses its temporary root host. */
+/** The bare configured root is the business site; path mode also uses its isolated fallback host. */
 export function isPlatformBusinessHost(rawHost: string, env: NodeJS.ProcessEnv = process.env) {
   if (isStorefrontPathPreviewHost(rawHost, env)) return true;
   const config = storeHostConfig(env);
   return Boolean(
     config.rootDomain &&
-      !config.production &&
       hostname(normalizeHost(rawHost)) === config.rootDomain &&
       normalizeHost(rawHost) !== config.adminHost,
   );
@@ -112,26 +114,42 @@ export function matchStoreHost(rawHost: string, config: StoreHostConfig): StoreH
   if (config.adminHost && host === config.adminHost) return { kind: "platform" };
 
   const name = hostname(host);
+  const root = config.rootDomain;
+  if (root && name === root) return { kind: "platform" };
+  if (root && name.endsWith(`.${root}`)) {
+    const label = name.slice(0, -(root.length + 1));
+    const labels = label.split(".");
+    if (
+      labels.length === 2 &&
+      labels[0] === "admin" &&
+      SLUG.test(labels[1]) &&
+      !RESERVED.has(labels[1])
+    ) {
+      return { kind: "store-admin", slug: labels[1] };
+    }
+  }
+
   const mapped = config.customDomains.get(name);
   if (mapped) return { kind: "store", slug: mapped };
-
-  const root = config.rootDomain;
-  if (!root) return { kind: "unknown" };
-  if (name === root) return config.production ? { kind: "unknown" } : { kind: "platform" };
-  if (name.endsWith(`.${root}`)) {
+  if (root && name.endsWith(`.${root}`)) {
     const label = name.slice(0, -(root.length + 1));
-    // One label only: a.b.<root> is not a store.
+    // Public storefronts are exactly one label below the root.
     if (SLUG.test(label) && !RESERVED.has(label)) return { kind: "store", slug: label };
   }
   return { kind: "unknown" };
 }
 
 /** Absolute storefront homepage URL for a store slug, using the same host mapping as requests. */
-export function storefrontUrlForSlug(slug: string, baseUrl: string, config: StoreHostConfig): string | null {
+export function storefrontUrlForSlug(
+  slug: string,
+  baseUrl: string,
+  config: StoreHostConfig,
+  verifiedPrimaryDomain?: string,
+): string | null {
   if (!SLUG.test(slug)) return null;
 
-  const customHost = [...config.customDomains].find(([, mappedSlug]) => mappedSlug === slug)?.[0];
-  const storefrontHost = customHost ?? (config.rootDomain ? `${slug}.${config.rootDomain}` : null);
+  const configuredAlias = [...config.customDomains].find(([, mappedSlug]) => mappedSlug === slug)?.[0];
+  const storefrontHost = verifiedPrimaryDomain ?? configuredAlias ?? (config.rootDomain ? `${slug}.${config.rootDomain}` : null);
   if (!storefrontHost) return null;
 
   try {
@@ -139,6 +157,63 @@ export function storefrontUrlForSlug(slug: string, baseUrl: string, config: Stor
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     url.hostname = storefrontHost;
     url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Absolute Store Admin homepage URL for the store's reserved nested admin host. */
+export function storeAdminUrlForSlug(slug: string, baseUrl: string, config: StoreHostConfig): string | null {
+  if (!SLUG.test(slug) || RESERVED.has(slug) || !config.rootDomain) return null;
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.hostname = `admin.${slug}.${config.rootDomain}`;
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * URL for an explicit preview link: use a verified/configured public host,
+ * otherwise use the path fallback only on its separately configured preview host.
+ */
+export function storefrontPreviewUrlForSlug(
+  slug: string,
+  baseUrl: string,
+  config: StoreHostConfig,
+  verifiedPrimaryDomain?: string,
+): string | null {
+  if (verifiedPrimaryDomain || [...config.customDomains.values()].includes(slug)) {
+    const publicUrl = storefrontUrlForSlug(slug, baseUrl, config, verifiedPrimaryDomain);
+    if (publicUrl) return publicUrl;
+  }
+  try {
+    const baseHost = normalizeHost(new URL(baseUrl).host);
+    if (pathPreviewHostIsConfigured(config) && baseHost === config.adminHost) {
+      return storefrontPathPreviewUrl(slug, baseUrl, config);
+    }
+  } catch {
+    return null;
+  }
+  return storefrontUrlForSlug(slug, baseUrl, config, verifiedPrimaryDomain);
+}
+
+/** Absolute platform business-site URL, derived from the configured admin origin. */
+export function platformRootUrl(path: string, baseUrl: string, config: StoreHostConfig): string | null {
+  if (!config.rootDomain || !path.startsWith("/")) return null;
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.hostname = config.rootDomain;
+    url.pathname = path;
     url.search = "";
     url.hash = "";
     return url.toString();

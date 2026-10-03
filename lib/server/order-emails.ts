@@ -4,6 +4,7 @@ import { paymentMethodLabel } from "@/lib/config";
 import { formatMinorUnits } from "@/lib/money";
 import { paymentInstructions } from "@/lib/payment-instructions";
 import { storeFormatLocale } from "@/lib/standards";
+import { storeAdminUrlForSlug, storeHostConfig } from "@/lib/store-host";
 import type { PaymentMethodId } from "@/lib/types";
 import type { Client } from "./admin/common";
 import { getMailer, type EmailMessage, type Mailer } from "./mailer";
@@ -114,7 +115,7 @@ export async function sendOrderEmails(
     const store = await client.store.findFirst({
       where: { id: storeId },
       select: {
-        name: true, contactEmail: true, contactPhone: true, defaultLanguage: true, countryCode: true, formatLocale: true,
+        name: true, slug: true, contactEmail: true, contactPhone: true, defaultLanguage: true, countryCode: true, formatLocale: true,
         memberships: { where: { role: "OWNER" }, select: { user: { select: { email: true } } }, take: 1 },
       },
     });
@@ -127,13 +128,14 @@ export async function sendOrderEmails(
     const address = (order.shippingAddress ?? {}) as Record<string, unknown>;
     const fulfillmentMethod = address.fulfillmentMethod === "PICKUP" ? "PICKUP" : "DELIVERY";
     const adminUrl = process.env.BETTER_AUTH_URL;
+    const storeAdminUrl = adminUrl ? storeAdminUrlForSlug(store.slug, adminUrl, storeHostConfig()) : null;
     const storeEmail = store.contactEmail || store.memberships[0]?.user.email || null;
     const emails = buildOrderEmails({
       storeName: store.name,
       storeEmail,
       storeContact: [store.contactEmail, store.contactPhone].filter(Boolean).join(" · "),
       orderNumber,
-      adminOrderUrl: adminUrl ? new URL(`/admin/stores/${storeId}/orders/${order.id}`, adminUrl).toString() : null,
+      adminOrderUrl: storeAdminUrl ? new URL(`/admin/stores/${storeId}/orders/${order.id}`, storeAdminUrl).toString() : null,
       customerName: order.customerName,
       customerEmail: order.customerEmail,
       customerPhone: order.customerPhone ?? "",

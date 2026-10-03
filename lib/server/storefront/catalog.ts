@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
-import { DEFAULT_STOREFRONT_STORE_ID, PAYMENT_METHODS } from "@/lib/config";
+import { PAYMENT_METHODS } from "@/lib/config";
 import { storeFormatLocale } from "@/lib/standards";
 import { normalizeRequestHostname } from "@/lib/store-domains";
 import { isStoreIdCookieValue, STOREFRONT_STORE_COOKIE } from "@/lib/storefront-cookie";
@@ -26,10 +26,10 @@ import type { PaymentProviderAccountConfig } from "../payments/types";
 // browser.
 //
 // Which store to show comes from the request's hostname
-// (resolveStoreForHost, rules in lib/store-host.ts). The bare development
-// root is the business website, not a storefront. ADMIN_HOST may use the
-// platform preview cookie plus configured default; temporary path mode is
-// cookie-only on its configured root host.
+// (resolveStoreForHost, rules in lib/store-host.ts). The platform root,
+// platform admin and store-admin hosts never select a store from a cookie.
+// Only the explicit temporary path-preview host uses the preview cookie,
+// and it never falls back to a default store.
 // ---------------------------------------------------------------
 
 const PUBLIC_STORE = { status: "ACTIVE", archivedAt: null } as const;
@@ -56,9 +56,9 @@ export async function resolveStorefrontStoreId(
 
 /**
  * The store a request's Host serves, if it is public (ACTIVE, not
- * archived): a store's own host by slug; on the platform host, the
- * preview cookie's store or the default (resolveStorefrontStoreId); an
- * unknown host serves no store. Never another store than the host names.
+ * archived): a public store host by slug, or the explicit temporary
+ * path-preview cookie on its configured preview host. Platform roots,
+ * admin hosts and unknown hosts never select a storefront from a cookie.
  */
 export async function resolveStoreForHost(
   client: Client,
@@ -70,9 +70,7 @@ export async function resolveStoreForHost(
   if (isPlatformBusinessHost(host, env) && !pathPreviewHost) return null;
   const config = storeHostConfig(env);
   const match = matchStoreHost(host, config);
-  if (!pathPreviewHost && match.kind === "platform") {
-    return resolveStorefrontStoreId(client, previewCookie, DEFAULT_STOREFRONT_STORE_ID);
-  }
+  if (!pathPreviewHost && (match.kind === "platform" || match.kind === "store-admin")) return null;
   const hostname = normalizeRequestHostname(host);
   if (hostname) {
     // Database ownership overrides an operator alias, including PENDING or

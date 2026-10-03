@@ -65,13 +65,13 @@ test("store admin and sign-in routes are served only on recognized store hosts",
   process.env.PLATFORM_ROOT_DOMAIN = "localhost";
   (process.env as Record<string, string | undefined>).NODE_ENV = "development";
   const storeRequest = (path: string, headers: Record<string, string> = {}) =>
-    new NextRequest(`http://nest-and-oak.localhost:3000${path}`, {
-      headers: { host: "nest-and-oak.localhost:3000", ...headers },
+    new NextRequest(`http://admin.nest-and-oak.localhost:3000${path}`, {
+      headers: { host: "admin.nest-and-oak.localhost:3000", ...headers },
     });
 
   const admin = proxyModule.proxy(storeRequest("/admin"));
   assert.equal(admin.status, 307);
-  assert.equal(new URL(admin.headers.get("location")!).host, "nest-and-oak.localhost:3000");
+  assert.equal(new URL(admin.headers.get("location")!).host, "admin.nest-and-oak.localhost:3000");
   assert.equal(new URL(admin.headers.get("location")!).pathname, "/login");
   assert.equal(proxyModule.proxy(storeRequest("/login")).headers.get("x-middleware-next"), "1");
   assert.equal(proxyModule.proxy(storeRequest("/api/auth/sign-in/email")).headers.get("x-middleware-next"), "1");
@@ -81,16 +81,25 @@ test("store admin and sign-in routes are served only on recognized store hosts",
     "store actions proceed to their independent server-side guards",
   );
 
+  const storefront = new NextRequest("http://nest-and-oak.localhost:3000/admin", {
+    headers: { host: "nest-and-oak.localhost:3000" },
+  });
+  assert.equal(proxyModule.proxy(storefront).status, 404, "a public storefront host never serves store admin paths");
+  const storefrontLogin = new NextRequest("http://nest-and-oak.localhost:3000/login", {
+    headers: { host: "nest-and-oak.localhost:3000" },
+  });
+  assert.equal(proxyModule.proxy(storefrontLogin).status, 404, "storefront hosts never become store-admin login hosts");
+
   const unknown = new NextRequest("http://shop.example/admin", {
     headers: { host: "shop.example" },
   });
   assert.equal(proxyModule.proxy(unknown).status, 404);
 });
 
-test("canonical root host serves business pages and admin root goes to the platform panel", () => {
+test("production platform root serves portfolio pages regardless of preview cookie; admin roots go to their panels", () => {
   process.env.ADMIN_HOST = "admin.localhost:3000";
   process.env.PLATFORM_ROOT_DOMAIN = "localhost";
-  (process.env as Record<string, string | undefined>).NODE_ENV = "development";
+  (process.env as Record<string, string | undefined>).NODE_ENV = "production";
   const rootRequest = (path: string) =>
     new NextRequest(`http://localhost:3000${path}`, { headers: { host: "localhost:3000" } });
   for (const path of ["/", "/about", "/services", "/portfolio", "/contact"]) {
@@ -102,6 +111,17 @@ test("canonical root host serves business pages and admin root goes to the platf
     headers: { host: "admin.localhost:3000" },
   });
   assert.equal(new URL(proxyModule.proxy(adminRoot).headers.get("location")!).pathname, "/admin");
+
+  process.env.ADMIN_HOST = "admin.custom-ecommerce-store.vercel.app";
+  process.env.PLATFORM_ROOT_DOMAIN = "custom-ecommerce-store.vercel.app";
+  const productionRoot = new NextRequest("https://custom-ecommerce-store.vercel.app/portfolio", {
+    headers: { host: "custom-ecommerce-store.vercel.app", cookie: "storefront_store=preview-store" },
+  });
+  assert.equal(proxyModule.proxy(productionRoot).headers.get("x-middleware-next"), "1");
+  const bareLogin = new NextRequest("https://custom-ecommerce-store.vercel.app/login", {
+    headers: { host: "custom-ecommerce-store.vercel.app" },
+  });
+  assert.equal(proxyModule.proxy(bareLogin).status, 404, "platform login is unavailable on the business root");
 });
 
 test("temporary path-preview root renders the landing host and keeps admin protected", () => {

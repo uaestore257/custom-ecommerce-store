@@ -8,7 +8,7 @@
 //   2. checks the signed-in session on THIS host, never trusting the
 //      request body: requirePlatformOwner() for platform-only actions
 //      (the platform owner on ADMIN_HOST), role-scoped store guards for
-//      actions on the authenticated store host,
+//      actions on the authenticated store-admin host,
 //   3. delegates to the server-only data-access layer, which validates
 //      the input and scopes every product/category query by storeId,
 //   4. refreshes the admin pages.
@@ -51,6 +51,7 @@ import {
   updateStoreOwnerSettings,
 } from "@/lib/server/admin/stores";
 import { requestRuntime } from "@/lib/server/request-runtime";
+import { storeAdminUrlForSlug, storeHostConfig } from "@/lib/store-host";
 import { isManagedStoreTeamRole } from "@/lib/admin/team";
 import {
   createStoreInvitation,
@@ -66,7 +67,6 @@ import {
   setPrimaryStoreDomain,
   verifyStoreDomain,
 } from "@/lib/server/admin/domains";
-import { storeHostConfig } from "@/lib/store-host";
 
 const GENERIC_ERROR = "Something went wrong while saving. Please try again.";
 const SIGNED_OUT: ActionResult<never> = { ok: false, error: "Your session has ended. Please sign in again." };
@@ -129,7 +129,7 @@ function asStoreWriter<T>(
   return guarded(label, () => requireStoreAccess(storeId, "write", action), work);
 }
 
-/** Store-management actions are limited to authorized OWNER/MANAGER users on the current store host. */
+/** Store-management actions are limited to authorized OWNER/MANAGER users on the current store-admin host. */
 function asCurrentStoreManager<T>(
   label: string,
   action: "team-management" | "domain-management",
@@ -298,8 +298,9 @@ export async function createStoreInvitationAction(email: unknown, role: unknown)
       select: { name: true },
     });
     if (!store) return FORBIDDEN;
-    const protocol = process.env.NODE_ENV === "production" ? "https:" : "http:";
-    const acceptUrl = new URL("/accept-invitation", `${protocol}//${rawHost}`);
+    const storeAdminUrl = storeAdminUrlForSlug(host.slug, process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
+    if (!storeAdminUrl) return FORBIDDEN;
+    const acceptUrl = new URL("/accept-invitation", storeAdminUrl);
     return createStoreInvitation(
       db,
       { storeId: viewer.store.id, actorUserId: viewer.user.id, email, role, storeName: store.name, acceptUrl: acceptUrl.toString() },

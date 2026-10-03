@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { getDb } from "@/lib/server/db";
+import { storefrontPreviewUrlForSlug, storeHostConfig } from "@/lib/store-host";
 
 const navigation = [
   { href: "/", label: "Home" },
@@ -78,10 +79,24 @@ export function BusinessHomePage() {
 }
 
 export async function BusinessPortfolioPage() {
+  const config = storeHostConfig();
+  const baseUrl = process.env.BETTER_AUTH_URL ?? "";
   const stores = await getDb().store.findMany({
     where: { status: "ACTIVE", archivedAt: null },
-    select: { name: true, slug: true },
+    select: {
+      name: true,
+      slug: true,
+      domains: {
+        where: { status: "VERIFIED", isPrimary: true },
+        select: { hostname: true },
+        take: 1,
+      },
+    },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  const publicStores = stores.map((store) => {
+    const url = storefrontPreviewUrlForSlug(store.slug, baseUrl, config, store.domains[0]?.hostname);
+    return { ...store, url, hostname: url ? new URL(url).host : null };
   });
   return (
     <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
@@ -91,13 +106,15 @@ export async function BusinessPortfolioPage() {
         Each store has its own hostname, catalog and Store Owner admin.
       </p>
       <ul className="mt-8 grid max-w-4xl gap-3 sm:grid-cols-2">
-        {stores.map((store) => (
+        {publicStores.map((store) => (
           <li key={store.slug} className="rounded-xl border border-slate-200 p-5">
             <h2 className="font-semibold">{store.name}</h2>
-            <p className="mt-1 text-sm text-slate-600">{store.slug}.localhost:3000</p>
-            <Link href={`http://${store.slug}.localhost:3000/`} className="mt-3 inline-block text-sm font-semibold text-teal-700 hover:underline">
-              Visit storefront
-            </Link>
+            <p className="mt-1 text-sm text-slate-600">{store.hostname ?? "Storefront hostname not configured"}</p>
+            {store.url && (
+              <Link href={store.url} className="mt-3 inline-block text-sm font-semibold text-teal-700 hover:underline">
+                Visit storefront
+              </Link>
+            )}
           </li>
         ))}
       </ul>

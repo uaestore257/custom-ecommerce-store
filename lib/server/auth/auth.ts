@@ -79,11 +79,10 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
     appName: "Codex Store Admin",
     secret: env.secret,
     baseURL: env.baseURL,
-    // The admin URL, plus — only for a request whose Host is a store's own
-    // host (lib/store-host.ts rules; exact, no wildcards) — that store
-    // host's own origin, so a store owner can sign in there. A page on
-    // another site can never pass this check, and which accounts may then
-    // actually open a session is decided by the session hook below.
+    // The admin URL, plus — only for a request whose Host is the reserved
+    // admin.<slug>.<root> host (lib/store-host.ts rules) — that store
+    // admin's own origin. Storefront/custom-domain hosts cannot sign in to
+    // admin; which accounts may open a session is decided below.
     trustedOrigins: (request) => {
       const host = normalizeHost(request?.headers.get("host") ?? "");
       if (adminHostOf(host, storeHostConfig()).kind !== "store") return [env.baseURL];
@@ -139,7 +138,7 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
         create: {
           // Refuse to open a session unless this user may use the admin ON
           // THIS HOST: the platform owner on ADMIN_HOST, or a member of the
-          // store a store host serves (lib/admin/store-access.ts). Disabled
+          // store named by its dedicated admin host (lib/admin/store-access.ts). Disabled
           // users never. No request context -> no session (fails closed).
           before: async (session, context) => {
             const headers = context?.headers ?? context?.request?.headers;

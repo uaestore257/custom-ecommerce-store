@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_STOREFRONT_STORE_ID } from "@/lib/config";
 import type { Client } from "@/lib/server/admin/common";
 import { resolveStoreForHost } from "@/lib/server/storefront/catalog";
 
@@ -88,20 +87,18 @@ test("unknown hosts cannot select a store using the platform preview cookie", as
   assert.equal(await resolveStoreForHost(client, "unknown.example.test", "store-a", env), null);
 });
 
-test("disabled path mode preserves the ADMIN_HOST default-store behavior", async () => {
+test("platform admin and business hosts never select a default storefront", async () => {
   const client = {
     storeDomain: {
-      findUnique: async () => assert.fail("the ordinary platform host does not resolve through custom domains"),
+      findUnique: async () => assert.fail("platform hosts do not resolve through custom domains"),
     },
     store: {
-      findFirst: async ({ where }: { where: { id: string; status: string; archivedAt: null } }) => {
-        assert.deepEqual(where, { id: DEFAULT_STOREFRONT_STORE_ID, status: "ACTIVE", archivedAt: null });
-        return { id: where.id };
-      },
+      findFirst: async () => assert.fail("platform hosts do not select a storefront"),
     },
   } as unknown as Client;
 
-  assert.equal(await resolveStoreForHost(client, "admin.localhost:3001", undefined, env), DEFAULT_STOREFRONT_STORE_ID);
+  assert.equal(await resolveStoreForHost(client, "admin.localhost:3001", "store-a", env), null);
+  assert.equal(await resolveStoreForHost(client, "localhost:3001", "store-a", env), null);
 });
 
 test("path preview host resolves only its validated public cookie and has no default-store fallback", async () => {

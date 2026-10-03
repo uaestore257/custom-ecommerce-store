@@ -63,19 +63,21 @@ as a substitute.
 | UAE Store business/portfolio website | <http://localhost:3000> |
 | Platform Owner control panel and sign-in | <http://admin.localhost:3000/admin> |
 | Storefront for a store | `http://<store-slug>.localhost:3000/` |
-| Store Owner sign-in and admin | `http://<store-slug>.localhost:3000/login` and `/admin` |
+| Store Owner sign-in and admin | `http://admin.<store-slug>.localhost:3000/login` and `/admin` |
 
-The bare `localhost` host is the business website, never a default store.
-Each store host is resolved dynamically from `Store.slug`; a browser cookie or
-manually supplied store ID cannot switch it to a different store. Public
-storefronts show active, non-archived stores only; draft/paused/suspended
-stores are not public. The shared storefront and store-admin code is under
+The bare root host is the business website in every environment, never a
+default store. Public storefront and Store Admin hosts are resolved
+separately from `Store.slug`; a browser cookie or manually supplied store ID
+cannot switch a request to a different store. Public storefronts show active,
+non-archived stores only; draft/paused/suspended stores are not public. The shared storefront and store-admin code is under
 `app/(storefront)` and `app/admin/stores/[storeId]`.
 
-### Temporary production storefront preview
+### Temporary preview-only storefront fallback
 
-For temporary production testing, set `STOREFRONT_PREVIEW_MODE=path` and
-configure the temporary URL as the platform host:
+Only when tenant subdomains cannot be routed, use a dedicated temporary
+preview-only hostname with `STOREFRONT_PREVIEW_MODE=path`. Never set this
+fallback on the production business root or where real tenant hostnames are
+available:
 
 ```dotenv
 ADMIN_HOST="preview.example.com"
@@ -85,13 +87,15 @@ STOREFRONT_PREVIEW_MODE="path"
 ```
 
 The `ADMIN_HOST` and `PLATFORM_ROOT_DOMAIN` hostnames must match the temporary
-URL hostname, and `BETTER_AUTH_URL` must be its full HTTPS origin. On that
-host, `/` continues to show the business landing page, `/portfolio` remains
-the portfolio, and `/admin` remains the existing protected Platform Admin.
-Opening `/preview/<store-slug>` looks up that slug on the server and only
-selects an ACTIVE, non-archived store; invalid or non-public stores return
-404. No default store is selected on the temporary host. The existing
-host-selected tenant and verified custom-domain routing remain unchanged.
+URL hostname, and `BETTER_AUTH_URL` must be its full HTTPS origin. This host
+is not the public platform business root. Opening `/preview/<store-slug>`
+first redirects to a verified/configured public storefront hostname when
+available; only otherwise does it use the temporary cookie-based preview.
+The fallback looks up the slug on the server and selects only an ACTIVE,
+non-archived store; invalid or non-public stores return 404. Its cookie is
+scoped to this preview-only hostname and never selects a store on the real
+platform root. Existing host-selected tenant and verified custom-domain
+routing remain unchanged.
 
 The selected store uses the existing host-only `storefront_store` cookie.
 Browsers do not share this cookie between the temporary host, tenant
@@ -156,16 +160,18 @@ These parts are **not** implemented and need a backend:
   There are no refunds, returns or item edits. Order emails are sent only
   after SMTP is configured. Admin customers and agency settings are still
   browser demo data. A store without a delivery rate can't take orders.
-- **Stores are chosen by hostname.** Each active store is served at
+- **Stores are chosen by hostname.** Each active store is served publicly at
   `<slug>.<PLATFORM_ROOT_DOMAIN>`, an operator-configured `STORE_DOMAINS`
   alias, or a database-managed custom hostname after TXT verification.
+  Store Admin is on `admin.<slug>.<PLATFORM_ROOT_DOMAIN>` and never on the
+  public storefront/custom-domain host.
   Unrecognized or unverified hosts show no store. A verified primary custom
   hostname is used for canonical storefront URLs; otherwise the existing
   platform slug host or trusted operator alias is used. Draft stores can't be
   previewed on the storefront yet.
 - **Custom-domain access.** Store Owners and Managers can add, verify, set a
-  primary hostname, or disable domains at `/admin/domains` on their store's
-  platform tenant host. Domain actions derive the store from the authenticated
+  primary hostname, or disable domains at `/admin/domains` on their dedicated
+  Store Admin host. Domain actions derive the store from the authenticated
   host and are unavailable to Staff and Platform Admin sessions.
 - **Payments.** Nothing is paid online and no card details are collected.
   "Online card payment" can't be switched on because no payment provider is
