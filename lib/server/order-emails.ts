@@ -4,7 +4,7 @@ import { paymentMethodLabel } from "@/lib/config";
 import { formatMinorUnits } from "@/lib/money";
 import { paymentInstructions } from "@/lib/payment-instructions";
 import { storeFormatLocale } from "@/lib/standards";
-import { storeAdminUrlForSlug, storeHostConfig } from "@/lib/store-host";
+import { platformRootUrl, storeHostConfig } from "@/lib/store-host";
 import type { PaymentMethodId } from "@/lib/types";
 import type { Client } from "./admin/common";
 import { getMailer, type EmailMessage, type Mailer } from "./mailer";
@@ -128,14 +128,16 @@ export async function sendOrderEmails(
     const address = (order.shippingAddress ?? {}) as Record<string, unknown>;
     const fulfillmentMethod = address.fulfillmentMethod === "PICKUP" ? "PICKUP" : "DELIVERY";
     const adminUrl = process.env.BETTER_AUTH_URL;
-    const storeAdminUrl = adminUrl ? storeAdminUrlForSlug(store.slug, adminUrl, storeHostConfig()) : null;
+    const storeAdminUrl = adminUrl
+      ? platformRootUrl(`/admin/stores/${storeId}/orders/${order.id}`, adminUrl, storeHostConfig())
+      : null;
     const storeEmail = store.contactEmail || store.memberships[0]?.user.email || null;
     const emails = buildOrderEmails({
       storeName: store.name,
       storeEmail,
       storeContact: [store.contactEmail, store.contactPhone].filter(Boolean).join(" · "),
       orderNumber,
-      adminOrderUrl: storeAdminUrl ? new URL(`/admin/stores/${storeId}/orders/${order.id}`, storeAdminUrl).toString() : null,
+      adminOrderUrl: storeAdminUrl,
       customerName: order.customerName,
       customerEmail: order.customerEmail,
       customerPhone: order.customerPhone ?? "",

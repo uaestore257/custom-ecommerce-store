@@ -59,6 +59,11 @@ returns use the documented return contract; no separate callback/webhook
 behavior is assumed. Easypaisa remains unavailable because no official
 merchant API and response-verification contract is implemented.
 
+> **Historical handover snapshot.** The branch/worktree table below records
+> an earlier implementation state. The current central Store Admin login is
+> documented in [authentication.md](../authentication.md): store members sign
+> in on the business root and can select only authorized memberships.
+
 ## 1. Project overview
 
 Code X Store (repo `uaestore257/custom-ecommerce-store`): a multi-store
@@ -73,8 +78,8 @@ Read first: `AGENTS.md` (this Next.js differs from older versions — read
 
 Storefront stores are chosen by hostname (`lib/store-host.ts`):
 `<slug>.<PLATFORM_ROOT_DOMAIN>` or a host listed in `STORE_DOMAINS`.
-Today the admin (`/admin`, `/login`, `/api/auth`) is served **only** on
-`ADMIN_HOST` (`proxy.ts`).
+Platform administration remains restricted to `ADMIN_HOST`; Store Owner/team
+login and `/admin` are also available through the exact business-root portal.
 
 ## 2. Git state (verified read-only at this update)
 

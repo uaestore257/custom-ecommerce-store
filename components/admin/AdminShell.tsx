@@ -93,7 +93,10 @@ export function isNavActive(pathname: string, item: { href: string; exact?: bool
 }
 
 /** Minimal store info for the sidebar and store selector (from the database). */
-export type ShellStore = Pick<AdminStoreSummary, "id" | "name" | "slug"> & { storefrontUrl: string | null };
+export type ShellStore = Pick<AdminStoreSummary, "id" | "name" | "slug"> & {
+  storefrontUrl: string | null;
+  role?: StoreMembershipRole;
+};
 
 /** The signed-in admin user (name and email only). */
 export interface ShellUser {
@@ -107,6 +110,8 @@ export function AdminShell({
   user,
   platform,
   role,
+  portal,
+  selectedStoreId,
 }: {
   children: ReactNode;
   stores: ShellStore[];
@@ -114,6 +119,8 @@ export function AdminShell({
   /** The platform owner (agency pages shown); false for a store owner, who sees only their store. */
   platform: boolean;
   role: StoreMembershipRole | null;
+  portal: boolean;
+  selectedStoreId: string | null;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
@@ -136,7 +143,7 @@ export function AdminShell({
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <SidebarContent stores={stores} platform={platform} role={role} />
+        <SidebarContent stores={stores} platform={platform} role={role} portal={portal} selectedStoreId={selectedStoreId} />
       </aside>
 
       {/* Mobile drawer */}
@@ -157,13 +164,13 @@ export function AdminShell({
             >
               <X className="h-5 w-5" aria-hidden />
             </button>
-            <SidebarContent stores={stores} platform={platform} role={role} />
+            <SidebarContent stores={stores} platform={platform} role={role} portal={portal} selectedStoreId={selectedStoreId} />
           </aside>
         </div>
       )}
 
       <div className="lg:pl-64">
-        <AdminHeader stores={stores} user={user} platform={platform} onOpenMenu={() => setDrawerOpen(true)} />
+        <AdminHeader stores={stores} user={user} platform={platform} portal={portal} selectedStoreId={selectedStoreId} onOpenMenu={() => setDrawerOpen(true)} />
         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
@@ -174,10 +181,14 @@ function SidebarContent({
   stores,
   platform,
   role,
+  portal,
+  selectedStoreId,
 }: {
   stores: ShellStore[];
   platform: boolean;
   role: StoreMembershipRole | null;
+  portal: boolean;
+  selectedStoreId: string | null;
 }) {
   const pathname = usePathname();
   const params = useParams<{ storeId?: string }>();
@@ -185,9 +196,13 @@ function SidebarContent({
   const state = useDemoState();
   const selected = params.storeId
     ? (stores.find((s) => s.id === params.storeId) ?? null)
-    : !platform
-      ? (stores[0] ?? null)
-      : null;
+    : portal
+      ? selectedStoreId
+        ? (stores.find((s) => s.id === selectedStoreId) ?? null)
+        : null
+      : !platform
+        ? (stores[0] ?? null)
+        : null;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -214,7 +229,7 @@ function SidebarContent({
         <nav aria-label={`Store: ${selected.name}`} className="border-t border-slate-200 px-3 py-4">
           <p className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Selected store</p>
           <p className="truncate px-2 pb-2 pt-1 text-sm font-semibold text-teal-800">{selected.name}</p>
-          <NavList items={storeNavForViewer(selected.id, platform, role ?? "OWNER")} pathname={pathname} />
+          <NavList items={storeNavForViewer(selected.id, platform, role ?? selected.role ?? "OWNER")} pathname={pathname} />
         </nav>
       )}
 
@@ -265,11 +280,15 @@ function AdminHeader({
   stores,
   user,
   platform,
+  portal,
+  selectedStoreId,
   onOpenMenu,
 }: {
   stores: ShellStore[];
   user: ShellUser;
   platform: boolean;
+  portal: boolean;
+  selectedStoreId: string | null;
   onOpenMenu: () => void;
 }) {
   // The dashboard has its own "Create New Store" button.
@@ -285,7 +304,7 @@ function AdminHeader({
         >
           <Menu className="h-5 w-5" aria-hidden />
         </button>
-        <StoreSelector stores={stores} platform={platform} />
+        <StoreSelector stores={stores} platform={platform} portal={portal} selectedStoreId={selectedStoreId} />
         {platform && !onDashboard && (
           <LinkButton href="/admin/stores/new" size="sm" className="ml-auto shrink-0">
             <Plus className="h-4 w-4" aria-hidden />

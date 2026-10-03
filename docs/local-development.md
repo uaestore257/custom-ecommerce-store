@@ -155,10 +155,13 @@ After migrations are complete, start the development server with
 `http://admin.localhost:3000/login`, create each store there, and set that
 store's owner name, email, and password in the Create Store form. The bare
 `http://localhost:3000` is the UAE Store business website, not a storefront.
-Each public store is resolved dynamically at
-`http://<store-slug>.localhost:3000/`; its Store Owner signs in at
-`http://admin.<store-slug>.localhost:3000/login` and administers it at
-`/admin`.
+Use the header's Login link or open `http://localhost:3000/login`. After
+sign-in, Store Owners and team members choose an authorized store and manage
+it at `http://localhost:3000/admin`; membership is checked on every page and
+action. Each public store is resolved dynamically at
+`http://<store-slug>.localhost:3000/`. The dedicated nested Store Admin
+hostname remains available for compatibility but is not required by the
+central portal.
 
 To provision the existing local demo stores, first inspect `DATABASE_URL` and
 the target using the same safety checks as other writes. This explicitly

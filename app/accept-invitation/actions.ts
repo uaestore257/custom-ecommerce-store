@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import type { ActionResult } from "@/lib/admin/types";
 import { isStoreInvitationToken } from "@/lib/admin/invitations";
 import { getAuth } from "@/lib/server/auth/auth";
-import { acceptStoreInvitation, invitationForAcceptance } from "@/lib/server/admin/team";
+import { acceptStoreInvitation, invitationForAcceptanceByToken } from "@/lib/server/admin/team";
 import { getDb } from "@/lib/server/db";
 import { hostContext } from "@/lib/server/auth/store-access";
 import { requestRuntime } from "@/lib/server/request-runtime";
@@ -25,8 +25,9 @@ export async function prepareStoreInvitationAction(token: unknown): Promise<Acti
   if (!isStoreInvitationToken(token)) return invalidInvitation;
   const headers = await requestRuntime().headers();
   const { host, hostStore } = await hostContext(getDb(), headers.get("host") ?? "");
-  if (host.kind !== "store" || !hostStore) return invalidInvitation;
-  const invitation = await invitationForAcceptance(getDb(), hostStore.id, token);
+  if (host.kind !== "store" && host.kind !== "store-portal") return invalidInvitation;
+  const invitation = await invitationForAcceptanceByToken(getDb(), token);
+  if (host.kind === "store" && (!hostStore || hostStore.id !== invitation?.storeId)) return invalidInvitation;
   if (!invitation || (invitation.role !== "MANAGER" && invitation.role !== "STAFF")) return invalidInvitation;
 
   const user = await getDb().user.findUnique({
@@ -71,10 +72,14 @@ export async function acceptStoreInvitationAction(
 
   const headers = await requestRuntime().headers();
   const { host, hostStore } = await hostContext(getDb(), headers.get("host") ?? "");
-  if (host.kind !== "store" || !hostStore) return invalidInvitation;
+  if (host.kind !== "store" && host.kind !== "store-portal") return invalidInvitation;
+  const invitation = await invitationForAcceptanceByToken(getDb(), token);
+  if (!invitation || (host.kind === "store" && (!hostStore || hostStore.id !== invitation.storeId))) {
+    return invalidInvitation;
+  }
 
   const result = await acceptStoreInvitation(getDb(), getAuth(), {
-    storeId: hostStore.id,
+    storeId: invitation.storeId,
     token,
     name,
     password,

@@ -9,8 +9,9 @@ TypeScript and Tailwind CSS.
 > only). Checkout places real orders in the database (cash on delivery or
 > bank transfer, always unpaid until staff mark them paid), and the admin
 > can move orders through their statuses, cancel them (returning stock) and
-> record payment. The admin requires signing in as
-> the platform owner ([docs/authentication.md](docs/authentication.md)).
+> record payment. The Platform Owner signs in on the isolated platform
+> admin host; Store Owners and team members use the business-root portal
+> ([docs/authentication.md](docs/authentication.md)).
 > Admin customers and agency settings still use sample data saved in the
 > browser's `localStorage`. Email can be configured through SMTP but is
 > disabled until configured; online payment providers are not connected.
@@ -63,13 +64,20 @@ as a substitute.
 | UAE Store business/portfolio website | <http://localhost:3000> |
 | Platform Owner control panel and sign-in | <http://admin.localhost:3000/admin> |
 | Storefront for a store | `http://<store-slug>.localhost:3000/` |
-| Store Owner sign-in and admin | `http://admin.<store-slug>.localhost:3000/login` and `/admin` |
+| Store Owner/team sign-in and store chooser | <http://localhost:3000/login> |
+| Store Owner/team admin | <http://localhost:3000/admin> |
 
 The bare root host is the business website in every environment, never a
-default store. Public storefront and Store Admin hosts are resolved
-separately from `Store.slug`; a browser cookie or manually supplied store ID
-cannot switch a request to a different store. Public storefronts show active,
-non-archived stores only; draft/paused/suspended stores are not public. The shared storefront and store-admin code is under
+default store. The root also hosts Store Owner/team sign-in and the Store
+Admin portal; users can choose only from their current memberships. The
+HttpOnly store-selection cookie is only a selection hint: each page and
+action rechecks the session, membership, selected store and route store ID.
+No per-store nested admin hostname or DNS record is needed for this flow.
+Public storefronts still use `<store-slug>.<PLATFORM_ROOT_DOMAIN>` (or a
+verified custom domain) and show active, non-archived stores only;
+draft/paused/suspended stores are not public. The optional dedicated
+`admin.<store-slug>.<PLATFORM_ROOT_DOMAIN>` login remains supported but is
+not required by the central portal. The shared storefront and store-admin code is under
 `app/(storefront)` and `app/admin/stores/[storeId]`.
 
 ### Temporary preview-only storefront fallback
@@ -163,16 +171,18 @@ These parts are **not** implemented and need a backend:
 - **Stores are chosen by hostname.** Each active store is served publicly at
   `<slug>.<PLATFORM_ROOT_DOMAIN>`, an operator-configured `STORE_DOMAINS`
   alias, or a database-managed custom hostname after TXT verification.
-  Store Admin is on `admin.<slug>.<PLATFORM_ROOT_DOMAIN>` and never on the
-  public storefront/custom-domain host.
+  Store Owners and team members sign in at the bare platform root and choose
+  only from their authorized memberships. The optional nested Store Admin
+  hostname remains supported but is not required for the central portal.
   Unrecognized or unverified hosts show no store. A verified primary custom
   hostname is used for canonical storefront URLs; otherwise the existing
   platform slug host or trusted operator alias is used. Draft stores can't be
   previewed on the storefront yet.
 - **Custom-domain access.** Store Owners and Managers can add, verify, set a
-  primary hostname, or disable domains at `/admin/domains` on their dedicated
-  Store Admin host. Domain actions derive the store from the authenticated
-  host and are unavailable to Staff and Platform Admin sessions.
+  primary hostname, or disable domains at `/admin/domains` after selecting an
+  authorized store on the central portal. Domain actions derive the selected
+  store from a server-validated membership and are unavailable to Staff and
+  Platform Admin sessions.
 - **Payments.** Nothing is paid online and no card details are collected.
   "Online card payment" can't be switched on because no payment provider is
   connected, and "card on delivery" isn't offered at checkout yet.

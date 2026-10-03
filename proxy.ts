@@ -7,9 +7,10 @@ import { isPlatformBusinessHost, isStorefrontPathPreviewHost, storeHostConfig } 
 // ---------------------------------------------------------------
 // PROXY (Next.js 16's replacement for middleware). Runs before routing.
 //
-// 1. The platform admin (/admin, /login, /api/auth) is served on the exact
-//    ADMIN_HOST. Store admin routes are served only on the reserved
-//    admin.<slug>.<root> host; membership is verified server-side.
+// 1. Platform administration is served only on exact ADMIN_HOST. Store
+//    login/admin routes are served on the exact business root or the
+//    optional reserved admin.<slug>.<root> host; membership is verified
+//    server-side.
 // 2. Off the admin and recognized store hosts, a Server Action ("next-action" header) is refused
 //    UNLESS its pathname is in the small, explicit PUBLIC_ACTION_PATHS
 //    allowlist (lib/auth/constants.ts). This is deny-by-default on
@@ -33,29 +34,46 @@ function notFound() {
   return new NextResponse("Not found", { status: 404, headers: { "content-type": "text/plain" } });
 }
 
+function withReturnTo(url: URL, request: NextRequest) {
+  if (/^\/admin(\/|$)/.test(request.nextUrl.pathname)) {
+    url.searchParams.set("returnTo", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+  }
+  return url;
+}
+
 /**
- * Absolute /login URL on the admin host. Uses BETTER_AUTH_URL (the public
- * admin URL, correct scheme even behind a TLS-terminating proxy); the
- * request URL may carry the server's internal address instead.
+ * Absolute /login URL for the request's authorized admin context. Uses
+ * BETTER_AUTH_URL for the public scheme behind a TLS-terminating proxy.
  */
-function loginUrl(request: NextRequest, adminHost: string, storeHost: string | null) {
+function loginUrl(request: NextRequest, adminHost: string, storeHost: string | null, portalHost: boolean) {
   if (storeHost) {
     try {
       const url = new URL("/login", process.env.BETTER_AUTH_URL);
       url.host = storeHost;
-      return url;
+      return withReturnTo(url, request);
     } catch {
       const url = new URL("/login", request.url);
       url.host = storeHost;
-      return url;
+      return withReturnTo(url, request);
+    }
+  }
+  if (portalHost) {
+    try {
+      const url = new URL("/login", process.env.BETTER_AUTH_URL);
+      url.hostname = storeHostConfig().rootDomain;
+      return withReturnTo(url, request);
+    } catch {
+      const url = new URL("/login", request.url);
+      url.hostname = storeHostConfig().rootDomain;
+      return withReturnTo(url, request);
     }
   }
   try {
-    return new URL("/login", process.env.BETTER_AUTH_URL);
+    return withReturnTo(new URL("/login", process.env.BETTER_AUTH_URL), request);
   } catch {
     const url = new URL("/login", request.url);
     url.host = adminHost;
-    return url;
+    return withReturnTo(url, request);
   }
 }
 
@@ -63,8 +81,10 @@ export function proxy(request: NextRequest) {
   const adminHost = normalizeHost(process.env.ADMIN_HOST ?? "");
   const host = normalizeHost(request.headers.get("host") ?? "");
   const onAdminHost = adminHost !== "" && host === adminHost;
-  const storeHost = adminHostOf(host, storeHostConfig()).kind === "store" ? host : null;
-  const allowedAdminHost = onAdminHost || storeHost !== null;
+  const adminHostKind = adminHostOf(host, storeHostConfig()).kind;
+  const storeHost = adminHostKind === "store" ? host : null;
+  const portalHost = adminHostKind === "store-portal";
+  const allowedAdminHost = onAdminHost || storeHost !== null || portalHost;
   const { pathname } = request.nextUrl;
   const pathPreviewHost = isStorefrontPathPreviewHost(host);
 
@@ -76,6 +96,7 @@ export function proxy(request: NextRequest) {
     isPlatformBusinessHost(host) &&
     !pathPreviewHost &&
     !["/", "/about", "/services", "/portfolio", "/contact"].includes(pathname) &&
+    !(portalHost && (isAdminPath(pathname) || pathname === "/accept-invitation")) &&
     !(request.headers.has("next-action") && isPublicActionPath(pathname))
   ) {
     return notFound();
@@ -84,7 +105,7 @@ export function proxy(request: NextRequest) {
 
   if (allowedAdminHost && /^\/admin(\/|$)/.test(pathname)) {
     if (!getSessionCookie(request, { cookiePrefix: AUTH_COOKIE_PREFIX })) {
-      return NextResponse.redirect(loginUrl(request, adminHost, storeHost));
+      return NextResponse.redirect(loginUrl(request, adminHost, storeHost, portalHost));
     }
   }
   return NextResponse.next();

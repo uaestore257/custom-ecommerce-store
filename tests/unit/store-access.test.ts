@@ -12,6 +12,7 @@ import {
   type StoreFacts,
 } from "../../lib/admin/store-access";
 import type { DbStoreStatus } from "../../lib/admin/types";
+import { safeAdminReturnTo } from "../../lib/auth/constants";
 import { storeHostConfig } from "../../lib/store-host";
 
 const config = storeHostConfig({
@@ -38,14 +39,15 @@ const facts = (overrides: Partial<AccessFacts> = {}): AccessFacts => ({
   ...overrides,
 });
 
-test("adminHostOf: exact platform admin and reserved tenant admin hosts only; storefront/custom hosts are public", () => {
+test("adminHostOf: platform admin, central Store Admin portal and reserved tenant admin hosts are distinct", () => {
   assert.deepEqual(adminHostOf("admin.shops.test", config), { kind: "admin" });
   assert.deepEqual(adminHostOf("ADMIN.shops.test.", config), { kind: "admin" });
+  assert.deepEqual(adminHostOf("shops.test", config), { kind: "store-portal" });
+  assert.deepEqual(adminHostOf("shops.test:443", config), { kind: "store-portal" });
   assert.deepEqual(adminHostOf("admin.nest-and-oak.shops.test", config), { kind: "store", slug: "nest-and-oak" });
   for (const host of [
     "nest-and-oak.shops.test",
     "shop.client.test",
-    "shops.test",
     "admin.nest-and-oak.shops.test.evil.com",
     "admin.shops.test:4000",
     "evil.example",
@@ -54,6 +56,43 @@ test("adminHostOf: exact platform admin and reserved tenant admin hosts only; st
   ]) {
     assert.deepEqual(adminHostOf(host, config), { kind: "other" }, host);
   }
+});
+
+test("login return paths are restricted to same-origin admin routes", () => {
+  assert.equal(safeAdminReturnTo("/admin/stores/store-a/orders/order-1"), "/admin/stores/store-a/orders/order-1");
+  assert.equal(safeAdminReturnTo("/admin?from=email"), "/admin?from=email");
+  const unsafe: (string | string[])[] = [
+    "https://evil.test/admin",
+    "//evil.test/admin",
+    "/portfolio",
+    "/admin/../login",
+    ["/admin"],
+  ];
+  for (const value of unsafe) {
+    assert.equal(safeAdminReturnTo(value), null, String(value));
+  }
+});
+
+test("the central business-root portal requires a selected, matching membership and never grants platform access", () => {
+  assert.equal(decideStoreAccess(facts({ host: { kind: "store-portal" } })), "write");
+  assert.equal(
+    decideStoreAccess(facts({ host: { kind: "store-portal" }, routeStore: B, ownsRouteStore: false })),
+    "none",
+    "changing the route store cannot change the server-validated selection",
+  );
+  assert.equal(
+    decideStoreAccess(facts({ host: { kind: "store-portal" }, hostStore: B, routeStore: B, membershipRole: "MANAGER", ownsRouteStore: false })),
+    "write",
+  );
+  assert.equal(
+    decideStoreAccess(facts({ host: { kind: "store-portal" }, hostStore: B, routeStore: B, membershipRole: "STAFF", ownsRouteStore: false })),
+    "read",
+  );
+  assert.equal(
+    decideStoreAccess(facts({ host: { kind: "store-portal" }, user: platform, hostStore: B, routeStore: B, membershipRole: "MANAGER" })),
+    "none",
+  );
+  assert.equal(decideStoreAccess(facts({ host: { kind: "store-portal" }, hostStore: null })), "none");
 });
 
 test("the platform owner has full access on the admin host, to any non-archived store, whatever its status", () => {
@@ -141,6 +180,26 @@ test("sessions open for store members on their own store host, or the platform o
   assert.equal(s({ host: { kind: "other" } }), false);
   assert.equal(s({ user: { isPlatformOwner: false, disabled: true } }), false);
   assert.equal(s({ user: null }), false);
+  assert.equal(
+    mayOpenSession({
+      user: owner,
+      host: { kind: "store-portal" },
+      hostStore: A,
+      ownsHostStore: true,
+      membershipRole: "OWNER",
+    }),
+    true,
+  );
+  assert.equal(
+    mayOpenSession({
+      user: platform,
+      host: { kind: "store-portal" },
+      hostStore: A,
+      ownsHostStore: false,
+      membershipRole: "MANAGER",
+    }),
+    false,
+  );
 });
 
 test("platform-only actions need the platform owner on the admin host; owner actions need write access", () => {

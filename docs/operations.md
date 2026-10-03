@@ -11,11 +11,11 @@ plus one PostgreSQL 16 database. Use Node.js `>=22.12 <23`, as declared
 in `package.json`. Any host that runs Node.js 22 and
 offers managed PostgreSQL works. Choose one that provides:
 
-* **Custom domains with automatic TLS**, including routing for tenant
-  storefronts at `*.<PLATFORM_ROOT_DOMAIN>`, nested Store Admin hosts at
-  `admin.<slug>.<PLATFORM_ROOT_DOMAIN>`, and each database-managed custom
-  domain. Verify the nested Store Admin coverage separately; a one-label
-  wildcard does not establish it.
+* **Custom domains with automatic TLS**, including routing for the bare
+  business/Store Admin portal at `PLATFORM_ROOT_DOMAIN`, the exact platform
+  admin host, tenant storefronts at `*.<PLATFORM_ROOT_DOMAIN>`, and each
+  database-managed custom domain. The central Store Admin portal avoids
+  requiring a nested admin hostname for every store.
 * **A trusted client-IP header** (set `TRUSTED_IP_HEADER` to it, e.g.
   `x-real-ip`), so rate limits apply per visitor.
 * **Managed PostgreSQL with point-in-time recovery** (see Backups), in a
@@ -34,9 +34,10 @@ Required by the production application runtime:
 `DATABASE_URL` is the runtime/application connection and may use Neon
 pooling. `BETTER_AUTH_URL` is the public HTTPS URL of the platform admin host;
 `ADMIN_HOST` is that exact host without a scheme or path. The bare
-`PLATFORM_ROOT_DOMAIN` is always the business/portfolio site. Storefronts use
-`<slug>.<PLATFORM_ROOT_DOMAIN>`; Store Admin uses the distinct reserved host
-`admin.<slug>.<PLATFORM_ROOT_DOMAIN>`.
+`PLATFORM_ROOT_DOMAIN` remains the business/portfolio site and also provides
+Store Owner/team login and the central Store Admin portal at `/login` and
+`/admin`. Storefronts use `<slug>.<PLATFORM_ROOT_DOMAIN>`. The exact
+`ADMIN_HOST` remains reserved for Platform Owner administration.
 
 Only an intentional migration/release terminal needs `DIRECT_URL` and
 `NODE_ENV=production`. `DIRECT_URL` is the direct PostgreSQL connection used
@@ -108,30 +109,27 @@ managed by the platform; explicitly set `NODE_ENV=production` in the
 production migration terminal.
 
 The application resolves the platform root, exact platform admin host,
-`<slug>.<PLATFORM_ROOT_DOMAIN>` storefronts, and the distinct
-`admin.<slug>.<PLATFORM_ROOT_DOMAIN>` Store Admin hosts. It independently
-checks database-verified custom-domain ownership. Vercel still needs each
-hostname routed to the project and covered by TLS; attaching a hostname and
-its DNS/TLS configuration does not replace the application's custom-domain
-ownership verification. The app uses the request `Host` header and
+`<slug>.<PLATFORM_ROOT_DOMAIN>` storefronts, and optionally the distinct
+`admin.<slug>.<PLATFORM_ROOT_DOMAIN>` compatibility hosts. On the central
+portal, a host-only HttpOnly cookie selects a store, but the selection never
+grants access: the server rechecks the user's membership and the route's
+store ID on every request. It independently checks database-verified
+custom-domain ownership. Vercel still needs each public hostname routed to
+the project and covered by TLS; attaching a hostname and its DNS/TLS
+configuration does not replace the application's custom-domain ownership
+verification. The app uses the request `Host` header and
 deliberately ignores `X-Forwarded-Host`; confirm the hosting layer preserves
 the intended host. Leave `TRUSTED_IP_HEADER` unset unless the chosen hosting
 proxy documents a trustworthy client-IP header for this deployment.
 
-**Infrastructure limitation for the requested `*.vercel.app` URLs:** the
-code can parse and generate the requested hosts, but it cannot register
-subdomains or certificates for Vercel's shared `vercel.app` domain. The
-project-assigned `custom-ecommerce-store.vercel.app` URL does not by itself
-make `admin.custom-ecommerce-store.vercel.app`, arbitrary tenant
-subdomains, or the two-label `admin.<slug>.custom-ecommerce-store.vercel.app`
-hosts route to this deployment. Have Vercel confirm that it can assign and
-serve all of those names (including wildcard/certificate coverage for the
-nested Store Admin name); otherwise use a domain you control, attach its
-platform/admin and tenant hostnames to the project, and configure DNS/TLS
-wildcards or per-store records as required. The one-label
-`*.<PLATFORM_ROOT_DOMAIN>` wildcard alone does not prove that a nested
-`admin.<slug>.<PLATFORM_ROOT_DOMAIN>` hostname will work. Do not advertise
-the nested Store Admin URL as live until Vercel and DNS have been verified.
+**Infrastructure limitation for shared `*.vercel.app` URLs:** the code
+cannot register subdomains or certificates for Vercel's shared `vercel.app`
+domain. Vercel must explicitly route the configured platform root and
+`ADMIN_HOST`, and the tenant storefront wildcard, to the project. The central
+Store Admin flow needs no nested tenant-admin hostname or certificate. The
+optional compatibility hostname `admin.<slug>.<PLATFORM_ROOT_DOMAIN>` still
+requires separate Vercel/DNS/TLS verification; never infer its support from
+a one-label wildcard. Verify each hostname in Vercel before launch.
 
 The Vercel deployment serves the existing API and webhook routes. Provider
 webhooks must be configured with their public HTTPS endpoint after a

@@ -212,6 +212,30 @@ export async function invitationForAcceptance(
   });
 }
 
+export async function invitationForAcceptanceByToken(
+  db: Db,
+  token: unknown,
+  now = new Date(),
+) {
+  if (!isStoreInvitationToken(token)) return null;
+  return db.storeInvitation.findFirst({
+    where: {
+      tokenHash: hashStoreInvitationToken(token),
+      acceptedAt: null,
+      revokedAt: null,
+      expiresAt: { gt: now },
+    },
+    select: {
+      id: true,
+      storeId: true,
+      email: true,
+      role: true,
+      expiresAt: true,
+      store: { select: { name: true } },
+    },
+  });
+}
+
 export async function acceptStoreInvitation(
   db: Db,
   auth: Auth,

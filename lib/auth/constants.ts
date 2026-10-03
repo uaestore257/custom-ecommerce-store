@@ -4,6 +4,9 @@
 /** Better Auth cookie prefix: cookies are named `codex-admin.session_token` etc. */
 export const AUTH_COOKIE_PREFIX = "codex-admin";
 
+/** Server-validated active store selection for the central business-root admin portal. */
+export const STORE_PORTAL_SELECTION_COOKIE = "codex-store-admin-store";
+
 /** Lower-case, trimmed host without a trailing dot, e.g. "admin.codexstore.com:443". */
 export function normalizeHost(value: string) {
   return value.trim().toLowerCase().replace(/\.$/, "");
@@ -13,6 +16,18 @@ export function normalizeHost(value: string) {
 export function isConfiguredAdminHost(requestHost: string, adminHost: string) {
   const configuredHost = normalizeHost(adminHost);
   return configuredHost !== "" && normalizeHost(requestHost) === configuredHost;
+}
+
+/** Accept only same-origin admin destinations from an untrusted login query. */
+export function safeAdminReturnTo(value: string | string[] | undefined) {
+  if (typeof value !== "string" || value.length > 2048 || !value.startsWith("/")) return null;
+  try {
+    const url = new URL(value, "https://admin.invalid");
+    if (url.origin !== "https://admin.invalid" || !/^\/admin(?:\/|$)/.test(url.pathname)) return null;
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return null;
+  }
 }
 
 /** Paths that belong to the admin and are only served on an admin or store host. */

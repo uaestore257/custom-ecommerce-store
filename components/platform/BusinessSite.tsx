@@ -21,6 +21,12 @@ export function BusinessSiteShell({ children }: { children: ReactNode }) {
             {navigation.map((item) => (
               <Link key={item.href} href={item.href} className="hover:text-teal-700">{item.label}</Link>
             ))}
+            <Link
+              href="/login"
+              className="rounded-full bg-teal-700 px-4 py-1.5 font-semibold text-white hover:bg-teal-800"
+            >
+              Login
+            </Link>
           </div>
         </nav>
       </header>

@@ -79,13 +79,13 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
     appName: "Codex Store Admin",
     secret: env.secret,
     baseURL: env.baseURL,
-    // The admin URL, plus — only for a request whose Host is the reserved
-    // admin.<slug>.<root> host (lib/store-host.ts rules) — that store
-    // admin's own origin. Storefront/custom-domain hosts cannot sign in to
-    // admin; which accounts may open a session is decided below.
+    // The admin URL, the exact business root for the central Store Admin
+    // portal, and recognized nested Store Admin origins. Storefront and
+    // custom-domain hosts cannot sign in to admin.
     trustedOrigins: (request) => {
       const host = normalizeHost(request?.headers.get("host") ?? "");
-      if (adminHostOf(host, storeHostConfig()).kind !== "store") return [env.baseURL];
+      const kind = adminHostOf(host, storeHostConfig()).kind;
+      if (kind !== "store" && kind !== "store-portal") return [env.baseURL];
       return [env.baseURL, `${new URL(env.baseURL).protocol}//${host}`];
     },
     database: prismaAdapter(db, { provider: "postgresql" }),
@@ -136,10 +136,10 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
     databaseHooks: {
       session: {
         create: {
-          // Refuse to open a session unless this user may use the admin ON
-          // THIS HOST: the platform owner on ADMIN_HOST, or a member of the
-          // store named by its dedicated admin host (lib/admin/store-access.ts). Disabled
-          // users never. No request context -> no session (fails closed).
+          // Refuse sessions unless the user may use the admin on this host:
+          // the platform owner on ADMIN_HOST, or an eligible store member
+          // on a recognized Store Admin host or the business-root portal.
+          // Disabled users never. No request context -> fail closed.
           before: async (session, context) => {
             const headers = context?.headers ?? context?.request?.headers;
             const host = headers?.get("host") ?? "";
