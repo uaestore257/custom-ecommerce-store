@@ -5,7 +5,7 @@ import { StorefrontShell } from "@/components/storefront/StorefrontShell";
 import { BusinessSiteShell } from "@/components/platform/BusinessSite";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
-import { isPlatformBusinessHost } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
 
 export async function generateMetadata(): Promise<Metadata> {
   const context = await getPublicStorefrontSeoContext();
@@ -27,9 +27,12 @@ export default async function StorefrontLayout({ children }: LayoutProps<"/">) {
     requestHeaders.get("host") ?? "",
     process.env.ADMIN_HOST ?? "",
   );
-  const isBusinessHost = isPlatformBusinessHost(requestHeaders.get("host") ?? "");
-  if (isBusinessHost) return <BusinessSiteShell>{children}</BusinessSiteShell>;
+  const host = requestHeaders.get("host") ?? "";
+  const isBusinessHost = isPlatformBusinessHost(host);
+  const isPathPreviewHost = isStorefrontPathPreviewHost(host);
+  if (isBusinessHost && !isPathPreviewHost) return <BusinessSiteShell>{children}</BusinessSiteShell>;
   const { catalog } = await getRequestStorefront();
+  if (isBusinessHost && !catalog) return <BusinessSiteShell>{children}</BusinessSiteShell>;
 
   return (
     <StorefrontShell isAdminHost={isAdminHost} catalog={catalog}>

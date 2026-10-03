@@ -5,7 +5,7 @@ import { DEFAULT_STOREFRONT_STORE_ID, PAYMENT_METHODS } from "@/lib/config";
 import { storeFormatLocale } from "@/lib/standards";
 import { normalizeRequestHostname } from "@/lib/store-domains";
 import { isStoreIdCookieValue, STOREFRONT_STORE_COOKIE } from "@/lib/storefront-cookie";
-import { isPlatformBusinessHost, matchStoreHost, storeHostConfig } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost, matchStoreHost, storeHostConfig } from "@/lib/store-host";
 import type { StorefrontCatalog, StorefrontProduct, StorefrontStore } from "@/lib/storefront-types";
 import type { PaymentMethodId } from "@/lib/types";
 import type { Client } from "../admin/common";
@@ -27,8 +27,9 @@ import type { PaymentProviderAccountConfig } from "../payments/types";
 //
 // Which store to show comes from the request's hostname
 // (resolveStoreForHost, rules in lib/store-host.ts). The bare development
-// root is the business website, not a storefront. Only ADMIN_HOST may use
-// the platform preview cookie plus configured default.
+// root is the business website, not a storefront. ADMIN_HOST may use the
+// platform preview cookie plus configured default; temporary path mode is
+// cookie-only on its configured root host.
 // ---------------------------------------------------------------
 
 const PUBLIC_STORE = { status: "ACTIVE", archivedAt: null } as const;
@@ -65,10 +66,13 @@ export async function resolveStoreForHost(
   previewCookie: unknown,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
-  if (isPlatformBusinessHost(host, env)) return null;
+  const pathPreviewHost = isStorefrontPathPreviewHost(host, env);
+  if (isPlatformBusinessHost(host, env) && !pathPreviewHost) return null;
   const config = storeHostConfig(env);
   const match = matchStoreHost(host, config);
-  if (match.kind === "platform") return resolveStorefrontStoreId(client, previewCookie, DEFAULT_STOREFRONT_STORE_ID);
+  if (!pathPreviewHost && match.kind === "platform") {
+    return resolveStorefrontStoreId(client, previewCookie, DEFAULT_STOREFRONT_STORE_ID);
+  }
   const hostname = normalizeRequestHostname(host);
   if (hostname) {
     // Database ownership overrides an operator alias, including PENDING or
@@ -86,7 +90,8 @@ export async function resolveStoreForHost(
       return store?.id ?? null;
     }
   }
-  if (match.kind === "unknown") return null;
+  if (pathPreviewHost) return resolveStorefrontStoreId(client, previewCookie, "");
+  if (match.kind !== "store") return null;
   const store = await client.store.findFirst({ where: { slug: match.slug, ...PUBLIC_STORE }, select: { id: true } });
   return store?.id ?? null;
 }

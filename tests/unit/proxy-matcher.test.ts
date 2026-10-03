@@ -103,3 +103,21 @@ test("canonical root host serves business pages and admin root goes to the platf
   });
   assert.equal(new URL(proxyModule.proxy(adminRoot).headers.get("location")!).pathname, "/admin");
 });
+
+test("temporary path-preview root renders the landing host and keeps admin protected", () => {
+  process.env.ADMIN_HOST = "preview.example.test";
+  process.env.PLATFORM_ROOT_DOMAIN = "preview.example.test";
+  process.env.STOREFRONT_PREVIEW_MODE = "path";
+  process.env.BETTER_AUTH_URL = "https://preview.example.test";
+  (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+  const request = (path: string) =>
+    new NextRequest(`https://preview.example.test${path}`, { headers: { host: "preview.example.test" } });
+
+  for (const path of ["/", "/portfolio", "/preview/store-a", "/shop", "/products/item-a"]) {
+    assert.equal(proxyModule.proxy(request(path)).headers.get("x-middleware-next"), "1", path);
+  }
+  const admin = proxyModule.proxy(request("/admin"));
+  assert.equal(admin.status, 307);
+  assert.equal(new URL(admin.headers.get("location")!).pathname, "/login");
+  assert.equal(new URL(admin.headers.get("location")!).host, "preview.example.test");
+});

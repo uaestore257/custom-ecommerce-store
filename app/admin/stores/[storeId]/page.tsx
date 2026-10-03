@@ -4,7 +4,7 @@ import { StoreOverviewView } from "@/components/admin/StoreOverviewView";
 import { countActiveProducts } from "@/lib/server/admin/products";
 import { requireStorePage } from "@/lib/server/admin/request";
 import { getAdminStoreDetail } from "@/lib/server/admin/stores";
-import { storefrontUrlForSlug, storeHostConfig } from "@/lib/store-host";
+import { storefrontPathPreviewUrl, storefrontUrlForSlug, storeHostConfig } from "@/lib/store-host";
 import { storefrontOriginForDomain } from "@/lib/storefront-seo";
 
 export const metadata: Metadata = { title: "Store overview" };
@@ -19,13 +19,18 @@ export default async function StoreOverviewPage({ params, searchParams }: PagePr
   if (!store) notFound();
   const config = storeHostConfig();
   const baseUrl = process.env.BETTER_AUTH_URL ?? "";
-  const primaryDomain = await client.storeDomain.findFirst({
-    where: { storeId, status: "VERIFIED", isPrimary: true },
-    select: { hostname: true },
-  });
-  const previewUrl =
-    (primaryDomain && storefrontOriginForDomain(primaryDomain.hostname, baseUrl, config)?.toString()) ??
-    storefrontUrlForSlug(store.slug, baseUrl, config);
+  let previewUrl: string | null;
+  if (config.previewMode) {
+    previewUrl = storefrontPathPreviewUrl(store.slug, baseUrl, config);
+  } else {
+    const primaryDomain = await client.storeDomain.findFirst({
+      where: { storeId, status: "VERIFIED", isPrimary: true },
+      select: { hostname: true },
+    });
+    previewUrl =
+      (primaryDomain && storefrontOriginForDomain(primaryDomain.hostname, baseUrl, config)?.toString()) ??
+      storefrontUrlForSlug(store.slug, baseUrl, config);
+  }
   return (
     <StoreOverviewView
       store={store}

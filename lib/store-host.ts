@@ -10,7 +10,8 @@ import { normalizeHost } from "./auth/constants";
 //                                      (database ownership/status overrides it)
 //   ADMIN_HOST                      -> platform host
 //   PLATFORM_ROOT_DOMAIN itself     -> platform business website in local
-//                                      development; it does not name a store
+//                                      development, or the configured
+//                                      temporary path-preview host
 //   anything else                   -> unknown: no store is shown
 //
 // STORE_DOMAINS is a trusted, operator-managed comma-separated list of
@@ -25,6 +26,7 @@ export interface StoreHostConfig {
   rootDomain: string;
   customDomains: Map<string, string>;
   production: boolean;
+  previewMode: boolean;
 }
 
 /** Store slugs as the admin accepts them (isSlug in lib/admin/validation.ts). */
@@ -56,11 +58,44 @@ export function storeHostConfig(env: NodeJS.ProcessEnv = process.env): StoreHost
     rootDomain: hostname(normalizeHost(env.PLATFORM_ROOT_DOMAIN ?? "")),
     customDomains: parseStoreDomains(env.STORE_DOMAINS),
     production: env.NODE_ENV === "production",
+    previewMode: env.STOREFRONT_PREVIEW_MODE === "path",
   };
 }
 
-/** The bare development root belongs to the platform website, not a store preview. */
+function pathPreviewHostIsConfigured(config: StoreHostConfig) {
+  return Boolean(config.previewMode && config.rootDomain && config.adminHost && hostname(config.adminHost) === config.rootDomain);
+}
+
+/** Only the explicitly configured ADMIN_HOST can use temporary path previews. */
+export function isStorefrontPathPreviewHost(rawHost: string, env: NodeJS.ProcessEnv = process.env) {
+  const config = storeHostConfig(env);
+  return pathPreviewHostIsConfigured(config) && normalizeHost(rawHost) === config.adminHost;
+}
+
+/** Absolute same-host preview URL for the temporary path-preview mode. */
+export function storefrontPathPreviewUrl(slug: string, baseUrl: string, config: StoreHostConfig): string | null {
+  if (!SLUG.test(slug) || !pathPreviewHostIsConfigured(config)) return null;
+
+  try {
+    const url = new URL(baseUrl);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      hostname(normalizeHost(url.host)) !== config.rootDomain
+    ) {
+      return null;
+    }
+    url.pathname = `/preview/${slug}`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** The bare development root is the business site; path mode also uses its temporary root host. */
 export function isPlatformBusinessHost(rawHost: string, env: NodeJS.ProcessEnv = process.env) {
+  if (isStorefrontPathPreviewHost(rawHost, env)) return true;
   const config = storeHostConfig(env);
   return Boolean(
     config.rootDomain &&

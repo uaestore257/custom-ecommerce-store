@@ -58,6 +58,34 @@ storefronts show active, non-archived stores only; draft/paused/suspended
 stores are not public. The shared storefront and store-admin code is under
 `app/(storefront)` and `app/admin/stores/[storeId]`.
 
+### Temporary production storefront preview
+
+For temporary production testing, set `STOREFRONT_PREVIEW_MODE=path` and
+configure the temporary URL as the platform host:
+
+```dotenv
+ADMIN_HOST="preview.example.com"
+PLATFORM_ROOT_DOMAIN="preview.example.com"
+BETTER_AUTH_URL="https://preview.example.com"
+STOREFRONT_PREVIEW_MODE="path"
+```
+
+The `ADMIN_HOST` and `PLATFORM_ROOT_DOMAIN` hostnames must match the temporary
+URL hostname, and `BETTER_AUTH_URL` must be its full HTTPS origin. On that
+host, `/` continues to show the business landing page, `/portfolio` remains
+the portfolio, and `/admin` remains the existing protected Platform Admin.
+Opening `/preview/<store-slug>` looks up that slug on the server and only
+selects an ACTIVE, non-archived store; invalid or non-public stores return
+404. No default store is selected on the temporary host. The existing
+host-selected tenant and verified custom-domain routing remain unchanged.
+
+The selected store uses the existing host-only `storefront_store` cookie.
+Browsers do not share this cookie between the temporary host, tenant
+subdomains, and client custom domains, so continue testing normal tenant
+routing on those hosts. To restore normal production routing, unset
+`STOREFRONT_PREVIEW_MODE` (or set it empty), restore the usual admin/root host
+configuration, and redeploy. This mode requires no schema change or migration.
+
 The Platform Owner creates stores and their OWNER login from the existing
 Create Store form. Store members manage only their own store; server-side
 authorization checks the membership role and store resolved from the

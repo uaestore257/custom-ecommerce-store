@@ -2,7 +2,7 @@ import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_PREFIX, isAdminPath, isPublicActionPath, normalizeHost } from "@/lib/auth/constants";
 import { adminHostOf } from "@/lib/admin/store-access";
-import { isPlatformBusinessHost, storeHostConfig } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost, storeHostConfig } from "@/lib/store-host";
 
 // ---------------------------------------------------------------
 // PROXY (Next.js 16's replacement for middleware). Runs before routing.
@@ -66,11 +66,13 @@ export function proxy(request: NextRequest) {
   const storeHost = adminHostOf(host, storeHostConfig()).kind === "store" ? host : null;
   const allowedAdminHost = onAdminHost || storeHost !== null;
   const { pathname } = request.nextUrl;
+  const pathPreviewHost = isStorefrontPathPreviewHost(host);
 
-  if (onAdminHost && pathname === "/") return NextResponse.redirect(new URL("/admin", request.url));
+  if (onAdminHost && pathname === "/" && !pathPreviewHost) return NextResponse.redirect(new URL("/admin", request.url));
   if (isAdminPath(pathname) && !allowedAdminHost) return notFound();
   if (
     isPlatformBusinessHost(host) &&
+    !pathPreviewHost &&
     !["/", "/about", "/services", "/portfolio", "/contact"].includes(pathname) &&
     !(request.headers.has("next-action") && isPublicActionPath(pathname))
   ) {
