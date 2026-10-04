@@ -4,11 +4,12 @@ import { HomePage as BusinessHomePage } from "@/components/platform/site/pages/H
 import { getDb } from "@/lib/server/db";
 import { getPlatformName } from "@/lib/server/platform-brand";
 import { platformOrganizationJsonLd, platformSiteDescription, platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
-import { getFeaturedProducts, getRequestStorefront } from "@/lib/server/storefront/catalog";
+import { getFeaturedProducts, getHomepageShelves, getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
 import { buildStoreOrganizationJsonLd, serializeJsonLd } from "@/lib/storefront-seo";
+import { normalizeShelvesRequest } from "@/lib/storefront-shelves";
 
 export async function generateMetadata(): Promise<Metadata> {
   const host = (await headers()).get("host") ?? "";
@@ -51,9 +52,12 @@ export default async function Home() {
   if (isBusinessHost && !(await getRequestStorefront())) return <BusinessHomePage />;
 
   const { context, template } = await requireStorefrontPage();
-  const [seo, featured] = await Promise.all([
+  // Shelves only for a template that declares them; otherwise no query runs.
+  const shelvesRequest = normalizeShelvesRequest(template.homepageShelves);
+  const [seo, featured, shelves] = await Promise.all([
     getPublicStorefrontSeoContext(),
     getFeaturedProducts(getDb(), context.store.id, template.homepageProductCount),
+    shelvesRequest ? getHomepageShelves(getDb(), context.store.id, context.categories, shelvesRequest) : [],
   ]);
   const description = context.store.tagline || context.store.heroText || `${context.store.name} online store.`;
   const structuredData = seo ? serializeJsonLd(buildStoreOrganizationJsonLd(seo, description)) : null;
@@ -61,7 +65,7 @@ export default async function Home() {
   return (
     <>
       {structuredData ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} /> : null}
-      <TemplateHome {...context} featured={featured} />
+      <TemplateHome {...context} featured={featured} shelves={shelves} />
     </>
   );
 }
