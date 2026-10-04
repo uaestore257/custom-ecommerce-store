@@ -1,4 +1,4 @@
-import type { TemplateDefinition, ThemeSelection } from "./types";
+import type { TemplateColorTokens, TemplateDefinition, TemplateTheme, ThemeSelection } from "./types";
 
 // ---------------------------------------------------------------
 // THEME CONFIGURATION (pure)
@@ -92,8 +92,20 @@ export function themeCssVariables(
   const palette =
     definition.theme.palettes[selection.palette] ??
     definition.theme.palettes[definition.theme.options.palette.default];
-  const accent = resolveAccentColor(definition, accentColor);
-  const t = palette.tokens;
+  return semanticCssVariables(palette.tokens, resolveAccentColor(definition, accentColor), definition.theme.radius);
+}
+
+/**
+ * The semantic --sf-* roles for a set of constant colour tokens, a #rrggbb
+ * accent and radii. Used by storefront roots (themeCssVariables) and by
+ * the platform business site, which renders its own surfaces and template
+ * specimens through the same roles rather than a second design system.
+ */
+export function semanticCssVariables(
+  t: TemplateColorTokens,
+  accent: string,
+  radius: TemplateTheme["radius"],
+): Record<`--${string}`, string> {
   return {
     "--sf-background": t.background,
     "--sf-foreground": t.foreground,
@@ -108,8 +120,8 @@ export function themeCssVariables(
     "--sf-success": t.success,
     "--sf-warning": t.warning,
     "--sf-focus": t.focus,
-    "--sf-radius-control": definition.theme.radius.control,
-    "--sf-radius-card": definition.theme.radius.card,
+    "--sf-radius-control": radius.control,
+    "--sf-radius-card": radius.card,
     // Legacy accent variable still read by a few shared components.
     "--brand": accent,
   };

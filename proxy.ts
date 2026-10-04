@@ -30,6 +30,13 @@ import { isPlatformBusinessHost, isStorefrontPathPreviewHost, storeHostConfig } 
 // X-Forwarded-Host is deliberately ignored.
 // ---------------------------------------------------------------
 
+/**
+ * Everything the bare platform root serves publicly: the business site's
+ * pages plus its robots.txt and sitemap.xml (app/robots.ts, app/sitemap.ts
+ * already answer for this host; without these two entries crawlers got 404).
+ */
+const BUSINESS_SITE_PATHS = new Set(["/", "/about", "/services", "/portfolio", "/contact", "/robots.txt", "/sitemap.xml"]);
+
 function notFound() {
   return new NextResponse("Not found", { status: 404, headers: { "content-type": "text/plain" } });
 }
@@ -95,7 +102,7 @@ export function proxy(request: NextRequest) {
   if (
     isPlatformBusinessHost(host) &&
     !pathPreviewHost &&
-    !["/", "/about", "/services", "/portfolio", "/contact"].includes(pathname) &&
+    !BUSINESS_SITE_PATHS.has(pathname) &&
     !(portalHost && (isAdminPath(pathname) || pathname === "/accept-invitation")) &&
     !(request.headers.has("next-action") && isPublicActionPath(pathname))
   ) {
