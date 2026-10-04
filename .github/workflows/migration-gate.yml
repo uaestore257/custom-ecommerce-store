@@ -1,0 +1,46 @@
+# Migration release gate. A pull request that changes prisma/migrations/
+# cannot pass until it has the `db-migrated` label, which the authorized
+# release operator adds only AFTER applying the migration to production with
+# `npm run db:deploy:production` (docs/operations.md → "Release order").
+#
+# Why: Vercel deploys `main` automatically after merge. Merging code that
+# needs a new column before its migration is applied takes the site down
+# (the PlatformSettings.tagline incident).
+#
+# Secret-free and read-only: it compares the PR's commits with git and reads
+# its labels. No database credentials, no database connection, no
+# migrations. Kept separate from ci.yml so label changes re-run only this
+# check, not the full CI build. Make "Migration gate" a required status
+# check on `main` for it to block merging.
+name: Migration gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  migration-gate:
+    name: Migration gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so the base...head comparison finds the merge base.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require db-migrated label when prisma/migrations changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # "true" or "false"; read from the event payload at run time.
+          HAS_DB_MIGRATED_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'db-migrated') }}
+        run: bash .github/scripts/migration-gate.sh

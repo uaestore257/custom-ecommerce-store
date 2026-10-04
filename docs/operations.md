@@ -177,24 +177,103 @@ Environment-variable inventory (names only):
 
 ### Deploying
 
-1. Use the Node 22 runtime and run `npm ci` (which runs `prisma generate`),
-   `npm exec prisma -- validate`, `npm run typecheck`, `npm run lint`,
-   `npm run test:setup`, `npm run test:unit`, and `npm run build`.
-2. Take and verify a database backup before migration (below). From an
-   intentional interactive release terminal, set `NODE_ENV=production`,
-   provide `DIRECT_URL` from the deployment secret store (and optionally
-   `DATABASE_URL` for the guard's target comparison), ensure
-   `TEST_DATABASE_URL` is not set, then run
-   `npm run db:deploy:production`. The command requires `DIRECT_URL`, rejects
-   loopback and dev/test/local/demo migration targets, prints the database
-   name/host/port from `DIRECT_URL` (never credentials), and requires typing
-   `DEPLOY <database>` before applying checked-in migrations. The Vercel build
-   runs `next build` and does not apply database migrations.
-3. Deploy the built application and start it with `npm run start`. Verify
-   `https://<admin host>/api/auth/ok` and representative storefront routes
-   before directing production traffic.
-4. Create the one platform owner: `npm run platform:create-owner`.
-5. Sign in on `ADMIN_HOST` and create each store with its Store Owner
+Vercel deploys `main` automatically: merging a pull request into `main`
+starts a production deployment of that code. Database migrations are not
+part of that deployment; they are applied separately by the authorized
+release operator. Application code that needs a new migration therefore must
+not reach `main` until the migration is applied to production; otherwise the
+new code runs against the old schema and fails (for example "column ... does
+not exist"). Write migrations as additive changes (new tables, nullable or
+defaulted columns) so the currently deployed code keeps working after the
+migration is applied ahead of it; a migration that would break the running
+code needs its own planned release.
+
+#### Release order
+
+1. **Prepare and validate the pull request.** Use the Node 22 runtime and run
+   `npm ci` (which runs `prisma generate`), `npm exec prisma -- validate`,
+   `npm run typecheck`, `npm run lint`, `npm run test:setup`,
+   `npm run test:unit`, and `npm run build`. CI runs the same checks.
+2. **If the pull request changes `prisma/migrations/`, apply the production
+   migration BEFORE merging.** Take and verify a database backup first
+   (below), then run `npm run db:deploy:production` from an interactive
+   release terminal (see "Production migration terminal" below). This is the
+   only supported way to migrate production.
+3. **Verify migration status (read-only).** In the same release terminal run
+   `npx prisma migrate status`. It reports whether every checked-in
+   migration has been applied ("Database schema is up to date!"); it only
+   reads status and never applies, changes or resets anything. Then the
+   release operator adds the `db-migrated` label to the pull request.
+4. **Merge the pull request into `main`.** The "Migration gate" check blocks
+   a pull request that changes `prisma/migrations/` until it has the
+   `db-migrated` label.
+5. **Vercel deploys `main` automatically.** Its install and build
+   (`npm ci`, `npm run build`) never apply migrations.
+6. **Smoke-test production.** Verify `https://<admin host>/api/auth/ok`, the
+   platform website, sign-in and representative storefront routes, and check
+   the Vercel function logs for errors.
+
+Rules:
+
+* A pull request that changes `prisma/migrations/` must never be merged
+  before its migration has been applied to production.
+* `npm run db:deploy:production` is the official production migration
+  mechanism. Never run production migrations from the Vercel install or
+  build command.
+* Never run `prisma db push` or `prisma migrate reset` against production.
+* Only the authorized release operator adds the `db-migrated` label, and only
+  after `npm run db:deploy:production` succeeded and
+  `npx prisma migrate status` reports the database is up to date. The label
+  is that person's confirmation; the check cannot verify the database
+  itself.
+* The gate is enforced only when "Migration gate" is a required status check
+  in the `main` branch protection rule, and the `db-migrated` label must
+  exist in the repository (Issues → Labels).
+
+`npm run db:deploy:production` has safety guards: it requires an interactive
+terminal, `NODE_ENV=production` and `DIRECT_URL`; refuses to run while
+`TEST_DATABASE_URL` is set; rejects loopback and dev/test/local/demo
+migration targets (also checking `DATABASE_URL` when set); prints the
+database name/host/port from `DIRECT_URL` (never credentials); and requires
+typing `DEPLOY <database>` before applying checked-in migrations with
+`prisma migrate deploy`.
+
+#### Production migration terminal
+
+The migration command and the Prisma CLI load the local `.env` file. A
+development `.env` normally contains a localhost `DATABASE_URL` and a
+`TEST_DATABASE_URL`, so the guard correctly refuses ("TEST_DATABASE_URL is
+configured" or a loopback target), even when `DIRECT_URL` is set in the
+terminal. Values set in the terminal take precedence over `.env`, but a
+variable cannot be cleared that way: in Windows PowerShell,
+`$env:TEST_DATABASE_URL = ""` removes the variable and `.env` then supplies
+it again. Move `.env` aside for the release instead of editing it.
+
+Windows PowerShell, from the repository root:
+
+```powershell
+Rename-Item .env .env.release-backup
+$env:NODE_ENV = "production"
+$env:DIRECT_URL = "<production direct (non-pooled) Neon URL from the secret store>"
+# Optional: lets the guard also check the runtime URL.
+$env:DATABASE_URL = "<production pooled Neon URL>"
+npm run db:deploy:production    # type DEPLOY <database> when prompted
+npx prisma migrate status       # read-only; must report the schema is up to date
+Remove-Item Env:DIRECT_URL, Env:DATABASE_URL, Env:NODE_ENV -ErrorAction SilentlyContinue
+Rename-Item .env.release-backup .env
+```
+
+macOS/Linux shells follow the same steps (`mv .env .env.release-backup`,
+`export NODE_ENV=production DIRECT_URL=...`, then `unset` and move `.env`
+back). Close the release terminal afterwards so production credentials do
+not remain in its environment, and never write them into `.env`.
+
+#### First-time setup
+
+After the first production deployment:
+
+1. Create the one platform owner: `npm run platform:create-owner`.
+2. Sign in on `ADMIN_HOST` and create each store with its Store Owner
    credentials; legacy owner memberships must be provisioned through that
    store's protected Settings page. Do not send passwords by email or place
    them in deployment variables.
