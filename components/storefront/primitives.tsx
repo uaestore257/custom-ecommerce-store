@@ -153,9 +153,9 @@ export interface SfCrumb {
 }
 
 /** Breadcrumb trail; the separator mirrors under dir="rtl". */
-export function SfBreadcrumbs({ items, className = "" }: { items: SfCrumb[]; className?: string }) {
+export function SfBreadcrumbs({ items, className = "", label = "Breadcrumb" }: { items: SfCrumb[]; className?: string; label?: string }) {
   return (
-    <nav aria-label="Breadcrumb" className={className}>
+    <nav aria-label={label} className={className}>
       <ol className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
         {items.map((item, index) => (
           <li key={`${item.label}-${index}`} className="flex items-center gap-1">
