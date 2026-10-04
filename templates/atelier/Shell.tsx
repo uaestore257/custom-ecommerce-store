@@ -1,10 +1,10 @@
 import Link from "next/link";
+import { CartDrawerProvider } from "@/components/storefront/CartDrawerContext";
 import { paymentMethodLabel } from "@/lib/config";
 import { POLICIES } from "@/lib/policies";
 import { categoryPath } from "@/lib/storefront-urls";
 import type { TemplateShellProps } from "../types";
 import { AtelierCartDrawer } from "./CartDrawer";
-import { CartDrawerProvider } from "./CartDrawerContext";
 import { AtelierHeader } from "./Header";
 import { ATELIER_CONTAINER, atelierEyebrow } from "./styles";
 

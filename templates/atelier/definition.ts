@@ -19,7 +19,11 @@ export const atelierDefinition = {
     design: {
       navigation: "editorial-split",
       density: "airy",
-      typography: { heading: "Cormorant Garamond", body: "Hanken Grotesk" },
+      typography: {
+        heading: "Cormorant Garamond",
+        body: "Hanken Grotesk",
+        arabic: { heading: "Amiri", body: "IBM Plex Sans Arabic" },
+      },
       imageTreatment: "Full-bleed, edge-to-edge photography without frames",
       cardImageRatio: "4:5",
       cardStyle: "Frameless image with serif name and quiet price; no quick add",

@@ -7,7 +7,7 @@ import { Menu, X } from "lucide-react";
 import { useCartCount } from "@/lib/storefront";
 import type { StorefrontCategory, StorefrontStore } from "@/lib/storefront-types";
 import { categoryPath } from "@/lib/storefront-urls";
-import { useCartDrawer } from "./CartDrawerContext";
+import { useCartDrawer } from "@/components/storefront/CartDrawerContext";
 import { ATELIER_CONTAINER, atelierEyebrow } from "./styles";
 
 const navLink =

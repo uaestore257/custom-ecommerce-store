@@ -9,13 +9,25 @@ import {
   TEMPLATE_KEYS,
 } from "../../lib/templates/registry";
 import {
+  DEFAULT_CONTROL_TOKENS,
   defaultThemeSelection,
   normalizeThemeConfig,
   readableForeground,
   resolveAccentColor,
+  resolveControlTokens,
+  semanticCssVariables,
   themeCssVariables,
   validateThemeConfigInput,
 } from "../../lib/templates/theme";
+import {
+  CART_PRESENTATIONS,
+  cartDescription,
+  cartLabel,
+  MOTION_LEVELS,
+  motionLabel,
+  NAVIGATION_STYLES,
+  navigationLabel,
+} from "../../lib/templates/vocabulary";
 
 const TOKEN_KEYS = [
   "background", "foreground", "muted", "mutedForeground", "border", "surface",
@@ -48,6 +60,36 @@ test("every registered template resolves to a complete, self-consistent definiti
     }
     assert.match(theme.fallbackAccent, CSS_COLOR);
   }
+});
+
+test("manifests use only the shared design vocabulary, and every value has a label", () => {
+  for (const key of TEMPLATE_KEYS) {
+    const { design } = getTemplateDefinition(key).manifest;
+    assert.ok(Object.hasOwn(NAVIGATION_STYLES, design.navigation), `${key}: navigation`);
+    assert.ok(Object.hasOwn(CART_PRESENTATIONS, design.cartPresentation), `${key}: cart`);
+    assert.ok(Object.hasOwn(MOTION_LEVELS, design.motion), `${key}: motion`);
+    assert.ok(design.typography.arabic.heading && design.typography.arabic.body, `${key}: Arabic-capable faces`);
+  }
+  for (const style of Object.keys(NAVIGATION_STYLES) as (keyof typeof NAVIGATION_STYLES)[]) {
+    assert.ok(navigationLabel(style) && navigationLabel(style) !== style, `${style}: has a human label`);
+  }
+  for (const presentation of Object.keys(CART_PRESENTATIONS) as (keyof typeof CART_PRESENTATIONS)[]) {
+    assert.ok(cartLabel(presentation) && cartDescription(presentation), presentation);
+  }
+  for (const level of Object.keys(MOTION_LEVELS) as (keyof typeof MOTION_LEVELS)[]) assert.ok(motionLabel(level), level);
+  // The vocabulary planned for Phase 3 exists alongside today's values.
+  assert.deepEqual(Object.keys(NAVIGATION_STYLES), [
+    "inline-bar", "editorial-split", "overlay-menu", "chip-rail", "search-first-tabbar", "centered-stack",
+  ]);
+  assert.deepEqual(Object.keys(CART_PRESENTATIONS), ["page", "drawer-and-page", "sheet-and-page"]);
+  assert.deepEqual(Object.keys(MOTION_LEVELS), ["none", "subtle", "expressive"]);
+  // Existing templates keep their labels on the public comparison table.
+  assert.equal(navigationLabel("inline-bar"), "Inline bar");
+  assert.equal(navigationLabel("editorial-split"), "Editorial split");
+  assert.equal(cartLabel("page"), "Cart page");
+  assert.equal(cartLabel("drawer-and-page"), "Drawer and cart page");
+  assert.equal(cartDescription("page"), "Dedicated cart page");
+  assert.equal(cartDescription("drawer-and-page"), "Cart drawer and cart page");
 });
 
 test("a valid key resolves; unknown or malformed keys fall back to the deterministic default", () => {
@@ -112,6 +154,62 @@ test("CSS variables come only from template constants and a validated accent", (
     assert.equal(resolveAccentColor(atelier, bad), atelier.theme.fallbackAccent, String(bad));
     assert.equal(themeCssVariables(atelier, defaultThemeSelection(atelier), bad)["--sf-accent"], atelier.theme.fallbackAccent);
   }
+});
+
+const CSS_LENGTH = /^(0|\d*\.?\d+(px|rem|em))$/;
+
+test("control tokens: defaults reproduce the original shared look, and every template's values are safe constants", () => {
+  assert.deepEqual(DEFAULT_CONTROL_TOKENS, {
+    textTransform: "none",
+    letterSpacing: "normal",
+    fontWeight: "600",
+    height: { sm: "2.25rem", md: "2.75rem", lg: "3rem" },
+    borderWidth: "1px",
+    inputStyle: "boxed",
+  });
+  for (const key of TEMPLATE_KEYS) {
+    const { theme } = getTemplateDefinition(key);
+    const controls = resolveControlTokens(theme.controls);
+    assert.ok(["none", "uppercase"].includes(controls.textTransform), key);
+    assert.ok(controls.letterSpacing === "normal" || CSS_LENGTH.test(controls.letterSpacing), key);
+    assert.ok(["400", "500", "600", "700"].includes(controls.fontWeight), key);
+    for (const height of Object.values(controls.height)) assert.match(height, CSS_LENGTH, key);
+    assert.match(controls.borderWidth, CSS_LENGTH, key);
+    assert.ok(["boxed", "underline"].includes(controls.inputStyle), key);
+  }
+  // Classic and Atelier declare none: they render exactly as before.
+  assert.equal(getTemplateDefinition("classic").theme.controls, undefined);
+  assert.equal(getTemplateDefinition("atelier").theme.controls, undefined);
+});
+
+test("control tokens become --sf-control-* / --sf-input-* variables; partial overrides keep the other defaults", () => {
+  const classic = getTemplateDefinition("classic");
+  const tokens = classic.theme.palettes.light.tokens;
+  const boxed = semanticCssVariables(tokens, "#0f766e", classic.theme.radius);
+  assert.equal(boxed["--sf-control-font-weight"], "600");
+  assert.equal(boxed["--sf-control-height-md"], "2.75rem");
+  assert.equal(boxed["--sf-input-border-width"], "1px");
+  assert.equal(boxed["--sf-input-radius"], classic.theme.radius.control);
+  assert.equal(boxed["--sf-input-background"], tokens.surface);
+  assert.equal(boxed["--sf-input-padding-x"], "0.75rem");
+
+  const underline = semanticCssVariables(tokens, "#0f766e", classic.theme.radius, {
+    textTransform: "uppercase",
+    letterSpacing: "0.18em",
+    height: { lg: "3.5rem" },
+    borderWidth: "2px",
+    inputStyle: "underline",
+  });
+  assert.equal(underline["--sf-control-text-transform"], "uppercase");
+  assert.equal(underline["--sf-control-letter-spacing"], "0.18em");
+  assert.equal(underline["--sf-control-font-weight"], "600", "unspecified tokens keep their default");
+  assert.equal(underline["--sf-control-height-sm"], "2.25rem");
+  assert.equal(underline["--sf-control-height-lg"], "3.5rem");
+  assert.equal(underline["--sf-input-border-width"], "0 0 2px");
+  assert.equal(underline["--sf-input-radius"], "0");
+  assert.equal(underline["--sf-input-background"], "transparent");
+  assert.equal(underline["--sf-input-padding-x"], "0");
+  for (const value of Object.values(underline)) assert.doesNotMatch(value, /[;{}<>"'()]|url|expression|javascript/i);
 });
 
 test("accent foreground picks the more readable of white and near-black", () => {

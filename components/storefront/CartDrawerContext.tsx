@@ -2,8 +2,9 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
-// Open/close state for Atelier's cart drawer, so the header and any
-// "Add to bag" button (e.g. on the product page) share one drawer.
+// Open/close state for a template's cart drawer or sheet, so its header and
+// any add-to-cart button (e.g. on the product page) share one surface.
+// Templates render the surface itself with StorefrontOverlay (./Overlay).
 
 interface DrawerState {
   open: boolean;

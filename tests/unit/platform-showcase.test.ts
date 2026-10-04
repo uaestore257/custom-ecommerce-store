@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { test } from "node:test";
 import {
   buildDemoStoreLinks,
+  isShowcasedTemplate,
   numberWord,
   platformFacts,
   SHOWCASE_ORDER,
@@ -11,9 +13,7 @@ import {
 import { getTemplateDefinition, TEMPLATE_KEYS } from "../../lib/templates/registry";
 import { readableForeground, semanticCssVariables, themeCssVariables } from "../../lib/templates/theme";
 
-test("the public site presents every registered template exactly once, each with portfolio copy", () => {
-  assert.deepEqual([...SHOWCASE_ORDER].sort(), [...TEMPLATE_KEYS].sort());
-  assert.equal(new Set(SHOWCASE_ORDER).size, SHOWCASE_ORDER.length);
+test("every registered template has portfolio copy, showcased or not", () => {
   for (const key of TEMPLATE_KEYS) {
     const editorial = TEMPLATE_EDITORIAL[key];
     assert.ok(editorial.personality && editorial.idealFor, key);
@@ -75,15 +75,30 @@ test("themeCssVariables is unchanged by the semanticCssVariables extraction", ()
     for (const [palette, entry] of Object.entries(definition.theme.palettes)) {
       assert.deepEqual(
         themeCssVariables(definition, { palette }, "#123456"),
-        semanticCssVariables(entry.tokens, "#123456", definition.theme.radius),
+        semanticCssVariables(entry.tokens, "#123456", definition.theme.radius, definition.theme.controls),
         `${key}/${palette}`,
       );
     }
   }
 });
 
-test("every showcased template has portfolio case copy", () => {
-  for (const key of TEMPLATE_KEYS) {
+test("showcased templates are registered, listed once, with case copy and screenshots", () => {
+  assert.ok(SHOWCASE_ORDER.length > 0);
+  assert.equal(new Set(SHOWCASE_ORDER).size, SHOWCASE_ORDER.length);
+  for (const key of SHOWCASE_ORDER) {
+    assert.ok((TEMPLATE_KEYS as readonly string[]).includes(key), key);
+    assert.ok(isShowcasedTemplate(key), key);
     assert.ok(TEMPLATE_EDITORIAL[key].industry && TEMPLATE_EDITORIAL[key].headline, key);
+    // SHOWCASE_MEDIA (next/image static imports) is type-checked against
+    // SHOWCASE_ORDER; here we check the files it imports exist.
+    for (const kind of ["desktop", "tall", "mobile"]) {
+      assert.ok(existsSync(new URL(`../../public/showcase/${key}-${kind}.jpg`, import.meta.url)), `${key}-${kind}.jpg`);
+    }
   }
+});
+
+test("a registered template that is not showcased is simply not presented as work", () => {
+  const notShowcased = TEMPLATE_KEYS.filter((key) => !isShowcasedTemplate(key));
+  for (const key of notShowcased) assert.ok(!(SHOWCASE_ORDER as readonly string[]).includes(key));
+  assert.equal(SHOWCASE_ORDER.length + notShowcased.length, TEMPLATE_KEYS.length);
 });

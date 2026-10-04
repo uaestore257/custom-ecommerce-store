@@ -136,10 +136,20 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
 };
 
 /**
- * The order the public site presents templates in: the flagship furniture
- * template first. Must list every registered key exactly once (tested).
+ * The templates the public site presents as work, in order: the flagship
+ * furniture template first. A template joins this list once it has a demo
+ * store and screenshots (SHOWCASE_MEDIA is keyed by these keys, so a listed
+ * template without media is a type error). A registered template that is
+ * not listed here still has its editorial copy and specimen, and is still
+ * offered in the template explorer and the admin; it just isn't shown as a
+ * case study yet. Each key at most once (tested).
  */
-export const SHOWCASE_ORDER: readonly TemplateKey[] = ["atelier", "classic"];
+export const SHOWCASE_ORDER = ["atelier", "classic"] as const satisfies readonly TemplateKey[];
+export type ShowcasedTemplateKey = (typeof SHOWCASE_ORDER)[number];
+
+export function isShowcasedTemplate(key: TemplateKey): key is ShowcasedTemplateKey {
+  return (SHOWCASE_ORDER as readonly TemplateKey[]).includes(key);
+}
 
 /** Entry points into a live demo storefront. Every URL is absolute, on the demo store's own host. */
 export interface DemoStoreLinks {
@@ -183,7 +193,7 @@ export function buildDemoStoreLinks(
 }
 
 export interface TemplateShowcaseEntry {
-  key: TemplateKey;
+  key: ShowcasedTemplateKey;
   manifest: TemplateManifest;
   editorial: TemplateEditorial;
   /** The template's first public demo store, if the platform owner has marked one. */

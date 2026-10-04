@@ -6,28 +6,31 @@ import type { LucideIcon } from "lucide-react";
 // STOREFRONT PRIMITIVES — shared by every template and the shared pages
 // (checkout, contact, policies). They use ONLY the semantic storefront
 // tokens (app/globals.css), never a fixed palette, so each template's
-// colours, radii and fonts flow through automatically. The admin keeps
-// its own primitives in components/ui.tsx.
+// colours, radii, fonts and control language (button case, tracking,
+// weight, heights, border width, boxed or underlined inputs — the
+// --sf-control-* / --sf-input-* tokens from lib/templates/theme.ts) flow
+// through automatically. The admin keeps its own primitives in
+// components/ui.tsx.
 // ---------------------------------------------------------------
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: "min-h-9 px-3 text-sm",
-  md: "min-h-11 px-4 text-sm",
-  lg: "min-h-12 px-6 text-base",
+  sm: "min-h-[var(--sf-control-height-sm)] px-3 text-sm",
+  md: "min-h-[var(--sf-control-height-md)] px-4 text-sm",
+  lg: "min-h-[var(--sf-control-height-lg)] px-6 text-base",
 };
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary: "bg-accent text-accent-foreground hover:opacity-90",
-  secondary: "border border-border bg-surface text-foreground hover:bg-muted",
+  secondary: "border-[length:var(--sf-control-border-width)] border-border bg-surface text-foreground hover:bg-muted",
   ghost: "text-foreground hover:bg-muted",
   danger: "bg-destructive text-white hover:opacity-90",
 };
 
 export function sfButtonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md") {
-  return `inline-flex items-center justify-center gap-2 rounded-control font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_SIZES[size]} ${BUTTON_VARIANTS[variant]}`;
+  return `inline-flex items-center justify-center gap-2 rounded-control font-[number:var(--sf-control-font-weight)] [text-transform:var(--sf-control-text-transform)] tracking-[var(--sf-control-letter-spacing)] rtl:tracking-normal transition focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_SIZES[size]} ${BUTTON_VARIANTS[variant]}`;
 }
 
 export function SfLinkButton({
@@ -40,7 +43,7 @@ export function SfLinkButton({
 }
 
 export function sfInputClass(hasError = false) {
-  return `block w-full min-w-0 rounded-control border bg-surface px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-focus/30 sm:text-sm ${
+  return `block w-full min-w-0 rounded-[var(--sf-input-radius)] border-[length:var(--sf-input-border-width)] bg-[color:var(--sf-input-background)] px-[var(--sf-input-padding-x)] py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-focus/30 sm:text-sm ${
     hasError ? "border-destructive" : "border-border focus:border-focus"
   }`;
 }

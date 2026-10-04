@@ -2,7 +2,7 @@
 
 import { ProductPurchase } from "@/components/storefront/CartControls";
 import type { CartProductRef } from "@/lib/storefront-types";
-import { useCartDrawer } from "./CartDrawerContext";
+import { useCartDrawer } from "@/components/storefront/CartDrawerContext";
 import { atelierButton } from "./styles";
 
 /** Shared purchase behaviour in Atelier's language: "Add to bag" opens the drawer. */
