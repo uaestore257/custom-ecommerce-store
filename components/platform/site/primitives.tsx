@@ -38,7 +38,7 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
 };
 
 export function buttonClass(variant: ButtonVariant = "solid") {
-  return `studio-shine group relative inline-flex min-h-12 items-center justify-center gap-3 overflow-hidden px-6 text-sm font-medium transition-[background-color,color,border-color,transform,filter] duration-300 active:scale-[0.98] ${focusRing} ${BUTTON_VARIANTS[variant]}`;
+  return `studio-shine group relative inline-flex min-h-12 items-center justify-center gap-3 overflow-hidden rounded-md px-6 text-sm font-medium transition-[background-color,color,border-color,transform,filter] duration-300 active:scale-[0.98] ${focusRing} ${BUTTON_VARIANTS[variant]}`;
 }
 
 const arrowMotion = "h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 rtl:rotate-180 rtl:group-hover:-translate-x-1";
