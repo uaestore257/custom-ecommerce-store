@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { ContactView } from "@/components/storefront/ContactView";
-import { BusinessContactPage } from "@/components/platform/BusinessSite";
+import { ContactPage as BusinessContactPage } from "@/components/platform/site/pages/ContactPage";
+import { getDb } from "@/lib/server/db";
+import { getPlatformName } from "@/lib/server/platform-brand";
+import { platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
 import { headers } from "next/headers";
-import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { storefrontPageMetadata } from "@/lib/server/storefront/seo";
 
@@ -12,8 +15,11 @@ export async function generateMetadata(): Promise<Metadata> {
     return { title: "Contact", robots: { index: false, follow: false } };
   }
   if (isPlatformBusinessHost(host)) {
-    const canonical = platformRootUrl("/contact", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
-    return { title: "Contact", alternates: canonical ? { canonical } : undefined };
+    return platformSitePageMetadata({
+      path: "/contact",
+      title: "Start a project",
+      description: "Tell us about your products and customers, and we'll show you how a premium store on the platform would work for you.",
+    });
   }
   return storefrontPageMetadata({
     title: "Contact",
@@ -24,7 +30,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ContactPage() {
   if (isPlatformBusinessHost((await headers()).get("host") ?? "")) {
-    return <BusinessContactPage />;
+    const settings = await getDb().platformSettings.findUnique({ where: { id: 1 }, select: { contactEmail: true } });
+    return <BusinessContactPage platformName={await getPlatformName()} email={settings?.contactEmail?.trim() || null} />;
   }
   const { context } = await requireStorefrontPage();
   return <ContactView store={context.store} />;

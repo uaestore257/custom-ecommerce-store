@@ -98,3 +98,25 @@ A demo store is an ordinary tenant with `isDemo = true` (set by the platform
 owner on the store's Design page). It shows a demonstration notice, is
 excluded from indexing (`noindex`, robots `Disallow: /`, empty sitemap) and is
 linked from `/admin/template` and each store's Design page as a live demo.
+
+## Public business site (portfolio)
+
+The bare `PLATFORM_ROOT_DOMAIN` (`/`, `/portfolio`, `/services`, `/about`,
+`/contact`) presents every registered template. It is not a storefront and
+not a second design system:
+
+- It paints itself through the same semantic roles (`semanticCssVariables()`
+  in `lib/templates/theme.ts`) with its own constant "studio" values
+  (`lib/platform/showcase.ts`).
+- Template **specimens** (`components/platform/site/specimens/`) are
+  static miniatures painted with each template's own palette tokens, radii
+  and fonts. They load no data and have no cart or links.
+- Live demo links point only at stores marked `isDemo` (ACTIVE,
+  non-archived), via `lib/server/platform/showcase.ts`. Client stores are
+  never listed.
+
+When adding a template, also add its portfolio copy (`TEMPLATE_EDITORIAL`
+and `SHOWCASE_ORDER` in `lib/platform/showcase.ts`) and its specimen
+(`SPECIMENS` / `FONTS` in `components/platform/site/specimens/TemplateSpecimen.tsx`);
+the `Record<TemplateKey, …>` types and `tests/unit/platform-showcase.test.ts`
+flag anything missing.

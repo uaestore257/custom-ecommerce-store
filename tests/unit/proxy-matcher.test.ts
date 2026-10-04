@@ -102,7 +102,7 @@ test("production platform root serves portfolio pages and central Store Admin lo
   (process.env as Record<string, string | undefined>).NODE_ENV = "production";
   const rootRequest = (path: string) =>
     new NextRequest(`http://localhost:3000${path}`, { headers: { host: "localhost:3000" } });
-  for (const path of ["/", "/about", "/services", "/portfolio", "/contact"]) {
+  for (const path of ["/", "/about", "/services", "/portfolio", "/contact", "/robots.txt", "/sitemap.xml"]) {
     assert.equal(proxyModule.proxy(rootRequest(path)).headers.get("x-middleware-next"), "1", path);
   }
   assert.equal(proxyModule.proxy(rootRequest("/shop")).status, 404);

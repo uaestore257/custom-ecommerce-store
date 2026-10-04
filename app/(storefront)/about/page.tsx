@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { AboutView } from "@/components/storefront/AboutView";
-import { BusinessContentPage } from "@/components/platform/BusinessSite";
+import { AboutPage as BusinessAboutPage } from "@/components/platform/site/pages/AboutPage";
 import { getPlatformName } from "@/lib/server/platform-brand";
+import { platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
-import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
 
 export async function generateMetadata(): Promise<Metadata> {
   const host = (await headers()).get("host") ?? "";
@@ -14,8 +15,11 @@ export async function generateMetadata(): Promise<Metadata> {
     return { title: `About ${await getPlatformName()}`, robots: { index: false, follow: false } };
   }
   if (isPlatformBusinessHost(host)) {
-    const canonical = platformRootUrl("/about", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
-    return { title: `About ${await getPlatformName()}`, alternates: canonical ? { canonical } : undefined };
+    return platformSitePageMetadata({
+      path: "/about",
+      title: "About",
+      description: "A commerce studio with its own platform: storefronts designed as systems, run on one secure foundation where every store stands alone.",
+    });
   }
   const context = await getPublicStorefrontSeoContext();
   if (!context) return { title: "About", robots: { index: false, follow: false } };
@@ -29,13 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function AboutPage() {
   if (isPlatformBusinessHost((await headers()).get("host") ?? "")) {
-    return (
-      <BusinessContentPage
-        title={`About ${await getPlatformName()}`}
-        eyebrow="About"
-        description="We help businesses launch and manage their own online stores."
-      />
-    );
+    return <BusinessAboutPage platformName={await getPlatformName()} />;
   }
   const { context } = await requireStorefrontPage();
   return <AboutView {...context} />;
