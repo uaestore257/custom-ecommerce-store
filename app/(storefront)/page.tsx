@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { BusinessHomePage } from "@/components/platform/BusinessSite";
+import { HomePage as BusinessHomePage } from "@/components/platform/site/pages/HomePage";
 import { getDb } from "@/lib/server/db";
 import { getPlatformName } from "@/lib/server/platform-brand";
+import { PLATFORM_SITE_DESCRIPTION, platformOrganizationJsonLd, platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
 import { getFeaturedProducts, getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
-import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
+import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
 import { buildStoreOrganizationJsonLd, serializeJsonLd } from "@/lib/storefront-seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -14,17 +15,12 @@ export async function generateMetadata(): Promise<Metadata> {
   const isBusinessHost = isPlatformBusinessHost(host);
   const isPathPreviewHost = isStorefrontPathPreviewHost(host);
   if (isBusinessHost && !isPathPreviewHost) {
-    const canonical = platformRootUrl("/", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
-    return {
-      title: { absolute: await getPlatformName() },
-      description: "Ecommerce services and store portfolio.",
-      alternates: canonical ? { canonical } : undefined,
-    };
+    return platformSitePageMetadata({ path: "/", description: PLATFORM_SITE_DESCRIPTION });
   }
   if (isPathPreviewHost && !(await getRequestStorefront())) {
     return {
       title: { absolute: await getPlatformName() },
-      description: "Ecommerce services and store portfolio.",
+      description: PLATFORM_SITE_DESCRIPTION,
       robots: { index: false, follow: false },
     };
   }
@@ -43,7 +39,15 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function Home() {
   const host = (await headers()).get("host") ?? "";
   const isBusinessHost = isPlatformBusinessHost(host);
-  if (isBusinessHost && !isStorefrontPathPreviewHost(host)) return <BusinessHomePage />;
+  if (isBusinessHost && !isStorefrontPathPreviewHost(host)) {
+    const organization = await platformOrganizationJsonLd();
+    return (
+      <>
+        {organization ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(organization) }} /> : null}
+        <BusinessHomePage />
+      </>
+    );
+  }
   if (isBusinessHost && !(await getRequestStorefront())) return <BusinessHomePage />;
 
   const { context, template } = await requireStorefrontPage();

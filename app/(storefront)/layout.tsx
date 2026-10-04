@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { isConfiguredAdminHost } from "@/lib/auth/constants";
-import { BusinessSiteShell } from "@/components/platform/BusinessSite";
+import { SiteShell } from "@/components/platform/site/SiteShell";
 import { StorefrontRoot, StorefrontUnavailable } from "@/components/storefront/StorefrontRoot";
 import { getPlatformName } from "@/lib/server/platform-brand";
+import { PLATFORM_SITE_DESCRIPTION } from "@/lib/server/platform/site-metadata";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
@@ -19,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       metadataBase: origin ? new URL(origin) : undefined,
       title: { default: name, template: `%s | ${name}` },
-      description: "Ecommerce services and store portfolio.",
+      description: PLATFORM_SITE_DESCRIPTION,
     };
   }
   const context = await getPublicStorefrontSeoContext();
@@ -42,9 +43,9 @@ export default async function StorefrontLayout({ children }: LayoutProps<"/">) {
   const isAdminHost = isConfiguredAdminHost(host, process.env.ADMIN_HOST ?? "");
   const isBusinessHost = isPlatformBusinessHost(host);
   const isPathPreviewHost = isStorefrontPathPreviewHost(host);
-  if (isBusinessHost && !isPathPreviewHost) return <BusinessSiteShell>{children}</BusinessSiteShell>;
+  if (isBusinessHost && !isPathPreviewHost) return <SiteShell>{children}</SiteShell>;
   const context = await getRequestStorefront();
-  if (isBusinessHost && !context) return <BusinessSiteShell>{children}</BusinessSiteShell>;
+  if (isBusinessHost && !context) return <SiteShell>{children}</SiteShell>;
   if (!context) {
     return (
       <StorefrontUnavailable
