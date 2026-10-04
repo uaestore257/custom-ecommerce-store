@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Check, Minus, Plus, ShoppingBag } from "lucide-react";
-import { addToCart, useQuantityInCart } from "@/lib/storefront";
+import { addToCart, useQuantityInCart, useStorefrontMessages } from "@/lib/storefront";
 import type { CartProductRef } from "@/lib/storefront-types";
 import { sfButtonClass } from "./primitives";
 
@@ -15,7 +15,7 @@ export function QuantitySelector({
   min = 1,
   max,
   onChange,
-  label = "Quantity",
+  label,
   className = "",
 }: {
   value: number;
@@ -25,12 +25,13 @@ export function QuantitySelector({
   label?: string;
   className?: string;
 }) {
+  const t = useStorefrontMessages();
   const button =
     "flex h-11 w-11 items-center justify-center text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:h-10 sm:w-10";
   return (
     <div
       role="group"
-      aria-label={label}
+      aria-label={label ?? t.quantity}
       className={`inline-flex items-center overflow-hidden rounded-control border-[length:var(--sf-control-border-width)] border-border bg-surface ${className}`}
     >
       <button
@@ -38,7 +39,7 @@ export function QuantitySelector({
         className={button}
         onClick={() => onChange(Math.max(min, value - 1))}
         disabled={value <= min}
-        aria-label="Decrease quantity"
+        aria-label={t.decreaseQuantity}
       >
         <Minus className="h-4 w-4" aria-hidden />
       </button>
@@ -50,7 +51,7 @@ export function QuantitySelector({
         className={button}
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={value >= max}
-        aria-label="Increase quantity"
+        aria-label={t.increaseQuantity}
       >
         <Plus className="h-4 w-4" aria-hidden />
       </button>
@@ -72,7 +73,7 @@ export function AddToCartButton({
   quantity = 1,
   size = "md",
   compact = false,
-  label = "Add to cart",
+  label,
   variant = "primary",
   onAdded,
   className = "",
@@ -92,6 +93,7 @@ export function AddToCartButton({
   /** A template's own button style, replacing the shared one (behaviour is unchanged). */
   buttonClassName?: string;
 }) {
+  const t = useStorefrontMessages();
   const inCart = useQuantityInCart(product.id);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -107,15 +109,15 @@ export function AddToCartButton({
     return (
       <div className={className}>
         <button type="button" disabled className={buttonClassName ?? `${sfButtonClass("secondary", size)} ${sizing}`}>
-          Out of stock
+          {t.outOfStock}
         </button>
       </div>
     );
   }
 
   const reachedLimit = inCart >= product.stock;
-  const added = message === "Added";
-  const text = reachedLimit ? (compact ? "Max in cart" : "All stock in cart") : added ? "Added" : label;
+  const added = message === t.added;
+  const text = reachedLimit ? (compact ? t.maxInCart : t.allStockInCart) : added ? t.added : (label ?? t.addToCart);
 
   return (
     <div className={className}>
@@ -126,10 +128,10 @@ export function AddToCartButton({
         onClick={() => {
           const result = addToCart(product, quantity, shownStoreId);
           if (result.ok) {
-            setMessage("Added");
+            setMessage(t.added);
             onAdded?.();
-          } else if (result.reason === "out-of-stock") setMessage("No more stock available");
-          else setMessage("This product belongs to another store");
+          } else if (result.reason === "out-of-stock") setMessage(t.noMoreStock);
+          else setMessage(t.otherStoreProduct);
         }}
       >
         {added ? (
@@ -140,7 +142,7 @@ export function AddToCartButton({
         <span className="truncate">{text}</span>
       </button>
       <p className="sr-only" aria-live="polite">
-        {message === "Added" ? "Added to cart" : (message ?? "")}
+        {message === t.added ? t.addedToCart : (message ?? "")}
       </p>
       {message && !added && <p className="mt-1.5 text-xs text-destructive">{message}</p>}
     </div>
@@ -163,6 +165,7 @@ export function ProductPurchase({
   className?: string;
   buttonClassName?: string;
 }) {
+  const t = useStorefrontMessages();
   const inCart = useQuantityInCart(product.id);
   const [quantity, setQuantity] = useState(1);
   const available = Math.max(0, product.stock - inCart);
@@ -186,7 +189,7 @@ export function ProductPurchase({
       </div>
       {inCart > 0 && (
         <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">
-          {inCart} already in your cart.
+          {t.alreadyInCart(inCart)}
         </p>
       )}
     </div>

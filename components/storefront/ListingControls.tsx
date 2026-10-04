@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import type { ListingQuery, ListingSort } from "@/lib/storefront-types";
+import { useStorefrontMessages } from "@/lib/storefront";
 import { listingHref } from "@/lib/storefront-urls";
 
 // Shared listing behaviour (URL semantics live in lib/storefront-urls.ts).
@@ -20,7 +21,7 @@ export function SortSelect({
   basePath,
   query,
   className = "",
-  label = "Sort by",
+  label,
 }: {
   basePath: string;
   query: ListingQuery;
@@ -29,9 +30,10 @@ export function SortSelect({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const t = useStorefrontMessages();
   return (
     <label className="inline-flex items-center gap-2 text-sm">
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{label ?? t.sortBy}</span>
       <select
         value={query.sort}
         aria-busy={pending}
@@ -42,7 +44,7 @@ export function SortSelect({
       >
         {(Object.keys(SORT_LABELS) as ListingSort[]).map((sort) => (
           <option key={sort} value={sort}>
-            {SORT_LABELS[sort]}
+            {t.sort[sort]}
           </option>
         ))}
       </select>

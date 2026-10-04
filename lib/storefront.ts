@@ -9,6 +9,7 @@ import {
   type StoredSession,
 } from "./storefront-cart";
 import { clearStorefrontStoreCookie, setStorefrontStoreCookie } from "./storefront-cookie";
+import { DEFAULT_UI_LOCALE, messagesFor, storefrontMessages, type StorefrontMessages } from "./storefront-i18n";
 import type { CartProductRef, StorefrontContext, StorefrontProductSummary } from "./storefront-types";
 import { readJson, writeJson } from "./storage";
 
@@ -170,6 +171,16 @@ export const StorefrontDataContext = createContext<StorefrontContext | null>(nul
 /** The store this page serves (branding, template, navigation), or null outside a storefront. */
 export function useStorefrontContext(): StorefrontContext | null {
   return useContext(StorefrontDataContext);
+}
+
+/**
+ * Shared interface labels in this storefront page's UI language
+ * (lib/storefront-i18n.ts). English outside a storefront, and for every
+ * template that declares only English.
+ */
+export function useStorefrontMessages(): StorefrontMessages {
+  const context = useStorefrontContext();
+  return context ? storefrontMessages(context.store) : messagesFor(DEFAULT_UI_LOCALE);
 }
 
 /** Units in the cart for the shown store (no server read needed). */
