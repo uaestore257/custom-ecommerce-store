@@ -83,6 +83,7 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   restoreStoreAction: () => actions.restoreStoreAction(t.storeId),
   updateStoreDesignAction: () => actions.updateStoreDesignAction(t.storeId, { templateKey: "atelier", theme: { palette: "charcoal" } }),
   setStoreDemoAction: () => actions.setStoreDemoAction(t.storeId, true),
+  updateAgencySettingsAction: () => actions.updateAgencySettingsAction({ platformName: "Hijacked agency", contactEmail: "attacker@example.com" }),
   createProductAction: () => actions.createProductAction(t.storeId, { name: "Injected", sku: `INJ-${uid()}` }),
   updateProductAction: () => actions.updateProductAction(t.storeId, t.productId, { name: "Hijacked" }),
   deleteProductAction: () => actions.deleteProductAction(t.storeId, t.productId),
@@ -121,7 +122,7 @@ const seeded = () => calls({
 
 /** Everything a refused action could have changed. */
 async function snapshot() {
-  const [stores, products, categories, memberships, users, orders, variants, inquiries, audit] = await Promise.all([
+  const [stores, products, categories, memberships, users, orders, variants, inquiries, audit, agency] = await Promise.all([
     db.store.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true, status: true, archivedAt: true, updatedAt: true, templateKey: true, themeConfig: true, isDemo: true } }),
     db.product.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true, updatedAt: true } }),
     db.category.findMany({ orderBy: { id: "asc" }, select: { id: true, position: true, updatedAt: true } }),
@@ -130,9 +131,10 @@ async function snapshot() {
     db.order.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true, paymentStatus: true, updatedAt: true } }),
     db.productVariant.findMany({ orderBy: { id: "asc" }, select: { id: true, stock: true } }),
     db.inquiry.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true } }),
-    db.auditEvent.count({ where: { OR: [{ action: { startsWith: "store." } }, { action: { startsWith: "order." } }, { action: { startsWith: "inquiry." } }] } }),
+    db.auditEvent.count({ where: { OR: [{ action: { startsWith: "store." } }, { action: { startsWith: "order." } }, { action: { startsWith: "inquiry." } }, { action: { startsWith: "platform." } }] } }),
+    db.platformSettings.findUnique({ where: { id: 1 } }),
   ]);
-  return JSON.stringify({ stores, products, categories, memberships, users, orders, variants, inquiries, audit });
+  return JSON.stringify({ stores, products, categories, memberships, users, orders, variants, inquiries, audit, agency });
 }
 
 test("every exported action has a permission rule, and every rule an action", () => {

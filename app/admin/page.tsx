@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { requireAdminViewer } from "@/lib/server/admin/request";
 import { listAdminStores } from "@/lib/server/admin/stores";
+import { getPlatformName } from "@/lib/server/platform-brand";
 
 // The platform dashboard (all stores), or a store-member store chooser on
 // the central business root. Store-specific routes are always membership-checked.
@@ -39,5 +40,5 @@ export default async function AdminPage() {
     );
   }
   const stores = await listAdminStores(db);
-  return <AdminDashboard stores={stores} />;
+  return <AdminDashboard stores={stores} agencyName={await getPlatformName()} />;
 }

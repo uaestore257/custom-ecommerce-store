@@ -124,8 +124,8 @@ Nothing is reserved while it sits in a cart.
 
 The demo bar's admin/contact disclosure uses the configured `ADMIN_HOST` to
 show **Agency Admin** on the admin host and **Contact admin** on the storefront
-host. Set real platform contact details in `PLATFORM_CONTACT` in
-`lib/platform-contact.ts`; leave unused fields empty and they will not be shown.
+host. Its contact details come from **Agency settings** (the platform
+owner's `/admin/settings`); unset fields are not shown.
 
 ### Code layout
 

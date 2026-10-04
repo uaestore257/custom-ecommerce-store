@@ -106,9 +106,16 @@ test("seeded legacy store delivery rates are absent and payment settings remain 
   assert.equal(await db.paymentProviderAccount.count({ where: { storeId: "store-a" } }), 0, "no provider connected");
 });
 
-test("platform settings hold no commercial defaults", async () => {
+test("platform settings hold the agency profile and no commercial defaults", async () => {
   const settings = await db.platformSettings.findUniqueOrThrow({ where: { id: 1 } });
-  assert.deepEqual(Object.keys(settings).sort(), ["contactEmail", "id", "platformName", "updatedAt"]);
+  assert.deepEqual(Object.keys(settings).sort(), [
+    "aboutBody", "aboutTitle", "addressLine", "brandMarkUrl", "businessHours", "city", "contactEmail", "country",
+    "description", "enquiryEmail", "id", "logoIsWordmark", "logoUrl", "ogImageUrl", "phone", "platformName",
+    "postalCode", "region", "seoDescription", "seoTitle", "socialLinks", "tagline", "team", "updatedAt", "whatsapp",
+  ]);
+  // The co-founder recorded by the agency-profile migration.
+  assert.deepEqual(settings.team, [{ name: "Muhammad Hamad", title: "Co-Founder" }]);
+  assert.deepEqual(settings.socialLinks, []);
 });
 
 test("reference data includes 0-, 2- and 3-decimal currencies and RTL languages", async () => {

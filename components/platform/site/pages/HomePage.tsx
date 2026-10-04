@@ -1,4 +1,5 @@
 import { SERVICE_CATEGORIES } from "@/lib/platform/services";
+import { getAgencyProfile } from "@/lib/server/agency";
 import { getTemplateShowcase } from "@/lib/server/platform/showcase";
 import { ClosingCta } from "../ClosingCta";
 import { Hero } from "../home/Hero";
@@ -17,12 +18,12 @@ import { WorkCase } from "../work/WorkCase";
  * how to start.
  */
 export async function HomePage() {
-  const showcase = await getTemplateShowcase();
+  const [showcase, agency] = await Promise.all([getTemplateShowcase(), getAgencyProfile()]);
   const [lead, second] = showcase;
 
   return (
     <StudioMain>
-      {lead && <Hero lead={lead} second={second} />}
+      {lead && <Hero tagline={agency.tagline} lead={lead} second={second} />}
       <ServiceMarquee />
 
       <section aria-labelledby="work-title">

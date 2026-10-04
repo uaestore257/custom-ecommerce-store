@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type CSSProperties } from "react";
 import { ArrowRight, Menu, X } from "lucide-react";
+import { AgencyLogo } from "./AgencyLogo";
 import { CONTAINER, focusRing } from "./styles";
 
 export interface SiteNavItem {
@@ -22,7 +23,13 @@ function isCurrent(pathname: string, href: string) {
  * panel (button + aria-expanded/aria-controls; inert while closed) that
  * closes on Escape and on navigation.
  */
-export function SiteHeader({ platformName, items }: { platformName: string; items: readonly SiteNavItem[] }) {
+export interface SiteBrand {
+  name: string;
+  logoUrl?: string;
+  logoIsWordmark: boolean;
+}
+
+export function SiteHeader({ brand, items }: { brand: SiteBrand; items: readonly SiteNavItem[] }) {
   const pathname = usePathname();
   const [openFor, setOpenFor] = useState<string | null>(null);
   const open = openFor === pathname; // closes automatically when the page changes
@@ -44,11 +51,8 @@ export function SiteHeader({ platformName, items }: { platformName: string; item
   return (
     <header data-open={open || undefined} className="studio-header fixed inset-x-0 top-0 z-50 border-b">
       <div className={`${CONTAINER} flex h-16 items-center justify-between gap-6 lg:h-20`}>
-        <Link href="/" className={`group flex min-w-0 items-center gap-3 ${focusRing}`}>
-          <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center border border-accent/60 font-heading text-lg leading-none text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground">
-            {platformName.trim().charAt(0).toUpperCase() || "U"}
-          </span>
-          <span className="truncate font-heading text-2xl leading-none tracking-tight rtl:tracking-normal">{platformName}</span>
+        <Link href="/" className={`group flex min-w-0 items-center ${focusRing}`}>
+          <AgencyLogo name={brand.name} logoUrl={brand.logoUrl} logoIsWordmark={brand.logoIsWordmark} />
         </Link>
 
         <nav aria-label="Main" className="hidden lg:block">

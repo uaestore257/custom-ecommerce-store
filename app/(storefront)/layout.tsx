@@ -4,8 +4,9 @@ import Link from "next/link";
 import { isConfiguredAdminHost } from "@/lib/auth/constants";
 import { SiteShell } from "@/components/platform/site/SiteShell";
 import { StorefrontRoot, StorefrontUnavailable } from "@/components/storefront/StorefrontRoot";
+import { getAgencyProfile } from "@/lib/server/agency";
 import { getPlatformName } from "@/lib/server/platform-brand";
-import { PLATFORM_SITE_DESCRIPTION } from "@/lib/server/platform/site-metadata";
+import { platformSiteDescription } from "@/lib/server/platform/site-metadata";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
@@ -20,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       metadataBase: origin ? new URL(origin) : undefined,
       title: { default: name, template: `%s | ${name}` },
-      description: PLATFORM_SITE_DESCRIPTION,
+      description: await platformSiteDescription(),
     };
   }
   const context = await getPublicStorefrontSeoContext();
@@ -59,8 +60,19 @@ export default async function StorefrontLayout({ children }: LayoutProps<"/">) {
   }
 
   return (
-    <StorefrontRoot context={context} template={getStorefrontTemplate(context.store.templateKey)} isAdminHost={isAdminHost}>
+    <StorefrontRoot
+      context={context}
+      template={getStorefrontTemplate(context.store.templateKey)}
+      isAdminHost={isAdminHost}
+      agencyContact={isAdminHost ? await agencyPreviewContact() : undefined}
+    >
       {children}
     </StorefrontRoot>
   );
+}
+
+/** The agency's own public contact details for the platform host's preview bar (Agency settings). */
+async function agencyPreviewContact() {
+  const { contact } = await getAgencyProfile();
+  return { email: contact.email, phone: contact.phone, whatsapp: contact.whatsapp, address: contact.address.join(", ") || undefined };
 }

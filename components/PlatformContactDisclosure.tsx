@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { PLATFORM_CONTACT } from "@/lib/platform-contact";
 
 const summaryStyles = {
   toolbar:
@@ -10,17 +9,27 @@ const summaryStyles = {
     "inline-flex cursor-pointer list-none items-center gap-1 font-medium text-slate-700 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 [&::-webkit-details-marker]:hidden",
 } as const;
 
+/** The agency's public contact details (Agency settings), passed in by the server. */
+export interface PlatformContact {
+  email?: string;
+  phone?: string;
+  whatsapp?: string;
+  address?: string;
+}
+
 export function PlatformContactDisclosure({
   label,
+  contact = {},
   variant = "toolbar",
 }: {
   label: string;
+  contact?: PlatformContact;
   variant?: keyof typeof summaryStyles;
 }) {
-  const email = PLATFORM_CONTACT.email.trim();
-  const phone = PLATFORM_CONTACT.phone.trim();
-  const whatsapp = PLATFORM_CONTACT.whatsapp.trim();
-  const address = PLATFORM_CONTACT.address.trim();
+  const email = contact.email?.trim() ?? "";
+  const phone = contact.phone?.trim() ?? "";
+  const whatsapp = contact.whatsapp?.trim() ?? "";
+  const address = contact.address?.trim() ?? "";
   const whatsappDigits = whatsapp.replace(/\D/g, "");
   const hasContact = Boolean(email || phone || whatsappDigits || address);
 

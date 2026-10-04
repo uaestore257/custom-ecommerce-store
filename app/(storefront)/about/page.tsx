@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { AboutView } from "@/components/storefront/AboutView";
 import { AboutPage as BusinessAboutPage } from "@/components/platform/site/pages/AboutPage";
+import { getAgencyProfile } from "@/lib/server/agency";
 import { getPlatformName } from "@/lib/server/platform-brand";
 import { platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
@@ -33,7 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function AboutPage() {
   if (isPlatformBusinessHost((await headers()).get("host") ?? "")) {
-    return <BusinessAboutPage platformName={await getPlatformName()} />;
+    return <BusinessAboutPage agency={await getAgencyProfile()} />;
   }
   const { context } = await requireStorefrontPage();
   return <AboutView {...context} />;

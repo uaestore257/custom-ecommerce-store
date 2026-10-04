@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { PlatformContactDisclosure } from "@/components/PlatformContactDisclosure";
+import { PlatformContactDisclosure, type PlatformContact } from "@/components/PlatformContactDisclosure";
 import { themeCssVariables } from "@/lib/templates/theme";
 import type { StorefrontContext } from "@/lib/storefront-types";
 import type { StorefrontTemplate } from "@/templates/types";
@@ -19,11 +19,14 @@ export function StorefrontRoot({
   context,
   template,
   isAdminHost,
+  agencyContact,
   children,
 }: {
   context: StorefrontContext;
   template: StorefrontTemplate;
   isAdminHost: boolean;
+  /** Agency contact details for the platform host's preview bar (never store data). */
+  agencyContact?: PlatformContact;
   children: ReactNode;
 }) {
   const { store } = context;
@@ -43,7 +46,7 @@ export function StorefrontRoot({
         style={style}
         className="flex min-h-screen flex-col bg-background font-body text-foreground antialiased"
       >
-        {isAdminHost && <PreviewBar storeName={store.name} templateName={template.definition.manifest.name} />}
+        {isAdminHost && <PreviewBar storeName={store.name} templateName={template.definition.manifest.name} contact={agencyContact} />}
         {store.isDemo && (
           <p className="bg-foreground px-4 py-1.5 text-center text-xs text-background">
             Demonstration store — products and orders here are for showcasing the {template.definition.manifest.name} template.
@@ -60,7 +63,7 @@ export function StorefrontRoot({
  * preview of a store. A store's own site has no bar and no way to switch
  * to another store; the store is chosen by the site's hostname.
  */
-function PreviewBar({ storeName, templateName }: { storeName: string; templateName: string }) {
+function PreviewBar({ storeName, templateName, contact }: { storeName: string; templateName: string; contact?: PlatformContact }) {
   return (
     <div className="bg-slate-900 text-xs text-slate-200" dir="ltr" lang="en">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 font-sans sm:px-6">
@@ -70,7 +73,7 @@ function PreviewBar({ storeName, templateName }: { storeName: string; templateNa
             Previewing <strong className="text-white">{storeName}</strong> ({templateName} template) on the platform host.
           </span>
         </p>
-        <PlatformContactDisclosure label="Agency Admin" />
+        <PlatformContactDisclosure label="Agency Admin" contact={contact} />
       </div>
     </div>
   );

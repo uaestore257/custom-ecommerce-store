@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { requireAdminViewer } from "@/lib/server/admin/request";
 import { listAdminStores } from "@/lib/server/admin/stores";
+import { getPlatformName } from "@/lib/server/platform-brand";
 import { storefrontPreviewUrlForSlug, storeHostConfig } from "@/lib/store-host";
 
 export const metadata: Metadata = {
@@ -52,6 +53,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       role={viewer.kind === "store" && !viewer.portal ? viewer.role : null}
       portal={viewer.kind === "store-portal" || (viewer.kind === "store" && viewer.portal)}
       selectedStoreId={viewer.kind === "store" && viewer.portal ? viewer.store.id : null}
+      agencyName={await getPlatformName()}
     >
       {children}
     </AdminShell>

@@ -2,7 +2,9 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import { studioCssVariables } from "@/lib/platform/showcase";
 import { SERVICE_CATEGORIES } from "@/lib/platform/services";
-import { getPlatformName } from "@/lib/server/platform-brand";
+import { getAgencyProfile } from "@/lib/server/agency";
+import { AgencyLogo } from "./AgencyLogo";
+import { ContactDetails, hasContactDetails, SocialLinks } from "./AgencyDetails";
 import { studioFonts } from "./fonts";
 import { MotionRuntime } from "./motion/MotionRuntime";
 import { SiteHeader, type SiteNavItem } from "./SiteHeader";
@@ -24,10 +26,13 @@ const footerLink = `inline-flex min-h-9 items-center text-sm text-foreground/85 
 /**
  * The platform's public business site (the bare PLATFORM_ROOT_DOMAIN).
  * Paints the page with the night tone and display face, then header, the
- * page and footer. Pages render their own <StudioMain>.
+ * page and footer. Pages render their own <StudioMain>. Brand, contact and
+ * social details come from Agency settings (getAgencyProfile) only.
  */
 export async function SiteShell({ children }: { children: ReactNode }) {
-  const platformName = await getPlatformName();
+  const agency = await getAgencyProfile();
+  const brand = { name: agency.name, logoUrl: agency.logoUrl, logoIsWordmark: agency.logoIsWordmark };
+  const reach = hasContactDetails(agency.contact) || agency.social.length > 0;
   const style = {
     ...studioCssVariables("night"),
     "--sf-font-heading": studioFonts.heading,
@@ -44,16 +49,15 @@ export async function SiteShell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <MotionRuntime />
-      <SiteHeader platformName={platformName} items={NAVIGATION} />
+      <SiteHeader brand={brand} items={NAVIGATION} />
       <div className="flex-1">{children}</div>
       <footer className="border-t border-border">
         <div className={`${CONTAINER} grid gap-12 py-16 md:grid-cols-12 lg:py-20`}>
-          <div className="md:col-span-5">
-            <p className="font-heading text-4xl leading-tight sm:text-5xl">{platformName}</p>
-            <p className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">
-              An AI-first digital commerce studio. We design and build ecommerce stores, websites, apps and AI-powered systems
-              for ambitious businesses.
-            </p>
+          <div className={reach ? "md:col-span-4" : "md:col-span-5"}>
+            <Link href="/" className={`group inline-flex max-w-full ${focusRing}`}>
+              <AgencyLogo name={brand.name} logoUrl={brand.logoUrl} logoIsWordmark={brand.logoIsWordmark} size="lg" />
+            </Link>
+            <p className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">{agency.description}</p>
             <Link href="/contact" className={`group mt-8 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-accent ${focusRing}`}>
               Start a project
               <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1 rtl:rotate-180">
@@ -73,7 +77,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
               ))}
             </ul>
           </nav>
-          <nav aria-label="Services" className="md:col-span-3">
+          <nav aria-label="Services" className={reach ? "md:col-span-2" : "md:col-span-3"}>
             <p className={footerLabel}>What we build</p>
             <ul className="mt-4">
               {SERVICE_CATEGORIES.map((category) => (
@@ -85,6 +89,22 @@ export async function SiteShell({ children }: { children: ReactNode }) {
               ))}
             </ul>
           </nav>
+          {reach && (
+            <div className="md:col-span-2">
+              {hasContactDetails(agency.contact) && (
+                <>
+                  <p className={footerLabel}>Contact</p>
+                  <ContactDetails contact={agency.contact} className="mt-4 space-y-3" />
+                </>
+              )}
+              {agency.social.length > 0 && (
+                <>
+                  <p className={`${footerLabel} ${hasContactDetails(agency.contact) ? "mt-8" : ""}`}>Follow</p>
+                  <SocialLinks social={agency.social} className="mt-3" />
+                </>
+              )}
+            </div>
+          )}
           <div className="md:col-span-2">
             <p className={footerLabel}>Store owners</p>
             <ul className="mt-4">
@@ -98,7 +118,7 @@ export async function SiteShell({ children }: { children: ReactNode }) {
         </div>
         <div className={`${CONTAINER} flex flex-wrap items-center justify-between gap-3 border-t border-border py-6 text-xs text-muted-foreground`}>
           <p>
-            © {new Date().getFullYear()} {platformName}
+            © {new Date().getFullYear()} {agency.name}
           </p>
           <p>Designed and engineered in-house.</p>
         </div>

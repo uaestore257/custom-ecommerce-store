@@ -12,8 +12,8 @@ import { ClientStoreCard, MoreStoresCard } from "./ClientStoreCard";
 
 const TEMPLATE_FEATURES = ["Shared commerce core", "Cart & checkout", "Orders", "SEO", "Storefront templates"];
 
-/** Stores come from the database; the agency profile is still demo data. */
-export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
+/** Stores and the agency name come from the database; the "show paused" preference is browser-only. */
+export function AdminDashboard({ stores, agencyName }: { stores: AdminStoreSummary[]; agencyName: string }) {
   const state = useDemoState();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<DbStoreStatus | "">("");
@@ -46,7 +46,7 @@ export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
     <>
       <PageHeader
         title="Your Agency Admin"
-        description={`${agency.agencyName} manages customer website projects from one place. Every client store runs on the shared platform with its own storefront template, branding, products, orders and settings.`}
+        description={`${agencyName} manages customer website projects from one place. Every client store runs on the shared platform with its own storefront template, branding, products, orders and settings.`}
         actions={
           <LinkButton href="/admin/stores/new">
             <Plus className="h-4 w-4" aria-hidden />
@@ -76,7 +76,7 @@ export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Level 1</p>
               <p className="text-lg font-semibold">Your Agency Admin</p>
               <p className="text-sm text-slate-600">
-                {agency.agencyName} · {counts.total} client {counts.total === 1 ? "project" : "projects"}
+                {agencyName} · {counts.total} client {counts.total === 1 ? "project" : "projects"}
               </p>
             </div>
             <Link href="/admin/settings" className="text-sm font-semibold text-teal-700 hover:underline">
