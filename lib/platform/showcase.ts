@@ -154,6 +154,27 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
       },
     ],
   },
+  maison: {
+    industry: "Luxury fashion & fragrance",
+    headline: "A couture house online, where the photograph does the talking.",
+    personality: "Monochrome, editorial and unhurried.",
+    idealFor:
+      "Luxury and modest fashion, fragrance, jewellery, watches and leather goods — houses whose campaigns carry the brand, and whose store should feel like the flagship rather than a catalogue.",
+    signatures: [
+      {
+        title: "A full-screen campaign",
+        text: "The homepage opens on a full-screen campaign image under a transparent header, the headline set small at its foot.",
+      },
+      {
+        title: "An overlay menu",
+        text: "A centred wordmark between Menu and Bag. The collections open in a full-screen overlay, set large in Bodoni.",
+      },
+      {
+        title: "Frameless 2:3 imagery",
+        text: "Tall, frameless product photographs; on the product page a swipe gallery on phones and a two-up grid beside a quiet purchase column.",
+      },
+    ],
+  },
 };
 
 /**

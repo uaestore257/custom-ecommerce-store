@@ -1,6 +1,7 @@
 import { atelierDefinition } from "@/templates/atelier/definition";
 import { classicDefinition } from "@/templates/classic/definition";
 import { kineticDefinition } from "@/templates/kinetic/definition";
+import { maisonDefinition } from "@/templates/maison/definition";
 import type { TemplateDefinition, TemplateManifest } from "./types";
 
 // ---------------------------------------------------------------
@@ -14,7 +15,7 @@ import type { TemplateDefinition, TemplateManifest } from "./types";
 // tampered data) renders DEFAULT_TEMPLATE_KEY instead of failing.
 // ---------------------------------------------------------------
 
-export const TEMPLATE_KEYS = ["classic", "atelier", "kinetic"] as const;
+export const TEMPLATE_KEYS = ["classic", "atelier", "kinetic", "maison"] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
 /** New stores, and stores whose key is unknown, use this template. Matches the Store.templateKey column default. */
@@ -24,6 +25,7 @@ const DEFINITIONS: Readonly<Record<TemplateKey, TemplateDefinition>> = {
   classic: classicDefinition,
   atelier: atelierDefinition,
   kinetic: kineticDefinition,
+  maison: maisonDefinition,
 };
 
 export function isTemplateKey(value: unknown): value is TemplateKey {

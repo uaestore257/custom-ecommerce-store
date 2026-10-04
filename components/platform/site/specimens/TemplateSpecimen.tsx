@@ -4,11 +4,13 @@ import { semanticCssVariables } from "@/lib/templates/theme";
 import { atelierFonts } from "@/templates/atelier/fonts";
 import { classicFonts } from "@/templates/classic/fonts";
 import { kineticFonts } from "@/templates/kinetic/fonts";
+import { maisonFonts } from "@/templates/maison/fonts";
 import type { TemplateFonts } from "@/templates/types";
 import { AtelierSpecimen } from "./AtelierSpecimen";
 import { CATALOGUE_AR, CATALOGUE_EN } from "./catalogue";
 import { ClassicSpecimen } from "./ClassicSpecimen";
 import { KineticSpecimen } from "./KineticSpecimen";
+import { MaisonSpecimen } from "./MaisonSpecimen";
 import { SPECIMEN_VIEW_LABELS, type SpecimenView, type SpecimenViewProps } from "./types";
 
 // ---------------------------------------------------------------
@@ -28,12 +30,14 @@ const SPECIMENS: Readonly<Record<TemplateKey, Record<SpecimenView, ComponentType
   classic: ClassicSpecimen,
   atelier: AtelierSpecimen,
   kinetic: KineticSpecimen,
+  maison: MaisonSpecimen,
 };
 
 const FONTS: Readonly<Record<TemplateKey, TemplateFonts>> = {
   classic: classicFonts,
   atelier: atelierFonts,
   kinetic: kineticFonts,
+  maison: maisonFonts,
 };
 
 /** A template's own font stacks (for setting its name in its own typeface). */
