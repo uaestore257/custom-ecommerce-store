@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
-import type { Prisma } from "@/lib/generated/prisma/client";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { PAYMENT_METHODS } from "@/lib/config";
 import { storeFormatLocale } from "@/lib/standards";
 import { normalizeRequestHostname } from "@/lib/store-domains";
@@ -18,6 +18,7 @@ import type {
   StorefrontProductSummary,
   StorefrontStore,
 } from "@/lib/storefront-types";
+import { groupShelves, shelfCategories, type HomepageShelvesRequest, type StorefrontShelf } from "@/lib/storefront-shelves";
 import { LISTING_PAGE_SIZE } from "@/lib/storefront-urls";
 import type { PaymentMethodId } from "@/lib/types";
 import type { Client } from "../admin/common";
@@ -363,6 +364,50 @@ export async function getFeaturedProducts(client: Client, storeId: string, limit
   const store = await publicStore(client, storeId);
   if (!store) return [];
   return findSummaries(client, store.id, store.defaultLanguage, {}, FEATURED_ORDER, 0, Math.min(Math.max(limit, 0), 48));
+}
+
+/**
+ * Homepage category shelves (see lib/storefront-shelves.ts) for a template
+ * that declares them. `categories` must be this store's own context
+ * categories; `request` must already be normalized (normalizeShelvesRequest).
+ *
+ * Two bounded queries whatever the number of categories (no N+1):
+ *   1. product ids only, ranked per category with a window function —
+ *      featured first, then newest, matching FEATURED_ORDER — keeping at
+ *      most `perCategory` per category; every row is filtered to THIS
+ *      store's ACTIVE products in the requested categories.
+ *   2. those ids' summaries through the same store-scoped reader every
+ *      other list uses.
+ * At most MAX_SHELF_CATEGORIES × MAX_SHELF_PRODUCTS (96) products.
+ */
+export async function getHomepageShelves(
+  client: Client,
+  storeId: string,
+  categories: StorefrontCategory[],
+  request: HomepageShelvesRequest,
+): Promise<StorefrontShelf[]> {
+  const wanted = shelfCategories(categories, request);
+  if (wanted.length === 0) return [];
+  const store = await publicStore(client, storeId);
+  if (!store) return [];
+  const limit = wanted.length * request.perCategory;
+  const ranked = await client.$queryRaw<{ id: string }[]>(Prisma.sql`
+    SELECT "id" FROM (
+      SELECT "id", ROW_NUMBER() OVER (
+        PARTITION BY "categoryId" ORDER BY "featured" DESC, "createdAt" DESC, "id" ASC
+      ) AS "rank"
+      FROM "Product"
+      WHERE "storeId" = ${store.id}
+        AND "status" = 'ACTIVE'
+        AND "categoryId" IN (${Prisma.join(wanted.map((category) => category.id))})
+    ) AS "ranked"
+    WHERE "rank" <= ${request.perCategory}
+    LIMIT ${limit}
+  `);
+  const ids = ranked.map((row) => row.id);
+  if (ids.length === 0) return [];
+  const products = await findSummaries(client, store.id, store.defaultLanguage, { id: { in: ids } }, FEATURED_ORDER, 0, ids.length);
+  return groupShelves(wanted, products, request.perCategory, store.id);
 }
 
 /** Other products of the same store and category (or the newest when uncategorised). */

@@ -8,6 +8,7 @@ import type {
   StorefrontProduct,
   StorefrontProductSummary,
 } from "@/lib/storefront-types";
+import type { HomepageShelvesRequest, StorefrontShelf } from "@/lib/storefront-shelves";
 
 // ---------------------------------------------------------------
 // TEMPLATE CONTRACT — COMPONENT HALF
@@ -30,6 +31,11 @@ export interface TemplateShellProps extends StorefrontContext {
 
 export interface TemplateHomeProps extends StorefrontContext {
   featured: StorefrontProductSummary[];
+  /**
+   * Category shelves, loaded only for a template that declares
+   * `homepageShelves`; always [] otherwise.
+   */
+  shelves: StorefrontShelf[];
 }
 
 export interface TemplateListingProps extends StorefrontContext {
@@ -69,4 +75,10 @@ export interface StorefrontTemplate {
   homepageProductCount: number;
   /** How many related products the product page shows. */
   relatedProductCount: number;
+  /**
+   * Optional: products grouped by category for the homepage
+   * (lib/storefront-shelves.ts). The shared core clamps the numbers and
+   * loads the shelves store-scoped; leave it out for no shelves (and no query).
+   */
+  homepageShelves?: HomepageShelvesRequest;
 }
