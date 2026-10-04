@@ -2,6 +2,7 @@ import type { TemplateKey } from "@/lib/templates/registry";
 import { atelierTemplate } from "./atelier";
 import { classicTemplate } from "./classic";
 import { kineticTemplate } from "./kinetic";
+import { maisonTemplate } from "./maison";
 import type { StorefrontTemplate } from "./types";
 
 // ---------------------------------------------------------------
@@ -15,6 +16,7 @@ const TEMPLATES: Readonly<Record<TemplateKey, StorefrontTemplate>> = {
   classic: classicTemplate,
   atelier: atelierTemplate,
   kinetic: kineticTemplate,
+  maison: maisonTemplate,
 };
 
 export function getStorefrontTemplate(key: TemplateKey): StorefrontTemplate {
