@@ -4,6 +4,7 @@ import { classicTemplate } from "./classic";
 import { kineticTemplate } from "./kinetic";
 import { maisonTemplate } from "./maison";
 import { marketTemplate } from "./market";
+import { noorTemplate } from "./noor";
 import type { StorefrontTemplate } from "./types";
 
 // ---------------------------------------------------------------
@@ -19,6 +20,7 @@ const TEMPLATES: Readonly<Record<TemplateKey, StorefrontTemplate>> = {
   kinetic: kineticTemplate,
   maison: maisonTemplate,
   market: marketTemplate,
+  noor: noorTemplate,
 };
 
 export function getStorefrontTemplate(key: TemplateKey): StorefrontTemplate {

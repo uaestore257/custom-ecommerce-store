@@ -196,6 +196,27 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
       },
     ],
   },
+  noor: {
+    industry: "Gulf heritage & gifting",
+    headline: "An Arabic-first store for gifts worth giving.",
+    personality: "Warm, symmetrical and Arabic-first.",
+    idealFor:
+      "Oud and perfume houses, bakhoor, dates and confectionery, abayas and gifting brands — stores whose customers read Arabic first, and whose products are chosen as gifts.",
+    signatures: [
+      {
+        title: "Arabic and English interfaces",
+        text: "The first template whose interface speaks Arabic: an Arabic store gets Arabic labels right-to-left, an English store English ones, from the same components.",
+      },
+      {
+        title: "The arch",
+        text: "Every product and collection sits in a semicircular arched frame with a fine double rule; the homepage opens on an arcade of arches.",
+      },
+      {
+        title: "A centred stack",
+        text: "A centred wordmark between search and cart, with the navigation as a centred row beneath — symmetrical in both directions.",
+      },
+    ],
+  },
 };
 
 /**
