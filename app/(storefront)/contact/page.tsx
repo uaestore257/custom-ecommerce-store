@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return platformSitePageMetadata({
       path: "/contact",
       title: "Start a project",
-      description: "Tell us about your products and customers, and we'll show you how a premium store on the platform would work for you.",
+      description: "Start a project: tell us about your business and what you want to build, and we'll come back with how we would approach it.",
     });
   }
   return storefrontPageMetadata({

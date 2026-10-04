@@ -77,37 +77,182 @@ dialog::backdrop {
 }
 
 /* ------------------------------------------------------------------
-   PLATFORM BUSINESS SITE MOTION (components/platform/site). No tokens
-   here: the site paints itself through the semantic roles above. Motion
-   is CSS-only — no animation library, no JavaScript — and only for
-   visitors who have not asked for reduced motion.
-   * .studio-rise: the hero composition settles in once on load.
-   * .studio-reveal: blocks fade up as they scroll into view, where the
-     browser supports scroll-driven animations; elsewhere they are
-     simply visible.
+   PLATFORM BUSINESS SITE MOTION (components/platform/site). No colour
+   tokens here: the site paints itself through the semantic roles above.
+   Motion is transform/opacity only. Content is visible without
+   JavaScript: hidden "before" states apply only once the motion runtime
+   (components/platform/site/motion/MotionRuntime.tsx) has marked the page
+   ready, and never under prefers-reduced-motion.
    ------------------------------------------------------------------ */
 @keyframes studio-rise {
-  from {
-    opacity: 0;
-    transform: translateY(1.5rem);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  from { opacity: 0; transform: translateY(1.5rem); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes studio-word {
+  from { opacity: 0; transform: translateY(0.35em); filter: blur(10px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes studio-drift {
+  from { transform: translate3d(-4%, -2%, 0) scale(1); }
+  to { transform: translate3d(4%, 3%, 0) scale(1.08); }
+}
+@keyframes studio-marquee {
+  to { transform: translateX(-50%); }
+}
+@keyframes studio-shine {
+  from { transform: translateX(-120%) skewX(-20deg); }
+  to { transform: translateX(220%) skewX(-20deg); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Load-time entrances (hero only: always in the first viewport). */
+  .studio-word {
+    display: inline-block;
+    animation: studio-word 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(120ms + var(--i, 0) * 70ms);
+  }
   .studio-rise {
-    animation: studio-rise 900ms cubic-bezier(0.2, 0.7, 0.2, 1) 120ms both;
+    animation: studio-rise 1000ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: var(--delay, 0ms);
   }
 
-  @supports (animation-timeline: view()) {
-    .studio-reveal {
-      animation: studio-rise linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 35%;
+  /* Scroll reveals, armed by the runtime. */
+  html[data-motion-ready] [data-reveal]:not([data-shown]) {
+    opacity: 0;
+    transform: translateY(2rem);
+  }
+  html[data-motion-ready] [data-reveal="fade"]:not([data-shown]) {
+    transform: none;
+  }
+  html[data-motion-ready] [data-reveal] {
+    transition:
+      opacity 900ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      transform 900ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    transition-delay: var(--delay, 0ms);
+  }
+
+  /* Lines that draw themselves when revealed (SVG paths with pathLength="1"). */
+  html[data-motion-ready] [data-reveal] .studio-draw {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 1800ms cubic-bezier(0.6, 0, 0.2, 1) 200ms;
+  }
+  html[data-motion-ready] [data-reveal][data-shown] .studio-draw {
+    stroke-dashoffset: 0;
+  }
+
+  .studio-marquee-track {
+    animation: studio-marquee 48s linear infinite;
+  }
+  .studio-marquee:hover .studio-marquee-track {
+    animation-play-state: paused;
+  }
+
+  /* Ambient glow and pointer effects: devices with a fine pointer only. */
+  @media (hover: hover) and (pointer: fine) {
+    .studio-glow {
+      animation: studio-drift 18s ease-in-out infinite alternate;
     }
+    .studio-shine::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: 40%;
+      background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.28), transparent);
+      transform: translateX(-120%) skewX(-20deg);
+      pointer-events: none;
+    }
+    .studio-shine:hover::after {
+      animation: studio-shine 900ms ease-out;
+    }
+    [data-tilt] .studio-tilt-layer {
+      transform: perspective(1600px) rotateX(calc(var(--ty, 0) * -5deg)) rotateY(calc(var(--tx, 0) * 7deg))
+        translate3d(calc(var(--tx, 0) * var(--depth, 0px)), calc(var(--ty, 0) * var(--depth, 0px)), 0);
+      transition: transform 600ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+  }
+}
+
+/* Spotlight: a soft light that follows the pointer across a card. */
+.studio-spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.studio-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--sf-accent) 14%, transparent), transparent 65%);
+  transition: opacity 400ms ease;
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .studio-spotlight:hover::before {
+    opacity: 1;
+  }
+}
+
+/* Header: transparent over the hero, a blurred surface once scrolled or open. */
+.studio-header {
+  background-color: transparent;
+  border-color: transparent;
+  transition: background-color 400ms ease, border-color 400ms ease, backdrop-filter 400ms ease;
+}
+html[data-scrolled] .studio-header,
+.studio-header[data-open] {
+  background-color: color-mix(in srgb, var(--sf-background) 86%, transparent);
+  border-color: var(--sf-border);
+  backdrop-filter: blur(16px);
+}
+/* Open: solid, and no backdrop-filter — a filter would make the header the
+   containing block of the fixed menu panel and clip it to the header. */
+.studio-header[data-open] {
+  background-color: var(--sf-background);
+  backdrop-filter: none;
+}
+.studio-menu {
+  transition: opacity 300ms ease, visibility 300ms;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .studio-menu .studio-menu-item {
+    opacity: 0;
+    transform: translateY(0.75rem);
+    transition: opacity 500ms ease, transform 500ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .studio-header[data-open] .studio-menu-item {
+    opacity: 1;
+    transform: none;
+    transition-delay: calc(80ms + var(--i, 0) * 45ms);
+  }
+}
+
+/* A deck of work: hovering one item lets the others recede. */
+.studio-deck-item {
+  transition: opacity 500ms ease, transform 500ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .studio-deck:has(.studio-deck-item:hover) .studio-deck-item:not(:hover) {
+    opacity: 0.45;
+  }
+  .studio-deck .studio-deck-item:hover {
+    transform: translateY(-6px);
+  }
+}
+
+/* A tall screenshot that scrolls inside its frame on hover/focus. */
+.studio-pan {
+  container-type: inline-size;
+}
+.studio-pan img {
+  transition: transform 4.5s cubic-bezier(0.45, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .group:hover .studio-pan img,
+  .group:focus-visible .studio-pan img,
+  .studio-pan:hover img {
+    transform: translateY(calc(-100% + var(--pan-frame, 62.5cqw)));
   }
 }
 

@@ -1,163 +1,177 @@
-import { numberWord, type TemplateShowcaseEntry } from "@/lib/platform/showcase";
+import Image from "next/image";
+import Link from "next/link";
+import type { CSSProperties } from "react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
+import type { TemplateShowcaseEntry } from "@/lib/platform/showcase";
 import { getTemplateShowcase } from "@/lib/server/platform/showcase";
-import { getTemplateDefinition, type TemplateKey } from "@/lib/templates/registry";
-import type { TemplateManifest } from "@/lib/templates/types";
-import { CONTAINER, Eyebrow, SectionHeading, StudioMain, textLink } from "../primitives";
-import { ClosingCta, TemplateFeature } from "../sections";
-import { TemplateSpecimen } from "../specimens/TemplateSpecimen";
-import { SPECIMEN_VIEW_LABELS, SPECIMEN_VIEWS } from "../specimens/types";
-import { TemplateExplorer } from "../TemplateExplorer";
+import { ClosingCta } from "../ClosingCta";
+import { ArrowLink, CONTAINER, Eyebrow, SplitWords, StudioMain } from "../primitives";
+import { focusRing } from "../styles";
+import { SHOWCASE_MEDIA } from "../work/showcase-media";
+import { caseIdentity, WorkCase } from "../work/WorkCase";
 
-const yesNo = (value: boolean) => (value ? "Yes" : "—");
-
-/** Rows of the comparison table, read from each template's manifest and theme. */
-const COMPARISON: { label: string; value: (manifest: TemplateManifest, key: TemplateKey) => string }[] = [
-  { label: "Character", value: (m) => m.visualCategory },
-  { label: "Best for", value: (m) => m.bestFor.join(", ") },
-  { label: "Navigation", value: (m) => (m.design.navigation === "editorial-split" ? "Editorial split" : "Inline bar") },
-  { label: "Density", value: (m) => m.design.density },
-  { label: "Typography", value: (m) => `${m.design.typography.heading} / ${m.design.typography.body}` },
-  { label: "Imagery", value: (m) => m.design.imageTreatment },
-  { label: "Product cards", value: (m) => `${m.design.cardImageRatio} · ${m.design.cardStyle}` },
-  { label: "Cart", value: (m) => (m.design.cartPresentation === "page" ? "Cart page" : "Drawer and cart page") },
-  { label: "Quick add on cards", value: (m) => yesNo(m.capabilities.quickAddOnCards) },
-  { label: "Product gallery", value: (m) => yesNo(m.capabilities.productGallery) },
-  { label: "Collection index", value: (m) => yesNo(m.capabilities.categoryIndex) },
-  {
-    label: "Palettes",
-    value: (_, key) => Object.values(getTemplateDefinition(key).theme.palettes).map((palette) => palette.label).join(", "),
-  },
-  { label: "Right-to-left layout", value: (m) => yesNo(m.capabilities.rtlReady) },
-];
-
-/** /portfolio: the templates in depth, explorable, comparable and linked to their live demo stores. */
+/** /portfolio — "Work": the live demo stores first, the details after. */
 export async function PortfolioPage() {
   const showcase = await getTemplateShowcase();
-  const demoUrls = Object.fromEntries(showcase.filter((entry) => entry.demo).map((entry) => [entry.key, entry.demo!.home])) as Partial<
-    Record<TemplateKey, string>
-  >;
-  const anyDemo = showcase.some((entry) => entry.demo);
 
   return (
     <StudioMain>
-      <section aria-labelledby="portfolio-title">
-        <div className={`${CONTAINER} grid gap-10 pb-16 pt-14 lg:grid-cols-12 lg:pb-20 lg:pt-20`}>
-          <div className="lg:col-span-8">
-            <Eyebrow>Portfolio</Eyebrow>
-            <h1 id="portfolio-title" className="mt-6 text-balance font-heading text-6xl leading-[0.98] tracking-tight sm:text-7xl lg:text-8xl rtl:tracking-normal">
-              The templates.
-            </h1>
-          </div>
-          <div className="self-end lg:col-span-4">
-            <p className="text-base leading-relaxed text-muted-foreground">
-              {numberWord(showcase.length)} complete storefronts running on the platform today. Compare them page by page below
-              {anyDemo ? ", then open a live demonstration store and shop it end to end — listing, product, cart and checkout." : "."}
+      <section aria-labelledby="work-title" className="relative isolate overflow-hidden">
+        <div aria-hidden className="studio-glow pointer-events-none absolute -top-[40%] start-[10%] -z-10 h-[60rem] w-[60rem] rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--sf-accent)_16%,transparent),transparent)]" />
+        <div className={`${CONTAINER} pb-20 pt-36 lg:pb-28 lg:pt-44`}>
+          <div className="grid gap-10 lg:grid-cols-12">
+            <div className="lg:col-span-8">
+              <div className="studio-rise">
+                <Eyebrow>Work</Eyebrow>
+              </div>
+              <h1 id="work-title" className="mt-7 font-heading text-6xl leading-[0.95] tracking-tight sm:text-8xl lg:text-[7.5rem] rtl:tracking-normal">
+                <SplitWords text="Selected work." />
+              </h1>
+            </div>
+            <p className="studio-rise self-end text-pretty text-lg leading-relaxed text-foreground/75 lg:col-span-4" style={{ "--delay": "300ms" } as CSSProperties}>
+              Live ecommerce stores running on our platform — different industries, different design directions, the same
+              production checkout underneath. Every one is open to explore.
             </p>
-            <nav aria-label="Templates on this page" className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              {showcase.map((entry) => (
-                <a key={entry.key} href={`#${entry.key}`} className={textLink}>
-                  {entry.manifest.name}
-                </a>
-              ))}
-              <a href="#compare" className={textLink}>
-                Compare
-              </a>
-            </nav>
           </div>
-        </div>
-      </section>
 
-      <section aria-labelledby="explore-title" className="border-t border-border bg-surface">
-        <div className={`${CONTAINER} py-20 lg:py-28`}>
-          <SectionHeading
-            index="01"
-            eyebrow="Explore"
-            id="explore-title"
-            title="Every page, palette and direction."
-            lede="Switch template, page, palette, width and writing direction. Each specimen is painted by the template's own design tokens — scroll inside it to see the whole page."
-          />
-          <div className="mt-14">
-            <TemplateExplorer initialTemplate={showcase[0]?.key} demoUrls={demoUrls} />
-          </div>
+          <ul className="studio-deck studio-rise mt-16 grid gap-4 sm:grid-cols-2 lg:mt-20 lg:grid-cols-3" style={{ "--delay": "450ms" } as CSSProperties}>
+            {showcase.map((entry, index) => (
+              <DeckItem key={entry.key} entry={entry} index={index + 1} />
+            ))}
+            <li className="studio-deck-item">
+              <Link
+                href="/contact"
+                className={`studio-spotlight group flex h-full min-h-80 flex-col justify-between border border-dashed border-foreground/25 p-6 transition-colors duration-500 hover:border-accent ${focusRing}`}
+              >
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground rtl:tracking-normal">
+                  {String(showcase.length + 1).padStart(2, "0")} · Next
+                </p>
+                <p className="font-heading text-4xl leading-tight">
+                  Your store, <em className="text-accent">next</em>.
+                </p>
+                <span className="inline-flex items-center gap-2 text-sm text-accent">
+                  Start a project <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1 rtl:rotate-180" aria-hidden />
+                </span>
+              </Link>
+            </li>
+          </ul>
         </div>
       </section>
 
       {showcase.map((entry, position) => (
-        <TemplateSection key={entry.key} entry={entry} index={position + 2} />
+        <section key={entry.key} aria-label={`${caseIdentity(entry).storeName} case`} className="border-t border-border">
+          <div className={`${CONTAINER} py-24 lg:py-36`}>
+            <WorkCase entry={entry} index={position + 1} reverse={position % 2 === 1} headingLevel="h2" priority={position === 0} />
+            <CaseDetails entry={entry} />
+          </div>
+        </section>
       ))}
 
-      <section id="compare" aria-labelledby="compare-title" className="scroll-mt-20 border-t border-border">
-        <div className={`${CONTAINER} py-20 lg:py-28`}>
-          <SectionHeading index={String(showcase.length + 2).padStart(2, "0")} eyebrow="Compare" id="compare-title" title="Side by side." />
-          <div className="mt-12 overflow-x-auto" role="region" aria-labelledby="compare-title" tabIndex={0}>
-            <table className="w-full min-w-[36rem] border-collapse text-start text-sm">
-              <caption className="sr-only">Storefront templates compared</caption>
-              <thead>
-                <tr className="border-b border-foreground">
-                  <th scope="col" className="w-1/4 py-4 pe-6 text-start font-mono text-[11px] font-normal uppercase tracking-[0.16em] text-muted-foreground rtl:tracking-normal">
-                    Template
-                  </th>
-                  {showcase.map((entry) => (
-                    <th key={entry.key} scope="col" className="py-4 pe-6 text-start font-heading text-3xl font-normal">
-                      {entry.manifest.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARISON.map((row) => (
-                  <tr key={row.label} className="border-b border-border align-top">
-                    <th scope="row" className="py-4 pe-6 text-start font-normal text-muted-foreground">
-                      {row.label}
-                    </th>
-                    {showcase.map((entry) => (
-                      <td key={entry.key} className="py-4 pe-6 first-letter:uppercase">
-                        {row.value(entry.manifest, entry.key)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-8 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Both templates share the same checkout, contact and policy pages, the same catalogue and order handling, and the same
-            search foundations. Switching a store&apos;s template changes its presentation only — never its products, customers
-            or orders.
+      <section aria-label="Under the hood" className="border-t border-border">
+        <div className={`${CONTAINER} flex flex-wrap items-center justify-between gap-6 py-14`}>
+          <p className="max-w-2xl text-pretty text-lg text-foreground/80">
+            Curious how one platform runs stores this different — with Arabic layouts, per-store domains and a shared, secure
+            checkout?
           </p>
+          <ArrowLink href="/platform">See the platform</ArrowLink>
         </div>
       </section>
 
       <ClosingCta
-        title="Seen the one that fits?"
-        text="Tell us which template speaks to your products. We'll set it up with your palette, content and catalogue — on your own domain."
+        title={
+          <>
+            Seen what you <em className="text-accent">want</em>?
+          </>
+        }
+        text="Tell us about your products and customers. We'll design your store around them and launch it on your own domain."
       />
     </StudioMain>
   );
 }
 
-function TemplateSection({ entry, index }: { entry: TemplateShowcaseEntry; index: number }) {
-  const definition = getTemplateDefinition(entry.key);
-  const palette = Object.keys(definition.theme.palettes)[0];
+/** One live store in the opening deck: hovering it brings it forward while the others recede. */
+function DeckItem({ entry, index }: { entry: TemplateShowcaseEntry; index: number }) {
+  const { storeName } = caseIdentity(entry);
   return (
-    <section aria-label={`${entry.manifest.name} template`} className="border-t border-border">
-      <div className={`${CONTAINER} py-20 lg:py-28`}>
-        <TemplateFeature entry={entry} index={index} headingLevel="h2" showDemoPages />
-        <div className="mt-20">
-          <Eyebrow>{entry.manifest.name} · page by page</Eyebrow>
-          <ul className="mt-6 grid gap-8 md:grid-cols-3">
-            {SPECIMEN_VIEWS.map((view) => (
-              <li key={view} className="studio-reveal">
-                <TemplateSpecimen template={entry.key} palette={palette} view={view} aspect="aspect-[4/5]" caption={`${entry.manifest.name.toLowerCase()} · ${SPECIMEN_VIEW_LABELS[view].toLowerCase()}`} />
-                <p className="mt-3 text-sm">{SPECIMEN_VIEW_LABELS[view]}</p>
+    <li className="studio-deck-item">
+      <a href={`#${entry.key}`} className={`group block h-full border border-border bg-surface transition-colors duration-500 hover:border-accent/60 ${focusRing}`}>
+        <div className="relative aspect-[4/3] overflow-hidden bg-white">
+          <Image
+            src={SHOWCASE_MEDIA[entry.key].tall}
+            alt=""
+            sizes="(min-width: 1024px) 30vw, (min-width: 640px) 48vw, 100vw"
+            placeholder="blur"
+            className="h-full w-full object-cover object-top transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+          />
+          <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+        </div>
+        <div className="flex items-end justify-between gap-4 p-6">
+          <div className="min-w-0">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground rtl:tracking-normal">
+              {String(index).padStart(2, "0")} · {entry.editorial.industry}
+            </p>
+            <p className="mt-3 truncate font-heading text-3xl">{storeName}</p>
+          </div>
+          <ArrowRight className="mb-2 h-5 w-5 shrink-0 text-accent transition-transform duration-500 group-hover:translate-x-1 rtl:rotate-180" aria-hidden />
+        </div>
+      </a>
+    </li>
+  );
+}
+
+/** Case-study detail: the brief, what was built, and direct entry points into the live store's real pages. */
+function CaseDetails({ entry }: { entry: TemplateShowcaseEntry }) {
+  const { manifest, editorial, demo } = entry;
+  const pages = demo
+    ? ([
+        ["Storefront", demo.home],
+        ["Full collection", demo.listing],
+        ["A product page", demo.product],
+        ["Cart", demo.cart],
+      ].filter((page): page is [string, string] => Boolean(page[1])))
+    : [];
+  const label = "font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground rtl:tracking-normal";
+
+  return (
+    <div data-reveal className="mt-20 grid gap-10 border-t border-border pt-12 lg:mt-28 lg:grid-cols-12">
+      <div className="lg:col-span-4">
+        <p className={label}>The brief</p>
+        <p className="mt-4 text-base leading-relaxed text-foreground/80">{editorial.idealFor}</p>
+      </div>
+      <div className="lg:col-span-4">
+        <p className={label}>What we built</p>
+        <dl className="mt-4 space-y-3 text-sm">
+          {[
+            ["Design", editorial.personality],
+            ["Typography", `${manifest.design.typography.heading} with ${manifest.design.typography.body}`],
+            ["Imagery", `${manifest.design.cardImageRatio} · ${manifest.design.imageTreatment}`],
+            ["Cart", manifest.design.cartPresentation === "page" ? "Dedicated cart page" : "Cart drawer and cart page"],
+          ].map(([term, value]) => (
+            <div key={term} className="grid grid-cols-[6.5rem_1fr] gap-3">
+              <dt className="text-muted-foreground">{term}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div className="lg:col-span-4">
+        <p className={label}>Explore it live</p>
+        {pages.length > 0 ? (
+          <ul className="mt-4 border-t border-border">
+            {pages.map(([name, href]) => (
+              <li key={name} className="border-b border-border">
+                <a href={href} target="_blank" rel="noopener" className={`group flex min-h-12 items-center justify-between gap-4 text-sm transition-colors hover:text-accent ${focusRing}`}>
+                  {name}
+                  <span className="sr-only"> (opens in a new tab)</span>
+                  <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent rtl:-scale-x-100" aria-hidden />
+                </a>
               </li>
             ))}
           </ul>
-          {entry.demo === null && (
-            <p className="mt-8 text-sm text-muted-foreground">A live demonstration store for this template is available on request.</p>
-          )}
-        </div>
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">A walkthrough of this store is available on request.</p>
+        )}
       </div>
-    </section>
+    </div>
   );
 }
