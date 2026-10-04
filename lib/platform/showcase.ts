@@ -133,6 +133,27 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
       },
     ],
   },
+  kinetic: {
+    industry: "Direct-to-consumer brands",
+    headline: "A bold, product-led store that sells from the first screen.",
+    personality: "Energetic, direct and built for the thumb.",
+    idealFor:
+      "Brands with a focused range — electronics and audio, skincare, supplements, drinks, sportswear — where the product is the hero and the path from first look to checkout should be short.",
+    signatures: [
+      {
+        title: "A hero that sells",
+        text: "The homepage opens on a real product with its price and a working add-to-cart, set beside a colour block in the brand's own accent.",
+      },
+      {
+        title: "Category chip rail",
+        text: "A compact sticky bar over a scrolling rail of categories, so every part of the range is one tap away on any screen.",
+      },
+      {
+        title: "Built for the thumb",
+        text: "Square cards with quick add, a facts strip and sticky buy bar on product pages, and a cart that rises as a bottom sheet on phones.",
+      },
+    ],
+  },
 };
 
 /**
