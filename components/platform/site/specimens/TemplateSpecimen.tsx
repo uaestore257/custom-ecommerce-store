@@ -3,10 +3,12 @@ import { getTemplateDefinition, type TemplateKey } from "@/lib/templates/registr
 import { semanticCssVariables } from "@/lib/templates/theme";
 import { atelierFonts } from "@/templates/atelier/fonts";
 import { classicFonts } from "@/templates/classic/fonts";
+import { kineticFonts } from "@/templates/kinetic/fonts";
 import type { TemplateFonts } from "@/templates/types";
 import { AtelierSpecimen } from "./AtelierSpecimen";
 import { CATALOGUE_AR, CATALOGUE_EN } from "./catalogue";
 import { ClassicSpecimen } from "./ClassicSpecimen";
+import { KineticSpecimen } from "./KineticSpecimen";
 import { SPECIMEN_VIEW_LABELS, type SpecimenView, type SpecimenViewProps } from "./types";
 
 // ---------------------------------------------------------------
@@ -25,11 +27,13 @@ import { SPECIMEN_VIEW_LABELS, type SpecimenView, type SpecimenViewProps } from 
 const SPECIMENS: Readonly<Record<TemplateKey, Record<SpecimenView, ComponentType<SpecimenViewProps>>>> = {
   classic: ClassicSpecimen,
   atelier: AtelierSpecimen,
+  kinetic: KineticSpecimen,
 };
 
 const FONTS: Readonly<Record<TemplateKey, TemplateFonts>> = {
   classic: classicFonts,
   atelier: atelierFonts,
+  kinetic: kineticFonts,
 };
 
 /** A template's own font stacks (for setting its name in its own typeface). */
@@ -76,7 +80,7 @@ export function SpecimenScreen({
   const resolved = resolvePalette(template, palette).palette;
   const fonts = FONTS[template];
   const style = {
-    ...semanticCssVariables(resolved.tokens, definition.theme.fallbackAccent, definition.theme.radius),
+    ...semanticCssVariables(resolved.tokens, definition.theme.fallbackAccent, definition.theme.radius, definition.theme.controls),
     "--sf-font-heading": fonts.heading,
     "--sf-font-body": fonts.body,
   } as CSSProperties;
