@@ -13,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return platformSitePageMetadata({
     path: "/services",
     title: "Services",
-    description: "Design, setup and launch of premium online stores: template and identity, catalogue, orders, payments, team access and your own domain.",
+    description: "Ecommerce, websites, mobile apps, AI solutions, automation, SEO and custom software — complete digital solutions from one studio.",
   });
 }
 

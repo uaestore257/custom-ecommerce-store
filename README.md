@@ -145,8 +145,9 @@ host. Set real platform contact details in `PLATFORM_CONTACT` in
 | `lib/storefront.ts` | Browser-side store context, cart item list and the fresh-priced cart hook |
 | `lib/templates/` | Template registry, manifests and theme-config validation (pure) |
 | `templates/` | Storefront templates (`classic`, `atelier`): presentation only |
-| `components/platform/site/` | Public business site / portfolio on the platform root (studio shell, pages, template specimens) |
-| `lib/platform/showcase.ts` | What the business site says about templates; facts derived from the registry |
+| `components/platform/site/` | Public studio site on the platform root: home, work, services, platform, about, contact |
+| `lib/platform/showcase.ts`, `lib/platform/services.ts` | What the studio site says about demo stores, templates and services |
+| `scripts/capture-showcase.mjs` | Re-captures the demo-store screenshots in `public/showcase/` |
 | `lib/storage.ts` | Safe `localStorage` wrapper (works when storage is blocked) |
 | `lib/config.ts` | Options: store types, currencies, emirates, payment methods |
 | `components/` | Shared UI, storefront and admin components |

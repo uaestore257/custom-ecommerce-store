@@ -11,7 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (isPlatformBusinessHost(host) && !isStorefrontPathPreviewHost(host)) {
     const config = storeHostConfig();
     const baseUrl = process.env.BETTER_AUTH_URL ?? "";
-    return ["/", "/about", "/services", "/portfolio", "/contact"]
+    return ["/", "/portfolio", "/services", "/platform", "/about", "/contact"]
       .map((path) => platformRootUrl(path, baseUrl, config))
       .filter((url): url is string => url !== null)
       .map((url) => ({ url }));

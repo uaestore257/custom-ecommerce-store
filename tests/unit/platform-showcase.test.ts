@@ -62,7 +62,7 @@ test("the studio site paints through the same semantic roles as storefronts, wit
   const storefrontRoles = Object.keys(
     themeCssVariables(getTemplateDefinition("classic"), { palette: "light" }, "#0f766e"),
   ).sort();
-  for (const tone of ["paper", "ink"] as const) {
+  for (const tone of ["night", "ink", "paper"] as const) {
     const vars = studioCssVariables(tone);
     assert.deepEqual(Object.keys(vars).sort(), storefrontRoles, tone);
     assert.equal(vars["--sf-accent-foreground"], readableForeground(vars["--sf-accent"]), tone);
@@ -79,5 +79,11 @@ test("themeCssVariables is unchanged by the semanticCssVariables extraction", ()
         `${key}/${palette}`,
       );
     }
+  }
+});
+
+test("every showcased template has portfolio case copy", () => {
+  for (const key of TEMPLATE_KEYS) {
+    assert.ok(TEMPLATE_EDITORIAL[key].industry && TEMPLATE_EDITORIAL[key].headline, key);
   }
 });

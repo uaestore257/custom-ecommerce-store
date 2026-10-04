@@ -35,7 +35,16 @@ import { isPlatformBusinessHost, isStorefrontPathPreviewHost, storeHostConfig } 
  * pages plus its robots.txt and sitemap.xml (app/robots.ts, app/sitemap.ts
  * already answer for this host; without these two entries crawlers got 404).
  */
-const BUSINESS_SITE_PATHS = new Set(["/", "/about", "/services", "/portfolio", "/contact", "/robots.txt", "/sitemap.xml"]);
+const BUSINESS_SITE_PATHS = new Set([
+  "/",
+  "/about",
+  "/services",
+  "/portfolio",
+  "/platform",
+  "/contact",
+  "/robots.txt",
+  "/sitemap.xml",
+]);
 
 function notFound() {
   return new NextResponse("Not found", { status: 404, headers: { "content-type": "text/plain" } });

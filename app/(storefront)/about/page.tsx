@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return platformSitePageMetadata({
       path: "/about",
       title: "About",
-      description: "A commerce studio with its own platform: storefronts designed as systems, run on one secure foundation where every store stands alone.",
+      description: "An AI-first digital commerce studio that designs and engineers stores, websites, apps and AI systems — and runs its own commerce platform.",
     });
   }
   const context = await getPublicStorefrontSeoContext();
