@@ -6,8 +6,8 @@ import type { TemplateColorTokens, TemplateManifest } from "@/lib/templates/type
 // PLATFORM SHOWCASE (pure: no React, no database)
 //
 // What the public business site (the bare PLATFORM_ROOT_DOMAIN: /,
-// /portfolio, /services, /about, /contact) says about the platform and
-// its storefront templates. Facts come from the template registry, so the
+// /portfolio, /services, /platform, /about, /contact) says about the
+// demo stores and the templates behind them. Facts come from the template registry, so the
 // site can never describe a template, palette or capability the code does
 // not have. Live demo links point only at stores the platform owner has
 // marked as demos (Store.isDemo) — never at client stores.
@@ -16,7 +16,8 @@ import type { TemplateColorTokens, TemplateManifest } from "@/lib/templates/type
 /**
  * The business site's own surfaces. It renders through the same semantic
  * --sf-* roles as storefronts (semanticCssVariables), with its own constant
- * values: a warm limestone "paper" and a deep "ink" for contrast bands.
+ * values: a warm "night" (the default canvas), a deeper "ink" for bands
+ * within it, and a limestone "paper" for light sections.
  */
 const STUDIO_PAPER: TemplateColorTokens = {
   background: "#f3efe7",
@@ -46,19 +47,37 @@ const STUDIO_INK: TemplateColorTokens = {
   focus: "#eee8dc",
 };
 
+const STUDIO_NIGHT: TemplateColorTokens = {
+  background: "#0d0c0a",
+  foreground: "#f2ede4",
+  muted: "#181613",
+  mutedForeground: "#a69e91",
+  border: "#2b2824",
+  surface: "#141310",
+  surfaceElevated: "#1c1a17",
+  destructive: "#e3826d",
+  success: "#8fbf94",
+  warning: "#d8a85a",
+  focus: "#f2ede4",
+};
+
 const STUDIO_RADIUS = { control: "0px", card: "0px" } as const;
 
-export type StudioTone = "paper" | "ink";
+export type StudioTone = "night" | "ink" | "paper";
 
-/** CSS variables for a business-site surface (the page root, or an ink band inside it). */
+/** CSS variables for a business-site surface (the page root, or a band inside it). */
 export function studioCssVariables(tone: StudioTone): Record<`--${string}`, string> {
-  return tone === "ink"
-    ? semanticCssVariables(STUDIO_INK, "#c99a63", STUDIO_RADIUS)
-    : semanticCssVariables(STUDIO_PAPER, "#8a5a2e", STUDIO_RADIUS);
+  if (tone === "night") return semanticCssVariables(STUDIO_NIGHT, "#e2a766", STUDIO_RADIUS);
+  if (tone === "ink") return semanticCssVariables(STUDIO_INK, "#d9a46a", STUDIO_RADIUS);
+  return semanticCssVariables(STUDIO_PAPER, "#8a5a2e", STUDIO_RADIUS);
 }
 
 /** Portfolio copy for one template. Facts (fonts, ratios, capabilities) stay in its manifest. */
 export interface TemplateEditorial {
+  /** The demo store's sector, as a client would name it. */
+  industry: string;
+  /** One line that sells the outcome, set beside the live store. */
+  headline: string;
   /** One-line character, set large beside the name. */
   personality: string;
   /** Who it is for, in a client's words. */
@@ -73,6 +92,8 @@ export interface TemplateEditorial {
  */
 export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>> = {
   classic: {
+    industry: "Fashion & everyday retail",
+    headline: "A fast, familiar store that turns browsing into baskets.",
     personality: "Clear, direct and built to convert.",
     idealFor:
       "Retailers with broad or fast-moving catalogues, where customers know what they want and the store should get them to it quickly.",
@@ -92,6 +113,8 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
     ],
   },
   atelier: {
+    industry: "Furniture & interiors",
+    headline: "An editorial showroom for considered, higher-value pieces.",
     personality: "Editorial, unhurried and product-led.",
     idealFor:
       "Furniture, interiors and design-led brands with considered, higher-value pieces — where the photograph and the story sell, and the store should feel like a showroom.",

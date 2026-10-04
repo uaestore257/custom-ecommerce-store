@@ -5,7 +5,7 @@ import { platformRootUrl, storeHostConfig } from "@/lib/store-host";
 
 /** The business site's default description (homepage, layout fallback). */
 export const PLATFORM_SITE_DESCRIPTION =
-  "A commerce studio and platform for premium online stores — editorial storefront templates, right-to-left layouts and a secure, multi-store commerce core.";
+  "An AI-first digital commerce studio. We design and build premium ecommerce stores, websites, apps and AI-powered systems — on a production commerce platform we engineer ourselves.";
 
 /**
  * Metadata for a page of the public business site on the platform root

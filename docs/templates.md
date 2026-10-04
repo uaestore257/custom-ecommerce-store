@@ -99,24 +99,37 @@ owner on the store's Design page). It shows a demonstration notice, is
 excluded from indexing (`noindex`, robots `Disallow: /`, empty sitemap) and is
 linked from `/admin/template` and each store's Design page as a live demo.
 
-## Public business site (portfolio)
+## Public business site
 
-The bare `PLATFORM_ROOT_DOMAIN` (`/`, `/portfolio`, `/services`, `/about`,
-`/contact`) presents every registered template. It is not a storefront and
-not a second design system:
+The bare `PLATFORM_ROOT_DOMAIN` serves the studio site: `/` (home),
+`/portfolio` (Work), `/services`, `/platform`, `/about` and `/contact`
+(`proxy.ts` `BUSINESS_SITE_PATHS`). Work leads; the engineering lives on
+`/platform`.
 
-- It paints itself through the same semantic roles (`semanticCssVariables()`
-  in `lib/templates/theme.ts`) with its own constant "studio" values
-  (`lib/platform/showcase.ts`).
-- Template **specimens** (`components/platform/site/specimens/`) are
-  static miniatures painted with each template's own palette tokens, radii
-  and fonts. They load no data and have no cart or links.
-- Live demo links point only at stores marked `isDemo` (ACTIVE,
-  non-archived), via `lib/server/platform/showcase.ts`. Client stores are
+- **Real work, not mock-ups.** Demo stores are shown with screenshots of
+  the live demo storefronts rendered by the real templates
+  (`public/showcase/`, captured by `scripts/capture-showcase.mjs`; re-run
+  it after changing a template or the demo content) and link straight into
+  them. Links come only from stores marked `isDemo` (ACTIVE,
+  non-archived) via `lib/server/platform/showcase.ts`; client stores are
   never listed.
+- **One token system.** The site paints itself through the storefront
+  semantic roles (`semanticCssVariables()`) with constant "studio" tones
+  (`night`, `ink`, `paper` in `lib/platform/showcase.ts`).
+- **Services** are data (`lib/platform/services.ts`); `platformNative`
+  marks only what the platform ships today.
+- **Motion** is CSS (`app/globals.css`, "PLATFORM BUSINESS SITE MOTION")
+  plus one small runtime (`components/platform/site/motion/MotionRuntime.tsx`):
+  transform/opacity only, pointer effects for fine pointers only, nothing
+  hidden without JavaScript or under `prefers-reduced-motion`.
+- Template **specimens** (`components/platform/site/specimens/`) are
+  static, token-painted miniatures used on `/platform` to explain the
+  design system and RTL; they are labelled as specimens.
 
 When adding a template, also add its portfolio copy (`TEMPLATE_EDITORIAL`
-and `SHOWCASE_ORDER` in `lib/platform/showcase.ts`) and its specimen
-(`SPECIMENS` / `FONTS` in `components/platform/site/specimens/TemplateSpecimen.tsx`);
-the `Record<TemplateKey, …>` types and `tests/unit/platform-showcase.test.ts`
+and `SHOWCASE_ORDER` in `lib/platform/showcase.ts`), its screenshots
+(`SHOWCASE_MEDIA` in `components/platform/site/work/showcase-media.ts`)
+and its specimen (`SPECIMENS` / `FONTS` in
+`components/platform/site/specimens/TemplateSpecimen.tsx`); the
+`Record<TemplateKey, …>` types and `tests/unit/platform-showcase.test.ts`
 flag anything missing.

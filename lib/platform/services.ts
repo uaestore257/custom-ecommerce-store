@@ -1,0 +1,250 @@
+// ---------------------------------------------------------------
+// WHAT THE STUDIO BUILDS (pure data for the public business site).
+//
+// Categories are what we offer as a studio. Within ecommerce, the items the
+// platform already ships (`platformNative`) are marked as such on the site;
+// everything else is delivered as scoped, custom work. Keep that list
+// truthful: it is the line between "ready today" and "we build it for you".
+// ---------------------------------------------------------------
+
+export interface ServiceCategory {
+  /** URL fragment on /services. */
+  slug: string;
+  title: string;
+  /** A short label for compact lists (marquee, menus). */
+  label: string;
+  /** The business outcome, in one sentence. */
+  outcome: string;
+  items: readonly string[];
+  /** Items the commerce platform provides today (subset of items). */
+  platformNative?: readonly string[];
+  /** Shown on the homepage's "What we build". */
+  featured: boolean;
+}
+
+export const SERVICE_CATEGORIES: readonly ServiceCategory[] = [
+  {
+    slug: "ecommerce",
+    title: "Ecommerce",
+    label: "Ecommerce",
+    outcome: "Distinctive online stores that look like your brand, work beautifully on phones and turn visits into orders.",
+    featured: true,
+    items: [
+      "Custom ecommerce stores",
+      "Furniture ecommerce",
+      "Fashion ecommerce",
+      "Electronics ecommerce",
+      "Beauty ecommerce",
+      "Food & grocery ecommerce",
+      "B2B ecommerce",
+      "Multi-language ecommerce",
+      "Arabic / RTL ecommerce",
+      "Multi-currency",
+      "Product catalogues",
+      "Product variants",
+      "Search and filtering",
+      "Cart and checkout",
+      "Payment integrations",
+      "Shipping",
+      "VAT and tax",
+      "Customer accounts",
+      "Order management",
+      "Admin systems",
+      "Custom domains",
+      "Analytics",
+      "SEO-ready stores",
+      "Conversion-focused design",
+    ],
+    platformNative: [
+      "Furniture ecommerce",
+      "Fashion ecommerce",
+      "Arabic / RTL ecommerce",
+      "Product catalogues",
+      "Cart and checkout",
+      "Order management",
+      "Admin systems",
+      "Custom domains",
+      "SEO-ready stores",
+    ],
+  },
+  {
+    slug: "websites",
+    title: "Websites",
+    label: "Websites",
+    outcome: "Fast, considered websites that explain what you do and make it easy to take the next step.",
+    featured: true,
+    items: [
+      "Corporate websites",
+      "Business websites",
+      "Agency websites",
+      "Portfolio websites",
+      "Landing pages",
+      "Product websites",
+      "Restaurant websites",
+      "Real-estate websites",
+      "Booking websites",
+      "CMS websites",
+      "Arabic / RTL websites",
+      "Custom web experiences",
+    ],
+  },
+  {
+    slug: "apps",
+    title: "Mobile apps",
+    label: "Apps",
+    outcome: "iOS and Android apps for your customers and your team, connected to the systems you already run.",
+    featured: true,
+    items: [
+      "iOS apps",
+      "Android apps",
+      "Cross-platform apps",
+      "Ecommerce apps",
+      "Customer apps",
+      "Business apps",
+      "Admin apps",
+      "API integrations",
+      "Authentication",
+      "Payments",
+      "Push notifications",
+    ],
+  },
+  {
+    slug: "ai",
+    title: "AI solutions",
+    label: "AI",
+    outcome: "Practical AI that answers customers, helps them find the right product and takes repetitive work off your team.",
+    featured: true,
+    items: [
+      "AI chatbots",
+      "AI customer support",
+      "AI sales assistants",
+      "AI product recommendations",
+      "AI-powered search",
+      "AI content generation",
+      "AI product descriptions",
+      "AI image workflows",
+      "AI translation and localisation",
+      "AI lead qualification",
+      "AI business assistants",
+      "AI knowledge bases",
+      "AI agents",
+      "Custom AI workflows",
+      "Knowledge-grounded (RAG) assistants",
+    ],
+  },
+  {
+    slug: "automation",
+    title: "Automation",
+    label: "Automation",
+    outcome: "Workflows that move orders, leads and messages along by themselves, so nothing waits on a copy-paste.",
+    featured: true,
+    items: [
+      "Order automation",
+      "CRM automation",
+      "Lead automation",
+      "Email automation",
+      "WhatsApp workflows",
+      "Inventory workflows",
+      "Invoice automation",
+      "Customer notifications",
+      "Marketing automation",
+      "Reporting automation",
+      "API workflows",
+      "Custom business automation",
+    ],
+  },
+  {
+    slug: "growth",
+    title: "SEO & growth",
+    label: "Growth",
+    outcome: "Be found in English and Arabic search, measure what matters and keep improving how many visitors become customers.",
+    featured: true,
+    items: [
+      "Technical SEO",
+      "Ecommerce SEO",
+      "Local SEO",
+      "International SEO",
+      "Arabic SEO",
+      "Keyword research",
+      "Product SEO",
+      "Category SEO",
+      "Structured data (schema)",
+      "Internal linking",
+      "Core Web Vitals",
+      "SEO audits",
+      "Analytics",
+      "Search Console",
+      "Conversion optimisation",
+      "Funnel optimisation",
+      "Landing pages",
+    ],
+  },
+  {
+    slug: "software",
+    title: "Custom software",
+    label: "Custom software",
+    outcome: "Internal tools, dashboards and business applications shaped around the way your team actually works.",
+    featured: true,
+    items: [
+      "Internal business tools",
+      "Dashboards",
+      "CRM systems",
+      "Custom admin systems",
+      "Business applications",
+      "API development",
+      "Custom integrations",
+      "Data synchronisation",
+      "Workflow systems",
+    ],
+  },
+  {
+    slug: "integrations",
+    title: "Integrations",
+    label: "Integrations",
+    outcome: "Connect your store and website to the payment, shipping, finance and messaging services you depend on.",
+    featured: false,
+    items: [
+      "Payment gateways",
+      "Shipping providers",
+      "ERP",
+      "CRM",
+      "POS",
+      "Accounting",
+      "Inventory",
+      "WhatsApp",
+      "Email",
+      "SMS",
+      "Third-party APIs",
+      "Webhooks",
+      "Marketplace integrations",
+    ],
+  },
+  {
+    slug: "support",
+    title: "Ongoing support",
+    label: "Support",
+    outcome: "After launch we stay: keeping things secure and fast, fixing what breaks and building what comes next.",
+    featured: false,
+    items: [
+      "Maintenance",
+      "Security updates",
+      "Performance optimisation",
+      "Bug fixing",
+      "Feature development",
+      "SEO monitoring",
+      "Analytics",
+      "Conversion optimisation",
+      "Technical support",
+      "Continuous improvements",
+    ],
+  },
+];
+
+/** How every engagement runs, in five steps. */
+export const PROCESS_STEPS: readonly { title: string; text: string }[] = [
+  { title: "Discover", text: "Your business, customers, products and goals — and what success should look like in numbers you care about." },
+  { title: "Design", text: "Direction, structure and the key screens, shaped around your brand and reviewed with you before we build." },
+  { title: "Build", text: "Production engineering on proven foundations, with progress you can click through rather than read about." },
+  { title: "Launch", text: "Your domain, content, search setup and a careful go-live, with everything checked on real devices." },
+  { title: "Grow", text: "Measure, refine and add what the business needs next — search, automation, AI and new features." },
+];
