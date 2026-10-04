@@ -175,6 +175,27 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
       },
     ],
   },
+  market: {
+    industry: "Groceries & everyday essentials",
+    headline: "A fast, search-first store for the weekly shop.",
+    personality: "Practical, quick and built for repeat baskets.",
+    idealFor:
+      "Groceries, speciality food, pharmacies, pet supplies, household goods, bakeries and florists — stores with many products bought often, where customers know what they want and fill a basket quickly.",
+    signatures: [
+      {
+        title: "Search that stays put",
+        text: "A large search field sits in the header on every screen, with a category bar beneath it and a bottom tab bar on phones.",
+      },
+      {
+        title: "Shelves, not a hero",
+        text: "The homepage opens on the store's own facts, then one product shelf per category, drawn straight from the store's catalogue.",
+      },
+      {
+        title: "Baskets from the card",
+        text: "Compact, price-first cards whose Add button becomes a quantity stepper, with a running cart bar always one tap away.",
+      },
+    ],
+  },
 };
 
 /**
