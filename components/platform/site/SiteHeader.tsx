@@ -84,7 +84,7 @@ export function SiteHeader({ platformName, items }: { platformName: string; item
           </Link>
           <Link
             href="/contact"
-            className={`studio-shine group relative inline-flex min-h-11 items-center gap-2 overflow-hidden bg-accent px-5 text-sm font-medium text-accent-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] ${focusRing}`}
+            className={`studio-shine group relative inline-flex min-h-11 items-center gap-2 overflow-hidden rounded-md bg-accent px-5 text-sm font-medium text-accent-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] ${focusRing}`}
           >
             Start a project
             <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 rtl:rotate-180" aria-hidden />
@@ -125,10 +125,10 @@ export function SiteHeader({ platformName, items }: { platformName: string; item
             ))}
           </ul>
           <div className="studio-menu-item mt-10 flex flex-col gap-3" style={{ "--i": items.length + 2 } as CSSProperties}>
-            <Link href="/contact" className={`inline-flex min-h-12 items-center justify-center bg-accent px-6 text-sm font-medium text-accent-foreground ${focusRing}`}>
+            <Link href="/contact" className={`inline-flex min-h-12 items-center justify-center rounded-md bg-accent px-6 text-sm font-medium text-accent-foreground ${focusRing}`}>
               Start a project
             </Link>
-            <Link href="/login" className={`inline-flex min-h-12 items-center justify-center border border-border text-sm ${focusRing}`}>
+            <Link href="/login" className={`inline-flex min-h-12 items-center justify-center rounded-md border border-border text-sm ${focusRing}`}>
               Store owner sign in
             </Link>
           </div>

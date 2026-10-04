@@ -64,7 +64,7 @@ export function ServicesExplorer({ categories }: { categories: readonly ServiceC
               tabIndex={selected ? 0 : -1}
               onClick={() => setActive(index)}
               onMouseEnter={() => setActive(index)}
-              className={`group relative flex min-h-12 shrink-0 items-center gap-4 border px-4 text-start text-sm transition-colors lg:min-h-16 lg:border-0 lg:border-b lg:border-border lg:px-0 lg:text-2xl lg:font-heading ${focusRing} ${
+              className={`group relative flex min-h-12 shrink-0 items-center gap-4 rounded-md border px-4 text-start text-sm transition-colors lg:min-h-16 lg:rounded-none lg:border-0 lg:border-b lg:border-border lg:px-0 lg:text-2xl lg:font-heading ${focusRing} ${
                 selected ? "border-accent text-foreground" : "border-border text-muted-foreground hover:text-foreground"
               }`}
             >
