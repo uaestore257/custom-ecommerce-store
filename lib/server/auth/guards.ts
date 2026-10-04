@@ -132,10 +132,12 @@ export async function requireStoreAccess(
     ownsRouteStore,
   });
   if (access === "none") throw new AccessDenied("forbidden");
-  if (need === "write" && access !== "write") throw new AccessDenied("read-only");
+  // A role that may never run this action is "forbidden" even when the
+  // store is also read-only, so Staff are never told the store is suspended.
   if (action && !mayRunStoreAction(role ?? "STAFF", action, user.isPlatformOwner && host.kind === "admin")) {
     throw new AccessDenied("forbidden");
   }
+  if (need === "write" && access !== "write") throw new AccessDenied("read-only");
   return { user, access, role: role ?? "STAFF", actor: { userId: user.id } };
 }
 

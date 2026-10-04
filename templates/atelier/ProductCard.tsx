@@ -35,20 +35,20 @@ export function AtelierProductCard({
             className="aspect-[4/5] w-full transition duration-700 ease-out group-hover:scale-[1.02]"
           />
         </div>
-        <div className="mt-4 flex items-start justify-between gap-4">
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
           <div className="min-w-0">
             {categoryName && <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground rtl:tracking-normal">{categoryName}</p>}
             <h3 className={`mt-1 font-heading leading-tight ${size === "feature" ? "text-3xl" : "text-xl"}`}>{product.name}</h3>
           </div>
-          <p className="shrink-0 pt-1 text-sm tabular-nums">
+          <p className="pt-1 text-sm tabular-nums">
             {onSale && product.compareAtMinor && (
-              <span className="me-2 text-muted-foreground line-through">
+              <span className="me-2 whitespace-nowrap text-muted-foreground line-through">
                 <span className="sr-only">Original price </span>
                 {formatStoreMoney(store, product.compareAtMinor)}
               </span>
             )}
             {onSale && <span className="sr-only">Sale price </span>}
-            {formatStoreMoney(store, product.priceMinor)}
+            <span className="whitespace-nowrap">{formatStoreMoney(store, product.priceMinor)}</span>
           </p>
         </div>
         {(soldOut || onSale) && (

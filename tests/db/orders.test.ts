@@ -9,7 +9,7 @@ import { listAdminCategories } from "../../lib/server/admin/categories";
 import { createAdminProduct, deleteAdminProduct } from "../../lib/server/admin/products";
 import { archiveAdminStore, createAdminStore, setAdminStoreStatus } from "../../lib/server/admin/stores";
 import { ORDER_MESSAGES, placeOrder } from "../../lib/server/orders";
-import { testActor, testDb, uid } from "./helpers";
+import { enableBankTransfer, testActor, testDb, uid} from "./helpers";
 
 const db = testDb();
 after(() => db.$disconnect());
@@ -42,7 +42,7 @@ async function makeStore(options: StoreOptions = {}) {
   assert.ok(result.ok, JSON.stringify(result));
   const storeId = result.data.id;
   if (bankTransfer) {
-    await db.storePaymentMethod.update({ where: { storeId_method: { storeId, method: "bank_transfer" } }, data: { enabled: true } });
+    await enableBankTransfer(db, storeId);
   }
   return storeId;
 }
@@ -88,6 +88,10 @@ const stockOf = async (variantId: string) => (await db.productVariant.findUnique
 const nextNumber = async (storeId: string) => (await db.store.findUniqueOrThrow({ where: { id: storeId } })).nextOrderNumber;
 const orderCount = (storeId: string) => db.order.count({ where: { storeId } });
 
+/**
+ * Default test product: 100.00 with a 12.50 delivery fee PER UNIT (delivery
+ * is product-level), so one unit is "11250" and two units "22500".
+ */
 function orderInput(
   storeId: string,
   items: { productId: string; quantity: number }[],
@@ -174,7 +178,7 @@ test("cash on delivery: a real, unpaid, pending order at database prices, stock 
 test("bank transfer: placed as pending and unpaid — never marked paid", async () => {
   const store = await makeStore();
   const p = await makeProduct(store);
-  const result = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500", { paymentMethod: "bank_transfer" }), ip());
+  const result = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250", { paymentMethod: "bank_transfer" }), ip());
   assert.ok(result.ok, JSON.stringify(result));
   const order = await db.order.findFirstOrThrow({ where: { storeId: store } });
   assert.equal(order.paymentMethod, "bank_transfer");
@@ -209,7 +213,7 @@ test("free delivery is product-level, and exact 3-decimal (KWD) totals use produ
 test("prices, totals and stock sent by the browser are ignored; the order uses database values", async () => {
   const store = await makeStore();
   const p = await makeProduct(store, { price: "100.00" });
-  const input = orderInput(store, [{ productId: p.id, quantity: 1, priceMinor: "1", unitPrice: 0.01, stock: 999 } as never], "12500", {
+  const input = orderInput(store, [{ productId: p.id, quantity: 1, priceMinor: "1", unitPrice: 0.01, stock: 999 } as never], "11250", {
     totalMinor: "1",
     subtotalMinor: "1",
     paymentStatus: "PAID",
@@ -218,7 +222,7 @@ test("prices, totals and stock sent by the browser are ignored; the order uses d
   const result = await placeOrder(db, store, input, ip());
   assert.ok(result.ok, JSON.stringify(result));
   const order = await db.order.findFirstOrThrow({ where: { storeId: store }, include: { items: true } });
-  assert.equal(order.totalMinor, BigInt(12500));
+  assert.equal(order.totalMinor, BigInt(11250));
   assert.equal(order.items[0].unitPriceMinor, BigInt(10000));
   assert.equal(order.paymentStatus, "UNPAID");
   assert.equal(order.status, "PENDING");
@@ -240,11 +244,11 @@ test("a cart for another store, or another store's product, is refused", async (
   const productB = await makeProduct(storeB);
   const before = await snapshot(storeB, [productB.variantId]);
 
-  const mismatch = await placeOrder(db, storeA, orderInput(storeB, [{ productId: productB.id, quantity: 1 }], "12500"), ip());
+  const mismatch = await placeOrder(db, storeA, orderInput(storeB, [{ productId: productB.id, quantity: 1 }], "11250"), ip());
   assert.equal(mismatch.ok, false);
   if (!mismatch.ok) assert.equal(mismatch.error, ORDER_MESSAGES.otherStore);
 
-  const crossStore = await placeOrder(db, storeA, orderInput(storeA, [{ productId: productB.id, quantity: 1 }], "12500"), ip());
+  const crossStore = await placeOrder(db, storeA, orderInput(storeA, [{ productId: productB.id, quantity: 1 }], "11250"), ip());
   assert.equal(crossStore.ok, false);
   if (!crossStore.ok) assert.equal(crossStore.error, ORDER_MESSAGES.unavailable);
 
@@ -269,7 +273,7 @@ test("a paused, suspended, draft or archived store accepts no orders", async () 
     const p = await makeProduct(store);
     const changed = await takeOutOfService(store);
     if (changed) assert.ok((changed as { ok: boolean }).ok, `${label}: ${JSON.stringify(changed)}`);
-    const result = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500"), ip());
+    const result = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250"), ip());
     assert.equal(result.ok, false, label);
     if (!result.ok) assert.equal(result.error, ORDER_MESSAGES.storeUnavailable, label);
     assert.equal(await stockOf(p.variantId), 5, label);
@@ -280,7 +284,7 @@ test("a paused, suspended, draft or archived store accepts no orders", async () 
 test("a disabled payment method or an out-of-scope method is refused", async () => {
   const noBank = await makeStore({ bankTransfer: false });
   const p2 = await makeProduct(noBank);
-  const r2 = await placeOrder(db, noBank, orderInput(noBank, [{ productId: p2.id, quantity: 1 }], "12500", { paymentMethod: "bank_transfer" }), ip());
+  const r2 = await placeOrder(db, noBank, orderInput(noBank, [{ productId: p2.id, quantity: 1 }], "11250", { paymentMethod: "bank_transfer" }), ip());
   assert.ok(!r2.ok && r2.error === ORDER_MESSAGES.paymentUnavailable, JSON.stringify(r2));
 
   // Card on delivery is enabled here, but it is out of scope in this phase.
@@ -288,7 +292,7 @@ test("a disabled payment method or an out-of-scope method is refused", async () 
   await db.storePaymentMethod.update({ where: { storeId_method: { storeId: withCard, method: "card_on_delivery" } }, data: { enabled: true } });
   const p3 = await makeProduct(withCard);
   for (const method of ["card_on_delivery", "online_card"]) {
-    const r = await placeOrder(db, withCard, orderInput(withCard, [{ productId: p3.id, quantity: 1 }], "12500", { paymentMethod: method }), ip());
+    const r = await placeOrder(db, withCard, orderInput(withCard, [{ productId: p3.id, quantity: 1 }], "11250", { paymentMethod: method }), ip());
     assert.equal(r.ok, false, method);
     if (!r.ok) assert.ok(r.fieldErrors?.paymentMethod, method);
   }
@@ -310,11 +314,18 @@ test("pickup-only products refuse delivery and can be ordered with pickup", asyn
   assert.ok(!refused.ok && refused.error === ORDER_MESSAGES.pickupOnly, JSON.stringify(refused));
   assert.equal(await orderCount(store), 0);
 
+  // Pickup orders are paid on pickup (cash on delivery is for deliveries).
+  await db.storePaymentMethod.upsert({
+    where: { storeId_method: { storeId: store, method: "cash_on_pickup" } },
+    create: { storeId: store, method: "cash_on_pickup", enabled: true, position: 5 },
+    update: { enabled: true },
+  });
   const pickup = await placeOrder(
     db,
     store,
     orderInput(store, [{ productId: product.id, quantity: 1 }], "10000", {
       fulfillmentMethod: "PICKUP",
+      paymentMethod: "cash_on_pickup",
       address: "",
       city: "",
     }),
@@ -367,8 +378,8 @@ test("two orders racing for the last unit: exactly one succeeds, stock ends at 0
   const store = await makeStore();
   const p = await makeProduct(store, { stock: "1" });
   const results = await Promise.all([
-    placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500"), ip()),
-    placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500"), ip()),
+    placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250"), ip()),
+    placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250"), ip()),
   ]);
   assert.equal(results.filter((r) => r.ok).length, 1, JSON.stringify(results));
   const loser = results.find((r) => !r.ok);
@@ -381,7 +392,7 @@ test("three buyers for two units: exactly two succeed, never oversold", async ()
   const store = await makeStore();
   const p = await makeProduct(store, { stock: "2" });
   const results = await Promise.all(
-    [1, 2, 3].map(() => placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500"), ip())),
+    [1, 2, 3].map(() => placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250"), ip())),
   );
   assert.equal(results.filter((r) => r.ok).length, 2, JSON.stringify(results));
   assert.equal(await stockOf(p.variantId), 0);
@@ -410,7 +421,7 @@ test("the same submission twice creates one order; the repeat returns it without
 test("a reused key with a different request is refused", async () => {
   const store = await makeStore();
   const p = await makeProduct(store, { stock: "5" });
-  const input = orderInput(store, [{ productId: p.id, quantity: 1 }], "12500");
+  const input = orderInput(store, [{ productId: p.id, quantity: 1 }], "11250");
   assert.ok((await placeOrder(db, store, input, ip())).ok);
   const changed = await placeOrder(db, store, { ...input, items: [{ productId: p.id, quantity: 2 }], expectedTotalMinor: "22500" }, ip());
   assert.ok(!changed.ok && changed.error === ORDER_MESSAGES.keyReused, JSON.stringify(changed));
@@ -421,7 +432,7 @@ test("a reused key with a different request is refused", async () => {
 test("concurrent duplicate submissions (double click) create exactly one order", async () => {
   const store = await makeStore();
   const p = await makeProduct(store, { stock: "5" });
-  const input = orderInput(store, [{ productId: p.id, quantity: 1 }], "12500");
+  const input = orderInput(store, [{ productId: p.id, quantity: 1 }], "11250");
   const results = await Promise.all([1, 2, 3].map(() => placeOrder(db, store, input, ip())));
   assert.ok(results.every((r) => r.ok), JSON.stringify(results));
   const numbers = new Set(results.map((r) => (r.ok ? r.order.orderNumber : "")));
@@ -441,7 +452,7 @@ test("a later line failing rolls back the earlier line's stock, the customer and
   const result = await placeOrder(
     db,
     store,
-    orderInput(store, [{ productId: plenty.id, quantity: 2 }, { productId: scarce.id, quantity: 2 }], "42500"),
+    orderInput(store, [{ productId: plenty.id, quantity: 2 }, { productId: scarce.id, quantity: 2 }], "45000"),
     ip(),
   );
   assert.ok(!result.ok && result.error === ORDER_MESSAGES.stock, JSON.stringify(result));
@@ -483,7 +494,7 @@ test("invalid customer or delivery details are refused with field errors, and no
   const result = await placeOrder(
     db,
     store,
-    orderInput(store, [{ productId: p.id, quantity: 1 }], "12500", { email: "nope", phone: "12", address: "x", city: "Paris", name: "" }),
+    orderInput(store, [{ productId: p.id, quantity: 1 }], "11250", { email: "nope", phone: "12", address: "x", city: "Paris", name: "" }),
     ip(),
   );
   assert.equal(result.ok, false);
@@ -502,10 +513,10 @@ test("rate limiting runs first: invalid attempts count toward the same budget", 
   const p = await makeProduct(store);
   const context = ip();
   for (let i = 0; i < 10; i++) {
-    const r = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500", { email: "bad" }), context);
+    const r = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250", { email: "bad" }), context);
     assert.ok(!r.ok && r.error === ORDER_MESSAGES.invalid, JSON.stringify(r));
   }
-  const valid = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500"), context);
+  const valid = await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250"), context);
   assert.ok(!valid.ok && valid.error === ORDER_MESSAGES.tooMany, JSON.stringify(valid));
   assert.equal(await orderCount(store), 0);
 });
@@ -514,8 +525,8 @@ test("a returning email reuses the store's customer record without overwriting i
   const store = await makeStore();
   const p = await makeProduct(store, { stock: "5" });
   const email = `repeat-${uid()}@example.com`;
-  assert.ok((await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500", { email, name: "First Name" }), ip())).ok);
-  assert.ok((await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "12500", { email: email.toUpperCase(), name: "Someone Else" }), ip())).ok);
+  assert.ok((await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250", { email, name: "First Name" }), ip())).ok);
+  assert.ok((await placeOrder(db, store, orderInput(store, [{ productId: p.id, quantity: 1 }], "11250", { email: email.toUpperCase(), name: "Someone Else" }), ip())).ok);
   const customers = await db.customer.findMany({ where: { storeId: store }, include: { orders: true } });
   assert.equal(customers.length, 1);
   assert.equal(customers[0].name, "First Name", "a public form can't rename an existing customer");
@@ -531,9 +542,9 @@ test("the admin orders list shows only that store's orders, newest first, with p
   const storeB = await makeStore();
   const pa = await makeProduct(storeA, { stock: "5" });
   const pb = await makeProduct(storeB, { stock: "5" });
-  const first = await placeOrder(db, storeA, orderInput(storeA, [{ productId: pa.id, quantity: 1 }], "12500"), ip());
+  const first = await placeOrder(db, storeA, orderInput(storeA, [{ productId: pa.id, quantity: 1 }], "11250"), ip());
   const second = await placeOrder(db, storeA, orderInput(storeA, [{ productId: pa.id, quantity: 2 }], "22500", { paymentMethod: "bank_transfer" }), ip());
-  assert.ok((await placeOrder(db, storeB, orderInput(storeB, [{ productId: pb.id, quantity: 1 }], "12500"), ip())).ok);
+  assert.ok((await placeOrder(db, storeB, orderInput(storeB, [{ productId: pb.id, quantity: 1 }], "11250"), ip())).ok);
   assert.ok(first.ok && second.ok);
   if (!first.ok || !second.ok) return;
 

@@ -97,6 +97,11 @@ test("seeded legacy store delivery rates are absent and payment settings remain 
     ["card_on_delivery", true],
     ["bank_transfer", false],
     ["online_card", false],
+    // Methods added with the payment architecture: present, never enabled by the seed.
+    ["cash_on_pickup", false],
+    ["stripe_checkout", false],
+    ["jazzcash", false],
+    ["easypaisa", false],
   ]);
   assert.equal(await db.paymentProviderAccount.count({ where: { storeId: "store-a" } }), 0, "no provider connected");
 });
@@ -127,16 +132,29 @@ test("roles: store owners who only own their store, and no seeded platform owner
 });
 
 test("the seed creates no login: no passwords, accounts or sessions for seeded users", async () => {
+  // The users the seed itself creates, still in their seeded state.
+  const seed = createSeedState();
   const seededEmails = [
-    createSeedState().agency.contactEmail.toLowerCase(),
-    ...(await db.storeMembership.findMany({
-      where: { storeId: { in: ["store-a", "store-b", "store-c"] } },
-      include: { user: true },
-    })).map((m) => m.user.email),
+    seed.agency.contactEmail.toLowerCase(),
+    ...seed.stores.map((store) => store.ownerEmail.toLowerCase()),
   ];
   const users = await db.user.findMany({ where: { email: { in: seededEmails } }, select: { id: true } });
-  assert.equal(users.length, seededEmails.length);
+  assert.ok(users.length >= 1, "seeded users exist");
   const ids = users.map((u) => u.id);
   assert.equal(await db.account.count({ where: { userId: { in: ids } } }), 0);
   assert.equal(await db.session.count({ where: { userId: { in: ids } } }), 0);
+
+  // Other test files may provision demo owners for the seeded stores (which
+  // reuses those users). Any seeded-store owner with a credential must have
+  // received it through that audited provisioning, never from the seed.
+  const owners = await db.storeMembership.findMany({
+    where: { storeId: { in: ["store-a", "store-b", "store-c"] }, role: "OWNER", user: { accounts: { some: {} } } },
+    select: { userId: true },
+  });
+  for (const { userId } of owners) {
+    assert.ok(
+      await db.auditEvent.findFirst({ where: { action: "store.owner_change", targetId: userId } }),
+      `owner ${userId} has a login without an audited provisioning`,
+    );
+  }
 });

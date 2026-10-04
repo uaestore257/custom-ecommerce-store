@@ -15,11 +15,12 @@ import { setRequestRuntimeForTests } from "../../lib/server/request-runtime";
 import { testActor, testDb, uid } from "./helpers";
 
 const db = testDb();
-const savedEnv = { root: process.env.PLATFORM_ROOT_DOMAIN, admin: process.env.ADMIN_HOST };
+const savedEnv = { root: process.env.PLATFORM_ROOT_DOMAIN, admin: process.env.ADMIN_HOST, authUrl: process.env.BETTER_AUTH_URL };
 after(async () => {
   setRequestRuntimeForTests(null);
   process.env.PLATFORM_ROOT_DOMAIN = savedEnv.root;
   process.env.ADMIN_HOST = savedEnv.admin;
+  process.env.BETTER_AUTH_URL = savedEnv.authUrl;
   await db.$disconnect();
 });
 
@@ -80,7 +81,8 @@ async function makeProduct(storeId: string) {
 const input = (storeId: string, productId: string) => ({
   storeId,
   idempotencyKey: randomUUID(),
-  expectedTotalMinor: "12500",
+  // 100.00 + the product's own 12.50 delivery fee (delivery is per product).
+  expectedTotalMinor: "11250",
   fulfillmentMethod: "DELIVERY",
   items: [{ productId, quantity: 1 }],
   name: "Jane Visitor",
@@ -98,6 +100,9 @@ let activeProduct = "";
 before(async () => {
   process.env.PLATFORM_ROOT_DOMAIN = "shops.test";
   process.env.ADMIN_HOST = "admin.shops.test";
+  // The auth config requires ADMIN_HOST to be BETTER_AUTH_URL's host (store
+  // creation provisions the owner's credentials through Better Auth).
+  process.env.BETTER_AUTH_URL = "http://admin.shops.test";
   active = await makeStore("ACTIVE");
   draft = await makeStore("DRAFT");
   activeProduct = await makeProduct(active);
@@ -136,10 +141,26 @@ test("a draft store's host, or an unknown host, takes no order", async () => {
   assert.equal(await db.order.count({ where: { storeId: { in: [active, draft] } } }), before);
 });
 
-test("the platform host still uses the platform owner's preview cookie", async () => {
+test("a preview cookie selects a store only on the explicit path-preview host, never on the platform admin host", async () => {
+  // The platform admin host never serves a storefront from a cookie.
   asVisitor("admin.shops.test", `storefront_store=${active}`);
-  const result = await placeOrderAction(input(active, activeProduct));
-  assert.ok(result.ok, JSON.stringify(result));
+  const refused = await placeOrderAction(input(active, activeProduct));
+  assert.ok(!refused.ok && refused.error === ORDER_MESSAGES.storeUnavailable, JSON.stringify(refused));
+
+  // The temporary preview-only host (STOREFRONT_PREVIEW_MODE=path) honours it.
+  const saved = { root: process.env.PLATFORM_ROOT_DOMAIN, admin: process.env.ADMIN_HOST, mode: process.env.STOREFRONT_PREVIEW_MODE };
+  process.env.PLATFORM_ROOT_DOMAIN = "preview.shops.test";
+  process.env.ADMIN_HOST = "preview.shops.test";
+  process.env.STOREFRONT_PREVIEW_MODE = "path";
+  try {
+    asVisitor("preview.shops.test", `storefront_store=${active}`);
+    const result = await placeOrderAction(input(active, activeProduct));
+    assert.ok(result.ok, JSON.stringify(result));
+  } finally {
+    process.env.PLATFORM_ROOT_DOMAIN = saved.root;
+    process.env.ADMIN_HOST = saved.admin;
+    process.env.STOREFRONT_PREVIEW_MODE = saved.mode ?? "";
+  }
 });
 
 test("a malformed request is refused safely, without internal details", async () => {

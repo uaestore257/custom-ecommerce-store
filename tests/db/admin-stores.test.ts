@@ -117,7 +117,7 @@ test("creating a store persists valid data (international, no UAE defaults)", as
   const authContext = await getAuth().$context;
   assert.equal(await authContext.password.verify({ hash: account.password!, password: input.ownerPassword }), true);
   await db.rateLimit.deleteMany();
-  const ownerHost = `${input.slug}.test.local`;
+  const ownerHost = `admin.${input.slug}.test.local`; // the store's dedicated admin host
   const response = await authRequest(
     "/sign-in/email",
     { email: input.ownerEmail, password: input.ownerPassword },
@@ -173,7 +173,8 @@ test("updating a store persists supported changes", async () => {
     languages: ["en", "ar"],
     contactPhone: "+1 (415) 555-0123",
     tagline: "Furniture for every room",
-    paymentMethods: { cash_on_delivery: true, bank_transfer: true, online_card: true },
+    // Every offline method is an explicit choice; online card is forced off.
+    paymentMethods: { cash_on_delivery: true, card_on_delivery: false, bank_transfer: true, online_card: true },
   }));
   assert.ok(result.ok, JSON.stringify(result));
   const d = (await getAdminStoreDetail(db, id))!;
@@ -195,6 +196,8 @@ test("Store Owner settings can change payment methods only", async () => {
   const before = (await getAdminStoreDetail(db, created.data.id))!;
   const result = await updateStoreOwnerSettings(db, created.data.id, actor.userId, {
     paymentMethods: { cash_on_delivery: false, card_on_delivery: true, bank_transfer: true, online_card: true },
+    // Bank transfer can only be offered with the bank details shoppers need.
+    bankTransfer: { bankName: "Example Bank", accountName: "Payment Settings LLC", accountNumber: "0001234567" },
     name: "Attempted name change",
     slug: "attempted-slug",
     status: "ACTIVE",

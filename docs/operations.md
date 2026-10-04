@@ -122,8 +122,10 @@ the project and covered by TLS; attaching a hostname and its DNS/TLS
 configuration does not replace the application's custom-domain ownership
 verification. The app uses the request `Host` header and
 deliberately ignores `X-Forwarded-Host`; confirm the hosting layer preserves
-the intended host. Leave `TRUSTED_IP_HEADER` unset unless the chosen hosting
-proxy documents a trustworthy client-IP header for this deployment.
+the intended host. On Vercel, the trusted client-IP header (`x-real-ip`) is
+used automatically; on any other host set `TRUSTED_IP_HEADER` to the header
+the hosting proxy documents as trustworthy (production admin sign-in refuses
+to start without one; see `lib/auth/trusted-ip.ts`).
 
 **Infrastructure limitation for shared `*.vercel.app` URLs:** the code
 cannot register subdomains or certificates for Vercel's shared `vercel.app`
@@ -153,8 +155,9 @@ Environment-variable inventory (names only):
   the intended database. `TEST_DATABASE_URL` must be absent.
 * **Optional email:** `EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_HOST`,
   `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`.
-* **Legacy/optional:** `STORE_DOMAINS` (operator-managed aliases only);
-  `TRUSTED_IP_HEADER` (only after validating the hosting proxy's header).
+* **Client IP:** `TRUSTED_IP_HEADER` — automatic on Vercel; required on any
+  other production host (set it only to a header the hosting proxy overwrites).
+* **Legacy/optional:** `STORE_DOMAINS` (operator-managed aliases only).
 * **Local/non-production only:** `TEST_DATABASE_URL` (disposable database),
   `POSTGRES_PORT`, `DEMO_NEST_AND_OAK_OWNER_PASSWORD`,
   `DEMO_THREADLINE_OWNER_PASSWORD`, `DEMO_VOLTBOX_OWNER_PASSWORD`.

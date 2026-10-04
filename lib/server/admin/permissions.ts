@@ -24,7 +24,9 @@ export type ActionPermission = "platform-owner" | "store-owner" | "store-owner-c
 export const ACTION_PERMISSIONS = {
   createStoreAction: "platform-owner",
   updateStoreAction: "platform-owner",
-  updateOwnStoreSettingsAction: "store-owner",
+  // OWNER on their own store's admin host only (the platform owner edits
+  // store settings through updateStoreAction instead).
+  updateOwnStoreSettingsAction: "store-owner-context",
   updateStoreMemberRoleAction: "store-owner-context",
   revokeStoreMemberAction: "store-owner-context",
   createStoreInvitationAction: "store-owner-context",

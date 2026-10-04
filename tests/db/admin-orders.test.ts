@@ -17,7 +17,7 @@ import {
 import { createAdminProduct } from "../../lib/server/admin/products";
 import { archiveAdminStore, createAdminStore } from "../../lib/server/admin/stores";
 import { placeOrder } from "../../lib/server/orders";
-import { testActor, testDb, uid } from "./helpers";
+import { enableBankTransfer, testActor, testDb, uid} from "./helpers";
 
 const db = testDb();
 after(() => db.$disconnect());
@@ -47,7 +47,7 @@ async function makeStore() {
   });
   assert.ok(result.ok, JSON.stringify(result));
   const storeId = result.data.id;
-  await db.storePaymentMethod.update({ where: { storeId_method: { storeId, method: "bank_transfer" } }, data: { enabled: true } });
+  await enableBankTransfer(db, storeId);
   return storeId;
 }
 

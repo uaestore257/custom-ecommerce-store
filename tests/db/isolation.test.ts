@@ -182,7 +182,8 @@ test("a payment method cannot use another store's provider account", async () =>
 });
 
 test("a shipping rate must be in its store's currency and zone", async () => {
-  const zoneA = await db.shippingZone.findFirstOrThrow({ where: { storeId: "store-a" } });
+  // The seed no longer creates legacy store-level shipping zones; make one.
+  const zoneA = await db.shippingZone.create({ data: { storeId: "store-a", name: `Isolation zone ${Date.now()}` } });
   await rejects(
     () => db.shippingRate.create({ data: { storeId: "store-a", zoneId: zoneA.id, name: "x", currency: "SAR", priceMinor: 1n } }),
     FK,
@@ -204,4 +205,44 @@ test("records can never be moved to another store (storeId is immutable)", async
   );
   const stillA = await db.customer.findUniqueOrThrow({ where: { id: "store-a-cus-1" } });
   assert.equal(stillA.storeId, "store-a");
+});
+
+test("payment transactions and webhook events stay inside their order's store (migration 20261004000000)", async () => {
+  const orderA = await db.order.findFirstOrThrow({ where: { storeId: "store-a" } });
+  const tx = (storeId: string) => ({
+    storeId,
+    orderId: orderA.id,
+    currency: orderA.currency,
+    method: "cash_on_delivery",
+    amountMinor: orderA.totalMinor,
+    idempotencyKey: `iso-${uid()}`,
+  });
+  // A transaction can't belong to another store than its order.
+  await rejects(() => db.paymentTransaction.create({ data: tx("store-b") }), FK);
+  // Nor carry a different currency than its order.
+  await rejects(() => db.paymentTransaction.create({ data: { ...tx("store-a"), currency: "SAR" } }), FK);
+
+  const own = await db.paymentTransaction.create({ data: tx("store-a") });
+  await rejects(
+    () => db.paymentTransaction.update({ where: { id: own.id }, data: { storeId: "store-b" } }),
+    /storeId of PaymentTransaction cannot be changed|_fkey/,
+  );
+  // A webhook event can't attach store B's provider account to store A's transaction.
+  const accountB = await db.paymentProviderAccount.create({
+    data: { storeId: "store-b", provider: "stripe_connect", displayName: "Isolation", mode: "TEST" },
+  });
+  await rejects(
+    () => db.paymentWebhookEvent.create({
+      data: { storeId: "store-a", providerAccountId: accountB.id, transactionId: own.id, eventId: `evt-${uid()}`, eventType: "test" },
+    }),
+    FK,
+  );
+  await rejects(
+    () => db.paymentWebhookEvent.create({
+      data: { storeId: "store-b", providerAccountId: accountB.id, transactionId: own.id, eventId: `evt-${uid()}`, eventType: "test" },
+    }),
+    FK,
+  );
+  await db.paymentProviderAccount.delete({ where: { id: accountB.id } });
+  await db.paymentTransaction.delete({ where: { id: own.id } });
 });

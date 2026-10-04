@@ -229,7 +229,7 @@ test("Store Owner team operations are scoped to the current store and cannot cha
     },
   });
   try {
-    const host = `${store.slug}.test.local`;
+    const host = `admin.${store.slug}.test.local`; // the store's dedicated admin host
     const cookie = await signIn(owner.email, password, host);
     actAs(cookie, host);
 
@@ -288,7 +288,7 @@ test("Store Owner team operations are scoped to the current store and cannot cha
         storeId: "store-b",
         token,
         name: "Wrong Store",
-        password: "wrong store invitation account password",
+        password: "wrong store invitation account passphrase",
       })).ok,
       false,
       "an invitation cannot be accepted on another store",
@@ -298,18 +298,18 @@ test("Store Owner team operations are scoped to the current store and cannot cha
         storeId: "store-a",
         token: `${token}x`,
         name: "New Manager",
-        password: "manager invite account password 2026",
+        password: "manager invite account passphrase 2026",
       })).ok,
       false,
     );
-    const acceptedPassword = "manager invite account password 2026";
+    const acceptedPassword = "manager invite account passphrase 2026";
     const accepted = await acceptStoreInvitation(db, getAuth(), {
       storeId: "store-a",
       token,
       name: "New Manager",
       password: acceptedPassword,
     });
-    assert.equal(accepted.ok, true);
+    assert.equal(accepted.ok, true, JSON.stringify(accepted));
     const invitedUser = await db.user.findUniqueOrThrow({ where: { email: invitedEmail } });
     assert.equal(invitedUser.emailVerified, true);
     assert.equal(
@@ -329,7 +329,7 @@ test("Store Owner team operations are scoped to the current store and cannot cha
         storeId: "store-a",
         token,
         name: "New Manager",
-        password: "manager invite account password 2026",
+        password: "manager invite account passphrase 2026",
       })).ok,
       false,
       "an accepted bearer token cannot be reused",
@@ -361,7 +361,7 @@ test("Store Owner team operations are scoped to the current store and cannot cha
         storeId: "store-a",
         token: expiredToken,
         name: "Expired Staff",
-        password: "expired invitation account password",
+        password: "expired invitation account passphrase",
       })).ok,
       false,
     );
@@ -409,7 +409,7 @@ test("Store Owner team operations are scoped to the current store and cannot cha
         storeId: "store-a",
         token: revokeToken,
         name: "Revoked Staff",
-        password: "revoked invitation account password 2026",
+        password: "revoked invitation account passphrase 2026",
       })).ok,
       false,
     );
@@ -474,7 +474,7 @@ test("Manager and Staff sessions stay store-scoped and respect their role limits
     where: { storeId: "store-a", role: "OWNER" },
   });
   try {
-    const host = `${store.slug}.test.local`;
+    const host = `admin.${store.slug}.test.local`; // the store's dedicated admin host
     const managerCookie = await signIn(manager.email, managerPassword, host);
     actAs(managerCookie, host);
     const managerViewer = await requireAdminViewer();
@@ -487,6 +487,13 @@ test("Manager and Staff sessions stay store-scoped and respect their role limits
       { ok: false, error: FORBIDDEN },
     );
     assert.deepEqual(await actions.updateOwnStoreSettingsAction({}), { ok: false, error: FORBIDDEN });
+    const designBefore = await db.store.findUniqueOrThrow({ where: { id: "store-a" }, select: { templateKey: true, themeConfig: true } });
+    assert.deepEqual(
+      await actions.updateStoreDesignAction("store-a", { templateKey: "classic", theme: { palette: "soft" } }),
+      { ok: false, error: FORBIDDEN },
+      "Managers cannot change the store's design",
+    );
+    assert.deepEqual(await db.store.findUniqueOrThrow({ where: { id: "store-a" }, select: { templateKey: true, themeConfig: true } }), designBefore);
     assert.deepEqual(await actions.createStoreAction(newStore()), { ok: false, error: FORBIDDEN });
     assert.equal((await actions.updateStoreMemberRoleAction(ownerMembership.id, "STAFF")).ok, false);
     assert.equal((await actions.revokeStoreMemberAction(ownerMembership.id)).ok, false);
@@ -508,6 +515,11 @@ test("Manager and Staff sessions stay store-scoped and respect their role limits
     }
     assert.deepEqual(await actions.createStoreAction(newStore()), { ok: false, error: FORBIDDEN });
     assert.deepEqual(
+      await actions.updateStoreDesignAction("store-a", { templateKey: "classic", theme: { palette: "soft" } }),
+      { ok: false, error: FORBIDDEN },
+      "Staff cannot change the store's design",
+    );
+    assert.deepEqual(
       await actions.createStoreInvitationAction(`staff-invite-${uid()}@example.com`, "STAFF"),
       { ok: false, error: FORBIDDEN },
       "Staff cannot create invitations",
@@ -527,7 +539,8 @@ test("Manager and Staff sessions stay store-scoped and respect their role limits
 
 test("Store Owner settings update only the owner store and ignore slug, role and platform fields", async () => {
   actAs(ownerCookie);
-  const input = newStore();
+  // A UAE/AED store: Stripe Checkout is only offered in that market.
+  const input = { ...newStore(), countryCode: "AE", baseCurrency: "AED", timezone: "Asia/Dubai" };
   const created = await actions.createStoreAction(input);
   assert.ok(created.ok, JSON.stringify(created));
   const storeId = created.data.id;
@@ -535,7 +548,7 @@ test("Store Owner settings update only the owner store and ignore slug, role and
     where: { id: storeId },
     select: { slug: true, status: true, countryCode: true, baseCurrency: true, timezone: true, defaultLanguage: true },
   });
-  const host = `${store.slug}.test.local`;
+  const host = `admin.${store.slug}.test.local`; // the store's dedicated admin host
   let storeOwnerId = "";
 
   try {
@@ -554,7 +567,8 @@ test("Store Owner settings update only the owner store and ignore slug, role and
         swiftCode: "",
         instructions: "Use the order number as the payment reference.",
       },
-      stripe: { enabled: true, accountId: "acct_12345678", secretRef: "vault:store-a/stripe/test" },
+      // Secret references are scoped to the store they belong to.
+      stripe: { enabled: true, accountId: "acct_12345678", secretRef: `vault:${storeId}/stripe/test` },
       name: "Owner Updated Store",
       slug: "attempted-slug-change",
       status: "ACTIVE",
@@ -562,6 +576,20 @@ test("Store Owner settings update only the owner store and ignore slug, role and
       role: "STAFF",
       isPlatformOwner: true,
     };
+    // The Owner may change their own store's design, and only their own.
+    const design = await actions.updateStoreDesignAction(storeId, { templateKey: "atelier", theme: { palette: "stone" } });
+    assert.ok(design.ok, JSON.stringify(design));
+    assert.equal((await db.store.findUniqueOrThrow({ where: { id: storeId } })).templateKey, "atelier");
+    const storeBDesign = await db.store.findUniqueOrThrow({ where: { id: "store-b" }, select: { templateKey: true, themeConfig: true } });
+    assert.deepEqual(await actions.updateStoreDesignAction("store-b", { templateKey: "atelier", theme: {} }), { ok: false, error: FORBIDDEN });
+    assert.deepEqual(await db.store.findUniqueOrThrow({ where: { id: "store-b" }, select: { templateKey: true, themeConfig: true } }), storeBDesign);
+    assert.ok(await db.auditEvent.findFirst({ where: { action: "store.design_update", storeId, actorUserId: storeOwnerId } }));
+
+    const foreignSecret = await actions.updateOwnStoreSettingsAction({
+      ...settings,
+      stripe: { ...settings.stripe, secretRef: "vault:store-a/stripe/test" },
+    });
+    assert.equal(foreignSecret.ok, false, "another store's secret reference is refused");
     const result = await actions.updateOwnStoreSettingsAction(settings);
     assert.ok(result.ok, JSON.stringify(result));
 
@@ -587,7 +615,7 @@ test("Store Owner settings update only the owner store and ignore slug, role and
     const bankAccount = await db.paymentProviderAccount.findFirstOrThrow({ where: { storeId, provider: "bank_transfer" } });
     assert.equal((bankAccount.publicConfig as { bankName: string }).bankName, "Local Bank");
     const stripeAccount = await db.paymentProviderAccount.findFirstOrThrow({ where: { storeId, provider: "stripe_connect" } });
-    assert.equal(stripeAccount.secretRef, "vault:store-a/stripe/test");
+    assert.equal(stripeAccount.secretRef, `vault:${storeId}/stripe/test`);
     assert.equal(stripeAccount.mode, "TEST");
     assert.equal(updated.paymentMethods.find(({ method }) => method === "stripe_checkout")?.enabled, false);
 
@@ -607,6 +635,9 @@ test("Store Owner settings update only the owner store and ignore slug, role and
     assert.equal((await db.store.findUniqueOrThrow({ where: { id: storeId }, select: { name: true } })).name, input.name);
   } finally {
     setRequestRuntimeForTests(null);
+    // Stores are archived, never deleted, in the app; for test cleanup the
+    // translations (NO ACTION references to the store's languages) go first.
+    await db.category.deleteMany({ where: { storeId } });
     await db.store.delete({ where: { id: storeId } });
     if (storeOwnerId) await db.user.delete({ where: { id: storeOwnerId } });
   }
@@ -680,6 +711,7 @@ test("settings can't change status, owner, or another store through smuggled fie
     name: "Renamed Store", slug: detail.slug, businessType: "furniture", countryCode: "GB", baseCurrency: "GBP",
     timezone: "Europe/London", defaultLanguage: "en", languages: ["en"], accentColor: "#123456",
     heroTitle: "Hello",
+    paymentMethods: { cash_on_delivery: true, card_on_delivery: false, bank_transfer: false, online_card: false },
     // Smuggled:
     status: "ACTIVE", ownerEmail: "mallory@example.com", ownerName: "Mallory", storeId: "store-b", isPlatformOwner: true, role: "OWNER",
   });

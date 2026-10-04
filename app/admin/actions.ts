@@ -140,8 +140,9 @@ function asCurrentStoreManager<T>(
     async () => {
       const viewer = await requireAdminViewer();
       if (viewer.kind !== "store") throw new AccessDenied("forbidden");
-      if (viewer.access !== "write") throw new AccessDenied("read-only");
+      // Role first: Staff are refused as "forbidden", not told the store is suspended.
       if (!mayRunStoreAction(viewer.role, action)) throw new AccessDenied("forbidden");
+      if (viewer.access !== "write") throw new AccessDenied("read-only");
       return viewer;
     },
     work,
