@@ -23,12 +23,12 @@ import {
   type CheckoutPaymentMethod,
   type PlacedOrder,
 } from "@/lib/checkout";
-import { PAYMENT_METHODS, paymentMethodLabel, UAE_EMIRATES } from "@/lib/config";
-import { paymentInstructions } from "@/lib/payment-instructions";
-import { clearCart, useCart } from "@/lib/storefront";
+import { PAYMENT_METHODS, UAE_EMIRATES } from "@/lib/config";
+import { clearCart, useCart, useStorefrontMessages } from "@/lib/storefront";
 import { formatStoreMoney, hasCartChanges } from "@/lib/storefront-cart";
+import { countryDisplayName, leftToRightValueDir, storefrontUiLocale, type StorefrontMessages } from "@/lib/storefront-i18n";
 import type { StorefrontStore } from "@/lib/storefront-types";
-import { CartChangesNotice, NOT_RESERVED_NOTE } from "./CartChanges";
+import { CartChangesNotice } from "./CartChanges";
 import { CartTotals } from "./OrderSummary";
 
 interface CheckoutForm {
@@ -59,6 +59,8 @@ const emptyForm: CheckoutForm = {
  */
 export function CheckoutView() {
   const view = useCart();
+  const m = useStorefrontMessages();
+  const t = m.checkout;
   const router = useRouter();
   const [form, setForm] = useState<CheckoutForm>(emptyForm);
   const [errors, setErrors] = useState<CheckoutFieldErrors>({});
@@ -73,6 +75,8 @@ export function CheckoutView() {
   const { context: { store }, cart, status, refresh } = view;
   const checking = status !== "ready";
   const isUae = store.countryCode === "AE";
+  // Email addresses and phone numbers read left to right in every interface language.
+  const ltrField = leftToRightValueDir(store);
   const fulfillmentMethod = cart.requiresPickup ? "PICKUP" : form.fulfillmentMethod;
 
   const paymentOptions = PAYMENT_METHODS.filter(
@@ -84,16 +88,16 @@ export function CheckoutView() {
   );
 
   if (placed) {
-    return <OrderConfirmation order={placed} store={store} />;
+    return <OrderConfirmation order={placed} store={store} m={m} />;
   }
 
   if (status === "error") {
     return (
       <main className="mx-auto max-w-xl px-4 py-20 sm:px-6">
         <Notice tone="error">
-          We couldn&apos;t check your cart&apos;s current prices and stock.{" "}
+          {t.pricesCheckFailed}{" "}
           <button type="button" className="font-semibold underline" onClick={refresh}>
-            Try again
+            {t.tryAgain}
           </button>
         </Notice>
       </main>
@@ -103,7 +107,7 @@ export function CheckoutView() {
   if (status === "loading" && cart.lines.length === 0) {
     return (
       <main className="mx-auto max-w-xl px-4 py-20 sm:px-6">
-        <SfLoading label="Loading your cart…" />
+        <SfLoading label={t.loadingCart} />
       </main>
     );
   }
@@ -113,9 +117,9 @@ export function CheckoutView() {
       <main className="mx-auto max-w-xl px-4 py-20 sm:px-6">
         <SfEmptyState
           icon={ShoppingCart}
-          title="Your cart is empty"
-          description="Add some products before checking out."
-          action={<SfLinkButton href="/shop">Go to shop</SfLinkButton>}
+          title={t.emptyTitle}
+          description={t.emptyDescription}
+          action={<SfLinkButton href="/shop">{t.goToShop}</SfLinkButton>}
         />
       </main>
     );
@@ -142,7 +146,7 @@ export function CheckoutView() {
     event.preventDefault();
     if (!canPlace) return;
     // Instant feedback; the server checks everything again.
-    const found = validateCheckoutFields({ ...form, fulfillmentMethod }, store.countryCode);
+    const found = validateCheckoutFields({ ...form, fulfillmentMethod }, store.countryCode, m.validation);
     setErrors(found);
     setServerError("");
     if (focusFirst(found)) return;
@@ -200,29 +204,27 @@ export function CheckoutView() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
-      <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
+      <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-4xl">{t.title}</h1>
 
       <Notice className="mt-6">
-        Card details are never collected by this store.
-        {paymentOptions.some((m) => m.id === "cash_on_delivery") &&
-          " Cash on delivery: pay the courier when your order arrives."}
-        {paymentOptions.some((m) => m.id === "bank_transfer") &&
-          ` Bank transfer: ${store.name} will send you the transfer details after you order.`}{" "}
-        Prices and stock are checked again when you place your order.
+        {t.noCardDetails}
+        {paymentOptions.some((method) => method.id === "cash_on_delivery") && t.cashOnDeliveryNote}
+        {paymentOptions.some((method) => method.id === "bank_transfer") && t.bankTransferNote(store.name)}{" "}
+        {t.recheckNote}
       </Notice>
 
       <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">
-        {checking ? "Checking current prices and stock…" : "Prices and stock checked with the store just now."}
+        {checking ? t.checking : t.checked}
       </p>
       <CartChangesNotice cart={cart} store={store} className="mt-4" />
       {cart.requiresPickup && (
         <Notice tone="warning" className="mt-4">
-          Your cart contains pickup-only products. Choose pickup at checkout; these products cannot be delivered.
+          {t.pickupOnlyWarning}
         </Notice>
       )}
       {paymentOptions.length === 0 && (
         <Notice tone="warning" className="mt-4">
-          This store has no payment methods available yet, so orders can&apos;t be placed.
+          {t.noPaymentMethodsWarning}
         </Notice>
       )}
       {serverError && (
@@ -234,9 +236,9 @@ export function CheckoutView() {
       <form onSubmit={handleSubmit} noValidate className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-8">
           <fieldset className="min-w-0 rounded-card border border-border bg-surface p-4 sm:p-6">
-            <legend className="px-1 font-heading text-lg font-semibold">Contact details</legend>
+            <legend className="px-1 font-heading text-lg font-semibold">{t.contactDetails}</legend>
             <div className="mt-2 grid gap-4 sm:grid-cols-2">
-              <Field label="Full name" htmlFor="checkout-name" required error={errors.name} className="sm:col-span-2">
+              <Field label={t.fullName} htmlFor="checkout-name" required error={errors.name} className="sm:col-span-2">
                 <input
                   {...errorProps("checkout-name", errors.name)}
                   autoComplete="name"
@@ -245,20 +247,22 @@ export function CheckoutView() {
                   className={sfInputClass(!!errors.name)}
                 />
               </Field>
-              <Field label="Email" htmlFor="checkout-email" required error={errors.email}>
+              <Field label={t.email} htmlFor="checkout-email" required error={errors.email}>
                 <input
                   {...errorProps("checkout-email", errors.email)}
                   type="email"
+                  dir={ltrField}
                   autoComplete="email"
                   value={form.email}
                   onChange={(e) => update("email", e.target.value)}
                   className={sfInputClass(!!errors.email)}
                 />
               </Field>
-              <Field label="Phone" htmlFor="checkout-phone" required error={errors.phone}>
+              <Field label={t.phone} htmlFor="checkout-phone" required error={errors.phone}>
                 <input
                   {...errorProps("checkout-phone", errors.phone)}
                   type="tel"
+                  dir={ltrField}
                   autoComplete="tel"
                   placeholder={isUae ? "050 123 4567" : ""}
                   value={form.phone}
@@ -270,11 +274,11 @@ export function CheckoutView() {
           </fieldset>
 
           <fieldset className="min-w-0 rounded-card border border-border bg-surface p-4 sm:p-6">
-            <legend className="px-1 font-heading text-lg font-semibold">Fulfillment</legend>
+            <legend className="px-1 font-heading text-lg font-semibold">{t.fulfillment}</legend>
             <div className="mt-2 space-y-3">
               {([
-                ["DELIVERY", "Delivery"],
-                ["PICKUP", "Pickup at the store"],
+                ["DELIVERY", t.deliveryOption],
+                ["PICKUP", t.pickupOption],
               ] as const).map(([method, label]) => (
                 <label key={method} className="flex items-start gap-3 rounded-control border border-border p-4">
                   <input
@@ -292,14 +296,14 @@ export function CheckoutView() {
             </div>
             {fulfillmentMethod === "DELIVERY" && (
             <>
-            <h2 className="mt-5 font-heading text-lg font-semibold">{isUae ? "UAE delivery address" : "Delivery address"}</h2>
+            <h2 className="mt-5 font-heading text-lg font-semibold">{isUae ? t.uaeDeliveryAddress : t.deliveryAddress}</h2>
             <div className="mt-2 grid gap-4 sm:grid-cols-2">
               <Field
-                label="Address"
+                label={t.address}
                 htmlFor="checkout-address"
                 required
                 error={errors.address}
-                hint="Building / villa, street and area"
+                hint={t.addressHint}
                 className="sm:col-span-2"
               >
                 <textarea
@@ -311,7 +315,7 @@ export function CheckoutView() {
                   className={sfInputClass(!!errors.address)}
                 />
               </Field>
-              <Field label={isUae ? "Emirate" : "City"} htmlFor="checkout-city" required error={errors.city}>
+              <Field label={isUae ? t.emirate : t.city} htmlFor="checkout-city" required error={errors.city}>
                 {isUae ? (
                   <select
                     {...errorProps("checkout-city", errors.city)}
@@ -319,9 +323,9 @@ export function CheckoutView() {
                     onChange={(e) => update("city", e.target.value)}
                     className={sfInputClass(!!errors.city)}
                   >
-                    <option value="">Choose emirate…</option>
+                    <option value="">{t.chooseEmirate}</option>
                     {UAE_EMIRATES.map((emirate) => (
-                      <option key={emirate} value={emirate}>{emirate}</option>
+                      <option key={emirate} value={emirate}>{m.emirates[emirate] ?? emirate}</option>
                     ))}
                   </select>
                 ) : (
@@ -335,7 +339,7 @@ export function CheckoutView() {
                 )}
               </Field>
               <div className="text-sm text-muted-foreground sm:self-end sm:pb-3">
-                Country: <span className="font-medium text-foreground">{store.countryName}</span>
+                {t.country} <span className="font-medium text-foreground">{countryDisplayName(storefrontUiLocale(store), store.countryCode, store.countryName)}</span>
               </div>
             </div>
             </>
@@ -343,7 +347,7 @@ export function CheckoutView() {
           </fieldset>
 
           <fieldset className="min-w-0 rounded-card border border-border bg-surface p-4 sm:p-6">
-            <legend className="px-1 font-heading text-lg font-semibold">Payment method</legend>
+            <legend className="px-1 font-heading text-lg font-semibold">{t.paymentMethod}</legend>
             <div
               id="checkout-paymentMethod"
               tabIndex={-1}
@@ -368,13 +372,13 @@ export function CheckoutView() {
                     className="mt-1 accent-[var(--sf-accent)]"
                   />
                   <span>
-                    <span className="block font-medium">{method.label}</span>
-                    <span className="text-sm text-muted-foreground">{method.description}</span>
+                    <span className="block font-medium">{m.payments[method.id]?.label ?? method.label}</span>
+                    <span className="text-sm text-muted-foreground">{m.payments[method.id]?.description ?? method.description}</span>
                   </span>
                 </label>
               ))}
               {paymentOptions.length === 0 && (
-                <p className="text-sm text-muted-foreground">No payment methods are available.</p>
+                <p className="text-sm text-muted-foreground">{t.noPaymentOptions}</p>
               )}
             </div>
             {errors.paymentMethod && (
@@ -386,7 +390,7 @@ export function CheckoutView() {
         </div>
 
         <aside className="h-fit rounded-card border border-border bg-surface-elevated p-6 lg:sticky lg:top-24">
-          <h2 className="font-heading text-lg font-semibold">Order summary</h2>
+          <h2 className="font-heading text-lg font-semibold">{t.orderSummary}</h2>
           <ul className="mt-4 space-y-3 border-b border-border pb-4 text-sm">
             {cart.lines.map(({ product, quantity, lineTotalMinor }) => (
               <li key={product.id} className="flex justify-between gap-3">
@@ -405,14 +409,14 @@ export function CheckoutView() {
             disabled={!canPlace}
             className={`${sfButtonClass("primary", "lg")} mt-6 w-full`}
           >
-            {submitting ? "Placing your order…" : checking ? "Checking prices…" : "Place order"}
+            {submitting ? t.placing : checking ? t.checkingPrices : t.placeOrder}
           </button>
           {cartChanged && (
-            <p className="mt-2 text-xs text-warning">Review the cart updates above before placing your order.</p>
+            <p className="mt-2 text-xs text-warning">{t.reviewChanges}</p>
           )}
-          <p className="mt-2 text-xs text-muted-foreground">{NOT_RESERVED_NOTE}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{m.notReserved}</p>
           <Link href="/cart" className="mt-3 block text-center text-sm font-medium text-muted-foreground hover:underline">
-            Back to cart
+            {t.backToCart}
           </Link>
         </aside>
       </form>
@@ -421,41 +425,41 @@ export function CheckoutView() {
 }
 
 /** Shown after the SERVER placed the order; every figure comes from its response. */
-function OrderConfirmation({ order, store }: { order: PlacedOrder; store: StorefrontStore }) {
+function OrderConfirmation({ order, store, m }: { order: PlacedOrder; store: StorefrontStore; m: StorefrontMessages }) {
   const money = (minor: string) => formatStoreMoney(store, minor);
+  const t = m.confirmation;
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-16">
       <div className="rounded-card border border-border bg-surface p-5 text-center sm:p-8">
         <CircleCheck className="mx-auto h-12 w-12 text-success" aria-hidden />
-        <h1 className="mt-4 font-heading text-2xl font-bold tracking-tight sm:text-3xl">Order placed</h1>
+        <h1 className="mt-4 font-heading text-2xl font-bold tracking-tight sm:text-3xl">{t.title}</h1>
         <p className="mt-2 text-muted-foreground">
-          Thank you. Your order number is <strong className="text-foreground">{order.orderNumber}</strong>.
-          Please keep it for your records.
+          {t.thanks.before}<strong className="text-foreground">{order.orderNumber}</strong>{t.thanks.after}
         </p>
         <Notice className="mt-6 text-start">
           {order.paymentMethod === "bank_transfer" ? (
             <>
-              <strong>Payment: bank transfer — not paid yet.</strong>{" "}
-              {paymentInstructions("bank_transfer", store.name, order.orderNumber)}
+              <strong>{t.bankTransferTitle}</strong>{" "}
+              {t.bankTransferInstructions(store.name, order.orderNumber)}
               {order.paymentInfo?.map((item) => (
                 <span key={item.label} className="mt-1 block text-sm">
-                  <strong>{item.label.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}:</strong>{" "}
+                  <strong>{t.paymentInfoLabel(item.label)}:</strong>{" "}
                   {item.value}
                 </span>
               ))}
             </>
           ) : order.paymentMethod === "cash_on_pickup" ? (
             <>
-              <strong>Payment: pay on pickup — not paid yet.</strong> Pay in cash when you collect your order.
+              <strong>{t.payOnPickupTitle}</strong> {t.payOnPickupBody}
             </>
           ) : order.paymentMethod === "stripe_checkout" ? (
             <>
-              <strong>Payment: Stripe Checkout.</strong> Complete payment in the hosted Stripe window.
+              <strong>{t.stripeTitle}</strong> {t.stripeBody}
             </>
           ) : (
             <>
-              <strong>Payment: cash on delivery — not paid yet.</strong>{" "}
-              Please pay the courier when your order is delivered.
+              <strong>{t.cashOnDeliveryTitle}</strong>{" "}
+              {t.cashOnDeliveryBody}
             </>
           )}
         </Notice>
@@ -470,30 +474,31 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
         </ul>
         <dl className="mt-4 space-y-2 text-start text-sm">
           <div className="flex justify-between">
-            <dt className="text-muted-foreground">Subtotal</dt>
+            <dt className="text-muted-foreground">{m.subtotal}</dt>
             <dd className="font-medium tabular-nums">{money(order.subtotalMinor)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-muted-foreground">{order.fulfillmentMethod === "PICKUP" ? "Pickup" : "Delivery"}</dt>
+            <dt className="text-muted-foreground">{order.fulfillmentMethod === "PICKUP" ? m.pickup : m.delivery}</dt>
             <dd className="font-medium tabular-nums">
               {order.fulfillmentMethod === "PICKUP"
-                ? "No delivery fee"
+                ? m.noDeliveryFee
                 : order.shippingMinor === "0"
-                  ? "Free"
+                  ? m.free
                   : money(order.shippingMinor)}
             </dd>
           </div>
           <div className="flex justify-between border-t border-border pt-3 text-base">
-            <dt className="font-semibold">Total to pay</dt>
+            <dt className="font-semibold">{t.totalToPay}</dt>
             <dd className="font-bold tabular-nums">{money(order.totalMinor)}</dd>
           </div>
         </dl>
         <p className="mt-4 text-start text-sm text-muted-foreground">
-          {order.fulfillmentMethod === "PICKUP" ? "Pickup at the store" : `Delivery to ${order.deliveryTo}`} · Payment: {paymentMethodLabel(order.paymentMethod)} (unpaid)
+          {order.fulfillmentMethod === "PICKUP" ? t.pickupAtStore : t.deliveryTo(order.deliveryTo)}
+          {t.paymentLine(m.payments[order.paymentMethod]?.label ?? order.paymentMethod)}
         </p>
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <SfLinkButton href="/shop">Continue shopping</SfLinkButton>
+          <SfLinkButton href="/shop">{t.continueShopping}</SfLinkButton>
         </div>
       </div>
     </main>

@@ -13,6 +13,7 @@
 import { UAE_EMIRATES } from "./config";
 import { isE164Phone } from "./standards";
 import { isStoreIdCookieValue } from "./storefront-cookie";
+import { messagesFor, type ValidationMessages } from "./storefront-i18n";
 import { isEmail, isUaePhone } from "./validation";
 
 /** Methods supported by the checkout core; unavailable providers are filtered server-side. */
@@ -77,7 +78,7 @@ export type CheckoutValidation =
   | { ok: true; values: CleanCheckout }
   | { ok: false; errors: CheckoutFieldErrors; requestError?: string };
 
-const BAD_REQUEST = "This checkout couldn't be read. Please refresh the page and try again.";
+export const BAD_REQUEST = messagesFor("en").serverErrors.badRequest;
 
 function record(input: unknown): Record<string, unknown> {
   return input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
@@ -124,8 +125,16 @@ function cleanItems(value: unknown): CleanCheckout["items"] | null {
   return items.sort((a, b) => (a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0));
 }
 
-/** Field checks only (for the form, before it is sent). */
-export function validateCheckoutFields(input: unknown, countryCode: string): CheckoutFieldErrors {
+/**
+ * Field checks only (for the form, before it is sent). `messages` is the
+ * shopper's UI language (lib/storefront-i18n.ts); the server validates in
+ * English.
+ */
+export function validateCheckoutFields(
+  input: unknown,
+  countryCode: string,
+  messages: ValidationMessages = messagesFor("en").validation,
+): CheckoutFieldErrors {
   const raw = record(input);
   const errors: CheckoutFieldErrors = {};
   const name = str(raw, "name");
@@ -136,30 +145,30 @@ export function validateCheckoutFields(input: unknown, countryCode: string): Che
   const fulfillmentMethod = str(raw, "fulfillmentMethod");
   const pickup = fulfillmentMethod === "PICKUP";
 
-  if (name.length < 2) errors.name = "Please enter your full name.";
-  else if (name.length > CHECKOUT_LIMITS.name) errors.name = `Keep this under ${CHECKOUT_LIMITS.name} characters.`;
-  if (!isEmail(email)) errors.email = "Please enter a valid email address.";
-  else if (email.length > CHECKOUT_LIMITS.email) errors.email = `Keep this under ${CHECKOUT_LIMITS.email} characters.`;
+  if (name.length < 2) errors.name = messages.fullName;
+  else if (name.length > CHECKOUT_LIMITS.name) errors.name = messages.tooLong(CHECKOUT_LIMITS.name);
+  if (!isEmail(email)) errors.email = messages.email;
+  else if (email.length > CHECKOUT_LIMITS.email) errors.email = messages.tooLong(CHECKOUT_LIMITS.email);
   if (!toE164Phone(str(raw, "phone"), countryCode)) {
     errors.phone = isUae
-      ? "Please enter a UAE phone number, e.g. 050 123 4567."
-      : "Please enter your phone number with the country code, e.g. +44 20 7946 0000.";
+      ? messages.phoneUae
+      : messages.phoneInternational;
   }
   if (fulfillmentMethod !== "DELIVERY" && fulfillmentMethod !== "PICKUP") {
-    errors.fulfillmentMethod = "Choose delivery or pickup.";
+    errors.fulfillmentMethod = messages.fulfillment;
   }
-  if (!pickup && address.length < 5) errors.address = "Please enter your delivery address.";
-  else if (!pickup && address.length > CHECKOUT_LIMITS.address) errors.address = `Keep this under ${CHECKOUT_LIMITS.address} characters.`;
+  if (!pickup && address.length < 5) errors.address = messages.address;
+  else if (!pickup && address.length > CHECKOUT_LIMITS.address) errors.address = messages.tooLong(CHECKOUT_LIMITS.address);
   if (!pickup && isUae) {
-    if (!(UAE_EMIRATES as readonly string[]).includes(city)) errors.city = "Please choose your emirate.";
-  } else if (!pickup && !city) errors.city = "Please enter your city.";
-  else if (!pickup && city.length > CHECKOUT_LIMITS.city) errors.city = `Keep this under ${CHECKOUT_LIMITS.city} characters.`;
+    if (!(UAE_EMIRATES as readonly string[]).includes(city)) errors.city = messages.emirate;
+  } else if (!pickup && !city) errors.city = messages.city;
+  else if (!pickup && city.length > CHECKOUT_LIMITS.city) errors.city = messages.tooLong(CHECKOUT_LIMITS.city);
   if (!(CHECKOUT_PAYMENT_METHODS as readonly string[]).includes(str(raw, "paymentMethod"))) {
-    errors.paymentMethod = "Please choose a payment method.";
+    errors.paymentMethod = messages.paymentMethod;
   } else if (fulfillmentMethod === "PICKUP" && str(raw, "paymentMethod") === "cash_on_delivery") {
-    errors.paymentMethod = "Choose Pay on pickup for pickup orders.";
+    errors.paymentMethod = messages.pickupNeedsPayOnPickup;
   } else if (fulfillmentMethod === "DELIVERY" && str(raw, "paymentMethod") === "cash_on_pickup") {
-    errors.paymentMethod = "Pay on pickup is only available for pickup orders.";
+    errors.paymentMethod = messages.payOnPickupOnlyForPickup;
   }
   return errors;
 }
