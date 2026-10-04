@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { ContactView } from "@/components/storefront/ContactView";
 import { ContactPage as BusinessContactPage } from "@/components/platform/site/pages/ContactPage";
-import { getDb } from "@/lib/server/db";
-import { getPlatformName } from "@/lib/server/platform-brand";
+import { getAgencyProfile } from "@/lib/server/agency";
 import { platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
 import { headers } from "next/headers";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
@@ -30,8 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ContactPage() {
   if (isPlatformBusinessHost((await headers()).get("host") ?? "")) {
-    const settings = await getDb().platformSettings.findUnique({ where: { id: 1 }, select: { contactEmail: true } });
-    return <BusinessContactPage platformName={await getPlatformName()} email={settings?.contactEmail?.trim() || null} />;
+    return <BusinessContactPage agency={await getAgencyProfile()} />;
   }
   const { context } = await requireStorefrontPage();
   return <ContactView store={context.store} />;

@@ -21,6 +21,7 @@ import type { ActionResult } from "@/lib/admin/types";
 import { getDb } from "@/lib/server/db";
 import { getAuth } from "@/lib/server/auth/auth";
 import { updateOwnAccount } from "@/lib/server/auth/account";
+import { updateAgencySettings } from "@/lib/server/agency";
 import {
   AccessDenied,
   requireAdminViewer,
@@ -176,6 +177,11 @@ export async function updateOwnStoreSettingsAction(input: unknown) {
 export async function setStoreOwnerAction(storeId: unknown, input: unknown) {
   if (!isId(storeId)) return badRequest;
   return asPlatformOwner("setStoreOwner", (owner) => setAdminStoreOwner(owner, getDb(), storeId, input));
+}
+
+/** Agency settings: the public agency website's single source of truth. Platform owner only. */
+export async function updateAgencySettingsAction(input: unknown) {
+  return asPlatformOwner("updateAgencySettings", (owner) => updateAgencySettings(owner, getDb(), input));
 }
 
 export async function updateMyAccountAction(input: unknown) {

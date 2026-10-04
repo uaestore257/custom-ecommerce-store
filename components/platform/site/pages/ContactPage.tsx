@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import type { AgencyProfile } from "@/lib/agency/profile";
 import { SERVICE_CATEGORIES } from "@/lib/platform/services";
+import { ContactDetails, SocialLinks } from "../AgencyDetails";
 import { EnquiryComposer } from "../contact/EnquiryComposer";
 import { CONTAINER, Eyebrow, SplitWords, StudioMain, textLink } from "../primitives";
 import { focusRing } from "../styles";
@@ -11,8 +13,10 @@ const NEXT_STEPS = [
   ["A clear proposal", "Scope, timeline and cost in writing — what's ready on the platform and what we'd build for you."],
 ];
 
-/** /contact: start a project. Uses the platform contact address when one is configured. */
-export function ContactPage({ platformName, email }: { platformName: string; email: string | null }) {
+/** /contact: start a project. Contact details and the enquiry destination come from Agency settings. */
+export function ContactPage({ agency }: { agency: AgencyProfile }) {
+  const { contact } = agency;
+  const destination = contact.enquiryEmail;
   return (
     <StudioMain>
       <section aria-labelledby="contact-title" className="relative isolate overflow-hidden">
@@ -29,13 +33,21 @@ export function ContactPage({ platformName, email }: { platformName: string; ema
               Tell us about your business and what you want to build. We&apos;ll come back with how we&apos;d approach it — and
               what&apos;s ready on our platform today.
             </p>
-            {email && (
+            {contact.email && (
               <p className="studio-rise mt-10" style={{ "--delay": "400ms" } as CSSProperties}>
                 <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground rtl:tracking-normal">Or write directly</span>
-                <a href={`mailto:${email}`} className={`mt-2 block break-all font-heading text-3xl text-accent sm:text-4xl ${focusRing}`}>
-                  {email}
+                <a href={`mailto:${contact.email}`} className={`mt-2 block break-all font-heading text-3xl text-accent sm:text-4xl ${focusRing}`}>
+                  {contact.email}
                 </a>
               </p>
+            )}
+            {(contact.phone || contact.whatsapp || contact.address.length > 0 || contact.businessHours) && (
+              <div className="studio-rise mt-10" style={{ "--delay": "450ms" } as CSSProperties}>
+                <ContactDetails contact={{ ...contact, email: undefined }} labelled className="grid gap-5 sm:grid-cols-2" />
+              </div>
+            )}
+            {agency.social.length > 0 && (
+              <SocialLinks social={agency.social} className="studio-rise mt-8 flex flex-wrap gap-x-6" />
             )}
             <ol className="mt-14 border-t border-border">
               {NEXT_STEPS.map(([title, text], index) => (
@@ -53,9 +65,9 @@ export function ContactPage({ platformName, email }: { platformName: string; ema
           <div className="studio-rise lg:col-span-6 lg:col-start-7" style={{ "--delay": "250ms" } as CSSProperties}>
             <div className="border border-border bg-surface p-6 sm:p-10">
               <h2 className="font-heading text-4xl">Your brief</h2>
-              {email ? (
+              {destination ? (
                 <div className="mt-10">
-                  <EnquiryComposer email={email} platformName={platformName} services={SERVICE_CATEGORIES.map((category) => category.title)} />
+                  <EnquiryComposer email={destination} platformName={agency.name} services={SERVICE_CATEGORIES.map((category) => category.title)} />
                 </div>
               ) : (
                 <p className="mt-6 text-base text-muted-foreground" role="status">

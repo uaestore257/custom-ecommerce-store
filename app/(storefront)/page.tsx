@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { HomePage as BusinessHomePage } from "@/components/platform/site/pages/HomePage";
 import { getDb } from "@/lib/server/db";
 import { getPlatformName } from "@/lib/server/platform-brand";
-import { PLATFORM_SITE_DESCRIPTION, platformOrganizationJsonLd, platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
+import { platformOrganizationJsonLd, platformSiteDescription, platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
 import { getFeaturedProducts, getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
@@ -15,12 +15,12 @@ export async function generateMetadata(): Promise<Metadata> {
   const isBusinessHost = isPlatformBusinessHost(host);
   const isPathPreviewHost = isStorefrontPathPreviewHost(host);
   if (isBusinessHost && !isPathPreviewHost) {
-    return platformSitePageMetadata({ path: "/", description: PLATFORM_SITE_DESCRIPTION });
+    return platformSitePageMetadata({ path: "/" });
   }
   if (isPathPreviewHost && !(await getRequestStorefront())) {
     return {
       title: { absolute: await getPlatformName() },
-      description: PLATFORM_SITE_DESCRIPTION,
+      description: await platformSiteDescription(),
       robots: { index: false, follow: false },
     };
   }

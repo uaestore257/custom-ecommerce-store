@@ -46,6 +46,17 @@ const BUSINESS_SITE_PATHS = new Set([
   "/sitemap.xml",
 ]);
 
+/**
+ * Static files in public/ that the business site may serve: the agency's
+ * brand assets (logo, mark, profile and social images referenced from
+ * Agency settings as site paths) and the demo-store screenshots.
+ */
+const BUSINESS_SITE_ASSET_PREFIXES = ["/brand/", "/showcase/"];
+
+function isBusinessSiteAsset(pathname: string) {
+  return BUSINESS_SITE_ASSET_PREFIXES.some((prefix) => pathname.startsWith(prefix)) && !pathname.includes("..");
+}
+
 function notFound() {
   return new NextResponse("Not found", { status: 404, headers: { "content-type": "text/plain" } });
 }
@@ -112,6 +123,7 @@ export function proxy(request: NextRequest) {
     isPlatformBusinessHost(host) &&
     !pathPreviewHost &&
     !BUSINESS_SITE_PATHS.has(pathname) &&
+    !(isBusinessSiteAsset(pathname) && !request.headers.has("next-action")) &&
     !(portalHost && (isAdminPath(pathname) || pathname === "/accept-invitation")) &&
     !(request.headers.has("next-action") && isPublicActionPath(pathname))
   ) {

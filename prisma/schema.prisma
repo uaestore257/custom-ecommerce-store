@@ -129,11 +129,56 @@ model Language {
 }
 
 /// Single row with platform settings. No commercial defaults on purpose.
+///
+/// Also the AGENCY PROFILE: the single source of truth for the public
+/// agency website on the platform root (lib/server/agency.ts). Platform
+/// data only — never joined to, or derived from, any Store. Every field
+/// here is intended to be public once filled in; empty fields are simply
+/// not shown. `platformName` is the agency name and the website name.
+/// `team` and `socialLinks` are JSON lists validated by lib/agency/profile.ts
+/// on every write and normalized on every read.
 model PlatformSettings {
   id           Int      @id @default(1)
   platformName String
+  /// Business email shown publicly.
   contactEmail String?
   updatedAt    DateTime @updatedAt
+
+  // Identity
+  tagline         String? @db.VarChar(120)
+  description     String? @db.VarChar(400)
+  /// Logo image URL (https:// or a site path such as /brand/logo.svg).
+  logoUrl         String? @db.VarChar(2048)
+  /// The logo already contains the agency name: don't repeat the name beside it.
+  logoIsWordmark  Boolean @default(false)
+  /// Square brand mark, used as the website icon.
+  brandMarkUrl    String? @db.VarChar(2048)
+
+  // About
+  aboutTitle      String? @db.VarChar(120)
+  aboutBody       String? @db.VarChar(4000)
+  /// [{ name, title, bio?, imageUrl? }] — founders and team.
+  team            Json    @default("[]")
+
+  // Contact
+  phone           String? @db.VarChar(40)
+  whatsapp        String? @db.VarChar(40)
+  addressLine     String? @db.VarChar(200)
+  city            String? @db.VarChar(100)
+  region          String? @db.VarChar(100)
+  country         String? @db.VarChar(100)
+  postalCode      String? @db.VarChar(20)
+  businessHours   String? @db.VarChar(200)
+  /// Where project enquiries are addressed (falls back to contactEmail).
+  enquiryEmail    String? @db.VarChar(254)
+
+  // Social: [{ platform, url, label? }]
+  socialLinks     Json    @default("[]")
+
+  // Website / SEO (the website name is always platformName)
+  seoTitle        String? @db.VarChar(120)
+  seoDescription  String? @db.VarChar(300)
+  ogImageUrl      String? @db.VarChar(2048)
 }
 
 // ---------------------------------------------------------------------

@@ -126,6 +126,17 @@ The bare `PLATFORM_ROOT_DOMAIN` serves the studio site: `/` (home),
   static, token-painted miniatures used on `/platform` to explain the
   design system and RTL; they are labelled as specimens.
 
+- **Agency settings are the single source of truth** for the site's
+  identity: name (= website name), logo and brand mark, tagline,
+  description, About story and people, contact details, social accounts
+  and SEO. They live on the platform's `PlatformSettings` row (never a
+  Store), are edited by the platform owner on `/admin/settings`, and reach
+  every page through `getAgencyProfile()` (`lib/server/agency.ts`), which
+  returns only the public DTO from `lib/agency/profile.ts`. Empty fields
+  are not rendered. Self-hosted brand images go in `public/brand/` and are
+  referenced as `/brand/…` (the proxy serves `/brand/` and `/showcase/`
+  on the business host).
+
 When adding a template, also add its portfolio copy (`TEMPLATE_EDITORIAL`
 and `SHOWCASE_ORDER` in `lib/platform/showcase.ts`), its screenshots
 (`SHOWCASE_MEDIA` in `components/platform/site/work/showcase-media.ts`)

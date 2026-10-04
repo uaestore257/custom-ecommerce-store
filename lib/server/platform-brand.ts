@@ -1,10 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { PLATFORM_FALLBACK_NAME } from "@/lib/platform-brand";
-import { getDb } from "./db";
+import { getAgencyProfile } from "./agency";
 
-/** The platform's configured public name (PlatformSettings), or the fallback. Once per request. */
-export const getPlatformName = cache(async (): Promise<string> => {
-  const settings = await getDb().platformSettings.findUnique({ where: { id: 1 }, select: { platformName: true } });
-  return settings?.platformName.trim() || PLATFORM_FALLBACK_NAME;
-});
+/** The agency (and public website) name from Agency settings, or the fallback. Once per request. */
+export const getPlatformName = cache(async (): Promise<string> => (await getAgencyProfile()).name);

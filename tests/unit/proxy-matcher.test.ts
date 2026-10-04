@@ -106,6 +106,14 @@ test("production platform root serves portfolio pages and central Store Admin lo
     assert.equal(proxyModule.proxy(rootRequest(path)).headers.get("x-middleware-next"), "1", path);
   }
   assert.equal(proxyModule.proxy(rootRequest("/shop")).status, 404);
+  // Agency brand assets and showcase screenshots are servable; nothing else in public/ is.
+  for (const path of ["/brand/logo.svg", "/showcase/atelier-desktop.jpg"]) {
+    assert.equal(proxyModule.proxy(rootRequest(path)).headers.get("x-middleware-next"), "1", path);
+  }
+  assert.equal(proxyModule.proxy(rootRequest("/next.svg")).status, 404);
+  for (const path of ["/brand", "/brandnew", "/showcases/x.jpg"]) {
+    assert.equal(proxyModule.proxy(rootRequest(path)).status, 404, path);
+  }
 
   const adminRoot = new NextRequest("http://admin.localhost:3000/", {
     headers: { host: "admin.localhost:3000" },

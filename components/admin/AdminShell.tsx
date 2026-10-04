@@ -22,7 +22,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { LinkButton } from "@/components/ui";
-import { useDemoState } from "@/lib/demo-db";
 import type { AdminStoreSummary } from "@/lib/admin/types";
 import { mayAccessStoreSection, type StoreMembershipRole, type StoreSection } from "@/lib/admin/store-access";
 import { storeSettingsNav, storeTeamNav } from "@/lib/admin/store-navigation";
@@ -115,6 +114,7 @@ export function AdminShell({
   role,
   portal,
   selectedStoreId,
+  agencyName,
 }: {
   children: ReactNode;
   stores: ShellStore[];
@@ -124,6 +124,8 @@ export function AdminShell({
   role: StoreMembershipRole | null;
   portal: boolean;
   selectedStoreId: string | null;
+  /** The agency name from Agency settings (the database). */
+  agencyName: string;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
@@ -146,7 +148,7 @@ export function AdminShell({
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white lg:block">
-        <SidebarContent stores={stores} platform={platform} role={role} portal={portal} selectedStoreId={selectedStoreId} />
+        <SidebarContent stores={stores} platform={platform} role={role} portal={portal} selectedStoreId={selectedStoreId} agencyName={agencyName} />
       </aside>
 
       {/* Mobile drawer */}
@@ -167,7 +169,7 @@ export function AdminShell({
             >
               <X className="h-5 w-5" aria-hidden />
             </button>
-            <SidebarContent stores={stores} platform={platform} role={role} portal={portal} selectedStoreId={selectedStoreId} />
+            <SidebarContent stores={stores} platform={platform} role={role} portal={portal} selectedStoreId={selectedStoreId} agencyName={agencyName} />
           </aside>
         </div>
       )}
@@ -186,17 +188,17 @@ function SidebarContent({
   role,
   portal,
   selectedStoreId,
+  agencyName,
 }: {
   stores: ShellStore[];
   platform: boolean;
   role: StoreMembershipRole | null;
   portal: boolean;
   selectedStoreId: string | null;
+  agencyName: string;
 }) {
   const pathname = usePathname();
   const params = useParams<{ storeId?: string }>();
-  // The agency name is still demo data (agency settings are not in the database yet).
-  const state = useDemoState();
   const selected = params.storeId
     ? (stores.find((s) => s.id === params.storeId) ?? null)
     : portal
@@ -211,11 +213,11 @@ function SidebarContent({
     <div className="flex h-full flex-col overflow-y-auto">
       <Link href="/admin" className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-700 text-sm font-bold text-white">
-          {(state?.agency.agencyName.trim().charAt(0) || "A").toUpperCase()}
+          {(agencyName.trim().charAt(0) || "A").toUpperCase()}
         </span>
         <span className="min-w-0">
           <span className="block truncate font-bold leading-tight">
-            {state?.agency.agencyName ?? "Agency"}
+            {agencyName}
           </span>
           <span className="text-xs text-slate-500">{platform ? "Agency Admin" : "Store Admin"}</span>
         </span>
@@ -247,8 +249,8 @@ function SidebarContent({
           </Link>
         )}
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">
-          <strong>Partly sample data.</strong> Customers and agency settings are still saved in this browser only. Stores,
-          products, categories and orders are saved in the database.
+          <strong>Partly sample data.</strong> Customers are still saved in this browser only. Stores, products,
+          categories, orders and agency settings are saved in the database.
         </p>
       </div>
     </div>

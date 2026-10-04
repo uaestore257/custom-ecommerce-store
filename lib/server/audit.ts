@@ -14,6 +14,7 @@ export type AuditAction =
   | "auth.sign_out"
   | "platform_owner.create"
   | "platform_owner.password_reset"
+  | "platform.agency_settings_update"
   | "account.profile_change"
   | "store.create"
   | "store.update_settings"

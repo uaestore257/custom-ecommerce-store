@@ -10,7 +10,7 @@ import { caseIdentity } from "../work/WorkCase";
  * work itself — the flagship demo store on desktop with a second store on
  * a phone, tilting gently under the pointer over an ambient glow.
  */
-export function Hero({ lead, second }: { lead: TemplateShowcaseEntry; second?: TemplateShowcaseEntry }) {
+export function Hero({ tagline, lead, second }: { tagline: string; lead: TemplateShowcaseEntry; second?: TemplateShowcaseEntry }) {
   const leadIdentity = caseIdentity(lead);
   const secondIdentity = second ? caseIdentity(second) : null;
 
@@ -26,7 +26,7 @@ export function Hero({ lead, second }: { lead: TemplateShowcaseEntry; second?: T
       <div className={`${CONTAINER} grid min-h-[100svh] items-center gap-14 pb-20 pt-32 lg:grid-cols-12 lg:gap-8 lg:pb-24 lg:pt-36`}>
         <div className="lg:col-span-6 xl:col-span-6">
           <div className="studio-rise">
-            <Eyebrow>AI-first digital commerce studio</Eyebrow>
+            <Eyebrow>{tagline}</Eyebrow>
           </div>
           <h1 id="hero-title" className="mt-7 font-heading text-[3.4rem] leading-[0.95] tracking-tight sm:text-7xl lg:text-[5.4rem] xl:text-[6.6rem] rtl:tracking-normal">
             <SplitWords text="Commerce, with a point of view." />
