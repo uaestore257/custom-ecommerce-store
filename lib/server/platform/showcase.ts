@@ -9,7 +9,7 @@ import { productPath } from "@/lib/storefront-urls";
 import { getTemplateDefinition } from "@/lib/templates/registry";
 
 /**
- * Every registered template, in SHOWCASE_ORDER, with its portfolio copy
+ * Every showcased template (SHOWCASE_ORDER), in order, with its portfolio copy
  * and, when one exists, links into its first public demo store (ACTIVE,
  * non-archived, isDemo — the same stores /admin/template links to). Client stores are
  * never listed. Reads are bounded: one demo-store query plus at most one

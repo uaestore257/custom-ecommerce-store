@@ -45,7 +45,12 @@ export interface TemplateProductProps extends StorefrontContext {
 export type TemplateCartProps = StorefrontContext;
 
 export interface TemplateFonts {
-  /** CSS font-family stacks (from next/font), applied via --sf-font-heading / --sf-font-body. */
+  /**
+   * CSS font-family stacks (from next/font), applied via --sf-font-heading /
+   * --sf-font-body. Each stack is the Latin face, then an Arabic-capable
+   * companion (manifest.design.typography.arabic), then system fallbacks,
+   * all loaded with preload: false so only the faces a page uses download.
+   */
   heading: string;
   body: string;
 }

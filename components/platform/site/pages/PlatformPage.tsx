@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { getTemplateShowcase } from "@/lib/server/platform/showcase";
 import { getTemplateDefinition, type TemplateKey } from "@/lib/templates/registry";
 import type { TemplateManifest } from "@/lib/templates/types";
+import { cartLabel, navigationLabel } from "@/lib/templates/vocabulary";
 import { ClosingCta } from "../ClosingCta";
 import { DesignSystemSheets } from "../DesignSystemSheets";
 import { PlatformDiagram } from "../platform/PlatformDiagram";
@@ -30,10 +31,10 @@ const yesNo = (value: boolean) => (value ? "Yes" : "—");
 const COMPARISON: { label: string; value: (manifest: TemplateManifest, key: TemplateKey) => string }[] = [
   { label: "Character", value: (m) => m.visualCategory },
   { label: "Best for", value: (m) => m.bestFor.join(", ") },
-  { label: "Navigation", value: (m) => (m.design.navigation === "editorial-split" ? "Editorial split" : "Inline bar") },
+  { label: "Navigation", value: (m) => navigationLabel(m.design.navigation) },
   { label: "Typography", value: (m) => `${m.design.typography.heading} / ${m.design.typography.body}` },
   { label: "Product cards", value: (m) => `${m.design.cardImageRatio} · ${m.design.cardStyle}` },
-  { label: "Cart", value: (m) => (m.design.cartPresentation === "page" ? "Cart page" : "Drawer and cart page") },
+  { label: "Cart", value: (m) => cartLabel(m.design.cartPresentation) },
   { label: "Quick add on cards", value: (m) => yesNo(m.capabilities.quickAddOnCards) },
   { label: "Product gallery", value: (m) => yesNo(m.capabilities.productGallery) },
   { label: "Collection index", value: (m) => yesNo(m.capabilities.categoryIndex) },

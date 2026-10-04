@@ -36,6 +36,18 @@
   --sf-focus: #0f172a;
   --sf-radius-control: 0.5rem;
   --sf-radius-card: 1rem;
+  /* Shared controls: DEFAULT_CONTROL_TOKENS in lib/templates/theme.ts. */
+  --sf-control-text-transform: none;
+  --sf-control-letter-spacing: normal;
+  --sf-control-font-weight: 600;
+  --sf-control-height-sm: 2.25rem;
+  --sf-control-height-md: 2.75rem;
+  --sf-control-height-lg: 3rem;
+  --sf-control-border-width: 1px;
+  --sf-input-border-width: 1px;
+  --sf-input-radius: 0.5rem;
+  --sf-input-background: #ffffff;
+  --sf-input-padding-x: 0.75rem;
   --sf-font-heading: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   --sf-font-body: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
@@ -74,6 +86,16 @@ body {
 
 dialog::backdrop {
   background: rgb(15 23 42 / 0.45);
+}
+
+/* Arabic display type (each template's Arabic heading face, see
+   templates/<key>/fonts.ts) has taller ascenders and deeper descenders
+   than the Latin display faces that the tight heading leading is set for,
+   so stacked lines would collide. Applies only to text whose language is
+   Arabic; Latin text keeps the template's own leading. Unlayered, so it
+   wins over leading-* utilities. */
+[data-template] .font-heading:lang(ar) {
+  line-height: 1.35;
 }
 
 /* ------------------------------------------------------------------

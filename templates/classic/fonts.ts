@@ -1,4 +1,4 @@
-import { Playfair_Display } from "next/font/google";
+import { Noto_Naskh_Arabic, Noto_Sans_Arabic, Playfair_Display } from "next/font/google";
 import type { TemplateFonts } from "../types";
 
 // preload: false — every template's fonts are reachable from the shared
@@ -8,8 +8,15 @@ import type { TemplateFonts } from "../types";
 // fonts. display: "swap" keeps text visible meanwhile.
 const playfair = Playfair_Display({ subsets: ["latin"], display: "swap", preload: false });
 
+// Arabic companions, after the Latin face in each stack. The Latin faces
+// have no Arabic glyphs, so Arabic text falls through to these; their
+// @font-face unicode ranges mean the files are fetched only when Arabic
+// text is on the page.
+const naskh = Noto_Naskh_Arabic({ subsets: ["arabic"], display: "swap", preload: false });
+const sansArabic = Noto_Sans_Arabic({ subsets: ["arabic"], display: "swap", preload: false });
+
 export const classicFonts: TemplateFonts = {
-  heading: `${playfair.style.fontFamily}, Georgia, serif`,
+  heading: `${playfair.style.fontFamily}, ${naskh.style.fontFamily}, Georgia, serif`,
   // Geist is loaded globally by the root layout (admin and platform UI).
-  body: "var(--font-geist-sans), Arial, Helvetica, sans-serif",
+  body: `var(--font-geist-sans), ${sansArabic.style.fontFamily}, Arial, Helvetica, sans-serif`,
 };

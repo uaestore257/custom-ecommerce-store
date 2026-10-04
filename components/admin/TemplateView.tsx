@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { Card, Notice, PageHeader } from "@/components/ui";
 import type { TemplateManifest } from "@/lib/templates/types";
+import { cartLabel, navigationLabel } from "@/lib/templates/vocabulary";
 
 export interface TemplateLibraryEntry {
   manifest: TemplateManifest;
@@ -47,11 +48,11 @@ export function TemplateView({ templates }: { templates: TemplateLibraryEntry[] 
               <p className="mt-3 text-sm text-slate-600">{manifest.description}</p>
 
               <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                <Fact label="Navigation" value={manifest.design.navigation.replace("-", " ")} />
+                <Fact label="Navigation" value={navigationLabel(manifest.design.navigation)} />
                 <Fact label="Density" value={manifest.design.density} />
                 <Fact label="Typography" value={`${manifest.design.typography.heading} / ${manifest.design.typography.body}`} />
                 <Fact label="Card images" value={manifest.design.cardImageRatio} />
-                <Fact label="Cart" value={manifest.design.cartPresentation === "page" ? "Cart page" : "Drawer + page"} />
+                <Fact label="Cart" value={cartLabel(manifest.design.cartPresentation)} />
                 <Fact label="Quick add on cards" value={yesNo(manifest.capabilities.quickAddOnCards)} />
                 <Fact label="Product gallery" value={yesNo(manifest.capabilities.productGallery)} />
                 <Fact label="RTL-ready layout" value={yesNo(manifest.capabilities.rtlReady)} />

@@ -31,7 +31,7 @@ export function QuantitySelector({
     <div
       role="group"
       aria-label={label}
-      className={`inline-flex items-center overflow-hidden rounded-control border border-border bg-surface ${className}`}
+      className={`inline-flex items-center overflow-hidden rounded-control border-[length:var(--sf-control-border-width)] border-border bg-surface ${className}`}
     >
       <button
         type="button"
@@ -57,6 +57,14 @@ export function QuantitySelector({
     </div>
   );
 }
+
+// A compact button is at least 2.5rem tall, or its size's control height
+// if that is taller. Important so it wins over the size's own min-height.
+const COMPACT_MIN_HEIGHT = {
+  sm: "min-h-[max(2.5rem,var(--sf-control-height-sm))]!",
+  md: "min-h-[max(2.5rem,var(--sf-control-height-md))]!",
+  lg: "min-h-[max(2.5rem,var(--sf-control-height-lg))]!",
+} as const;
 
 export function AddToCartButton({
   product,
@@ -93,7 +101,7 @@ export function AddToCartButton({
     return () => clearTimeout(timer);
   }, [message]);
 
-  const sizing = compact ? "w-full min-h-10 px-2 text-xs sm:text-sm" : "w-full";
+  const sizing = compact ? `w-full ${COMPACT_MIN_HEIGHT[size]} px-2 text-xs sm:text-sm` : "w-full";
 
   if (product.stock <= 0) {
     return (

@@ -1,70 +1,50 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { ProductImage } from "@/components/ProductImage";
 import { CartChangesNotice } from "@/components/storefront/CartChanges";
 import { QuantitySelector } from "@/components/storefront/CartControls";
+import { overlayPanelMotion, StorefrontOverlay } from "@/components/storefront/Overlay";
 import { removeFromCart, setCartQuantity, useCart } from "@/lib/storefront";
 import { formatStoreMoney } from "@/lib/storefront-cart";
 import { productPath } from "@/lib/storefront-urls";
-import { useCartDrawer } from "./CartDrawerContext";
+import { useCartDrawer } from "@/components/storefront/CartDrawerContext";
 import { atelierButton, atelierEyebrow, atelierTextLink } from "./styles";
 
 /**
  * Atelier's cart surface: a drawer from the inline-end edge (mirrors in
- * RTL). Pure presentation over the shared cart hook; checkout is the
- * shared page.
+ * RTL). Pure presentation over the shared cart hook and the shared
+ * overlay (focus, Escape, scroll lock, closing on navigation); checkout is
+ * the shared page.
  */
 export function AtelierCartDrawer() {
   const { open, hide } = useCartDrawer();
   const view = useCart({ refreshOnMount: false });
   const closeRef = useRef<HTMLButtonElement>(null);
-  const pathname = usePathname();
   const refresh = view?.refresh;
 
   // Fresh prices and stock every time the drawer opens.
   useEffect(() => {
-    if (!open) return;
-    refresh?.();
-    closeRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") hide();
-    };
-    document.addEventListener("keydown", onKey);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open, hide, refresh]);
-
-  // Navigating away (e.g. to checkout) closes the drawer.
-  useEffect(() => {
-    hide();
-  }, [pathname, hide]);
+    if (open) refresh?.();
+  }, [open, refresh]);
 
   if (!view) return null;
   const { context: { store }, cart, status } = view;
 
   return (
-    <div className={`fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`} aria-hidden={!open}>
-      <div
-        className={`absolute inset-0 bg-foreground/30 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0"}`}
-        onClick={hide}
-      />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-label="Your bag"
-        inert={!open}
-        className={`absolute inset-y-0 end-0 flex w-full max-w-md flex-col bg-surface-elevated transition-[transform,visibility] duration-300 ease-out ${
-          open ? "visible translate-x-0 shadow-2xl" : "invisible translate-x-full rtl:-translate-x-full"
-        }`}
-      >
+    <StorefrontOverlay
+      open={open}
+      onClose={hide}
+      label="Your bag"
+      initialFocusRef={closeRef}
+      as="aside"
+      backdropClassName={`absolute inset-0 bg-foreground/30 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0"}`}
+      panelClassName={`absolute inset-y-0 end-0 flex w-full max-w-md flex-col bg-surface-elevated transition-[transform,visibility] duration-300 ease-out ${overlayPanelMotion("end", open)} ${
+        open ? "shadow-2xl" : ""
+      }`}
+    >
         <div className="flex items-center justify-between border-b border-border px-6 py-5">
           <p className={atelierEyebrow}>Your bag · {cart.itemCount}</p>
           <button ref={closeRef} type="button" onClick={hide} aria-label="Close bag" className="p-2 text-foreground hover:opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus">
@@ -131,7 +111,6 @@ export function AtelierCartDrawer() {
             <Link href="/cart" className={`mt-4 block text-center text-xs ${atelierTextLink}`}>View bag</Link>
           </div>
         )}
-      </aside>
-    </div>
+    </StorefrontOverlay>
   );
 }

@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import type { TemplateShowcaseEntry } from "@/lib/platform/showcase";
 import { getTemplateShowcase } from "@/lib/server/platform/showcase";
+import { cartDescription } from "@/lib/templates/vocabulary";
 import { ClosingCta } from "../ClosingCta";
 import { ArrowLink, CONTAINER, Eyebrow, SplitWords, StudioMain } from "../primitives";
 import { focusRing } from "../styles";
@@ -145,7 +146,7 @@ function CaseDetails({ entry }: { entry: TemplateShowcaseEntry }) {
             ["Design", editorial.personality],
             ["Typography", `${manifest.design.typography.heading} with ${manifest.design.typography.body}`],
             ["Imagery", `${manifest.design.cardImageRatio} · ${manifest.design.imageTreatment}`],
-            ["Cart", manifest.design.cartPresentation === "page" ? "Dedicated cart page" : "Cart drawer and cart page"],
+            ["Cart", cartDescription(manifest.design.cartPresentation)],
           ].map(([term, value]) => (
             <div key={term} className="grid grid-cols-[6.5rem_1fr] gap-3">
               <dt className="text-muted-foreground">{term}</dt>

@@ -16,7 +16,11 @@ export const classicDefinition = {
     design: {
       navigation: "inline-bar",
       density: "comfortable",
-      typography: { heading: "Playfair Display", body: "Geist" },
+      typography: {
+        heading: "Playfair Display",
+        body: "Geist",
+        arabic: { heading: "Noto Naskh Arabic", body: "Noto Sans Arabic" },
+      },
       imageTreatment: "Contained square images on light cards",
       cardImageRatio: "1:1",
       cardStyle: "Bordered card with category, price, delivery note and quick add",

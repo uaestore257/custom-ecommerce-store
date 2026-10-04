@@ -14,6 +14,8 @@
 //   * StorefrontTemplate (templates/types.ts): the React components.
 // ---------------------------------------------------------------
 
+import type { CartPresentation, MotionLevel, NavigationStyle } from "./vocabulary";
+
 /** Semantic storefront colour roles (see app/globals.css). Values are CSS colours. */
 export interface TemplateColorTokens {
   background: string;
@@ -53,12 +55,41 @@ export interface ThemeOptionDefinition {
   default: string;
 }
 
+/**
+ * How shared controls (buttons, inputs, quantity steppers) are drawn, so
+ * shared pages (checkout, contact, policies) carry a template's own
+ * control language. All optional: anything left out uses
+ * DEFAULT_CONTROL_TOKENS (lib/templates/theme.ts), which is the original
+ * shared look. Values are code constants, never stored data.
+ */
+export interface TemplateControlTokens {
+  /** Button label case. */
+  textTransform: "none" | "uppercase";
+  /** Button letter-spacing: "normal" or a length such as "0.18em". Always normal under dir="rtl". */
+  letterSpacing: string;
+  /** Button font weight. */
+  fontWeight: "400" | "500" | "600" | "700";
+  /** Minimum button heights per size, as CSS lengths. */
+  height: { sm: string; md: string; lg: string };
+  /** Border width of outlined buttons, inputs and steppers, as a CSS length. */
+  borderWidth: string;
+  /** Boxed: a bordered field on the surface colour. Underline: a bottom rule on the page. */
+  inputStyle: "boxed" | "underline";
+}
+
+/** What a template may declare: any subset of the control tokens, including single heights. */
+export type TemplateControlOverrides = Partial<Omit<TemplateControlTokens, "height">> & {
+  height?: Partial<TemplateControlTokens["height"]>;
+};
+
 export interface TemplateTheme {
   /** Must include "palette"; its choices are the keys of `palettes`. */
   options: Record<string, ThemeOptionDefinition>;
   palettes: Record<string, TemplatePalette>;
   /** Corner radii as CSS lengths. */
   radius: { control: string; card: string };
+  /** Shared-control language; omitted values use the defaults. */
+  controls?: TemplateControlOverrides;
   /** Used when the store has no valid accent colour of its own. */
   fallbackAccent: string;
 }
@@ -74,15 +105,20 @@ export interface TemplateManifest {
   visualCategory: string;
   bestFor: readonly string[];
   design: {
-    navigation: "inline-bar" | "editorial-split";
+    /** See lib/templates/vocabulary.ts. */
+    navigation: NavigationStyle;
     density: "compact" | "comfortable" | "airy";
-    typography: { heading: string; body: string };
+    /**
+     * Font families. `arabic` names the Arabic-capable companions that
+     * follow the Latin faces in the template's font stacks (templates/<key>/fonts.ts).
+     */
+    typography: { heading: string; body: string; arabic: { heading: string; body: string } };
     imageTreatment: string;
     /** Product image aspect ratio on cards, e.g. "1:1" or "4:5". */
     cardImageRatio: string;
     cardStyle: string;
-    cartPresentation: "page" | "drawer-and-page";
-    motion: "none" | "subtle";
+    cartPresentation: CartPresentation;
+    motion: MotionLevel;
   };
   /** Homepage sections, in order. */
   homepageSections: readonly string[];

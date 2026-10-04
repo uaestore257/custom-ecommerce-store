@@ -8,6 +8,7 @@ import { buttonClass, Card, Notice, PageHeader } from "@/components/ui";
 import type { AdminStoreDesign } from "@/lib/server/admin/design";
 import type { TemplateKey } from "@/lib/templates/registry";
 import type { TemplateManifest, ThemeChoice } from "@/lib/templates/types";
+import { cartDescription } from "@/lib/templates/vocabulary";
 
 export interface DesignTemplateOption {
   key: TemplateKey;
@@ -16,11 +17,6 @@ export interface DesignTemplateOption {
   /** Live demo storefronts using this template. */
   demos: { name: string; url: string }[];
 }
-
-const CART_LABELS: Record<TemplateManifest["design"]["cartPresentation"], string> = {
-  page: "Cart page",
-  "drawer-and-page": "Cart drawer and cart page",
-};
 
 /**
  * Choose the storefront template and its options. Switching template only
@@ -137,7 +133,7 @@ export function StoreDesignView({
                     </div>
                     <div>
                       <dt className="font-medium text-slate-900">Cart</dt>
-                      <dd>{CART_LABELS[manifest.design.cartPresentation]}</dd>
+                      <dd>{cartDescription(manifest.design.cartPresentation)}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-slate-900">Best for</dt>
