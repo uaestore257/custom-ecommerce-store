@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
+import { getDb } from "@/lib/server/db";
+import { getRequestStorefront, getSitemapProducts } from "@/lib/server/storefront/catalog";
 import { getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
-import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { buildStorefrontSitemapUrls } from "@/lib/storefront-seo";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
 
@@ -16,8 +17,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .map((url) => ({ url }));
   }
   const context = await getPublicStorefrontSeoContext();
-  if (!context) return [];
-  const { catalog } = await getRequestStorefront();
-  if (!catalog || catalog.store.id !== context.store.id) return [];
-  return buildStorefrontSitemapUrls(context, catalog.products, catalog.categories).map((url) => ({ url }));
+  // Demo stores are never indexed, so they publish no sitemap entries.
+  if (!context || context.store.isDemo) return [];
+  const storefront = await getRequestStorefront();
+  if (!storefront || storefront.store.id !== context.store.id) return [];
+  const products = await getSitemapProducts(getDb(), storefront.store.id);
+  return buildStorefrontSitemapUrls(context, products, storefront.categories).map((url) => ({ url }));
 }

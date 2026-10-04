@@ -1,20 +1,24 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { isConfiguredAdminHost } from "@/lib/auth/constants";
-import { StorefrontShell } from "@/components/storefront/StorefrontShell";
 import { BusinessSiteShell } from "@/components/platform/BusinessSite";
+import { StorefrontRoot, StorefrontUnavailable } from "@/components/storefront/StorefrontRoot";
+import { getPlatformName } from "@/lib/server/platform-brand";
 import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
+import { getStorefrontTemplate } from "@/templates";
 
 export async function generateMetadata(): Promise<Metadata> {
   const host = (await headers()).get("host") ?? "";
   if (isPlatformBusinessHost(host) && !isStorefrontPathPreviewHost(host)) {
     const baseUrl = process.env.BETTER_AUTH_URL ?? "";
     const origin = platformRootUrl("/", baseUrl, storeHostConfig());
+    const name = await getPlatformName();
     return {
       metadataBase: origin ? new URL(origin) : undefined,
-      title: { default: "UAE Store", template: "%s | UAE Store" },
+      title: { default: name, template: `%s | ${name}` },
       description: "Ecommerce services and store portfolio.",
     };
   }
@@ -28,25 +32,34 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-// Every public storefront page shares the same header, footer and the
-// shown store's branding, all read from the database for the ACTIVE store
-// this hostname serves (see lib/server/storefront/catalog.ts).
+// Every public storefront page renders inside the template the shown
+// store's own row selects (lib/templates/registry.ts), with that store's
+// tokens, language and direction (components/storefront/StorefrontRoot.tsx).
+// The store comes only from the request host (lib/server/storefront/catalog.ts).
 export default async function StorefrontLayout({ children }: LayoutProps<"/">) {
   const requestHeaders = await headers();
-  const isAdminHost = isConfiguredAdminHost(
-    requestHeaders.get("host") ?? "",
-    process.env.ADMIN_HOST ?? "",
-  );
   const host = requestHeaders.get("host") ?? "";
+  const isAdminHost = isConfiguredAdminHost(host, process.env.ADMIN_HOST ?? "");
   const isBusinessHost = isPlatformBusinessHost(host);
   const isPathPreviewHost = isStorefrontPathPreviewHost(host);
   if (isBusinessHost && !isPathPreviewHost) return <BusinessSiteShell>{children}</BusinessSiteShell>;
-  const { catalog } = await getRequestStorefront();
-  if (isBusinessHost && !catalog) return <BusinessSiteShell>{children}</BusinessSiteShell>;
+  const context = await getRequestStorefront();
+  if (isBusinessHost && !context) return <BusinessSiteShell>{children}</BusinessSiteShell>;
+  if (!context) {
+    return (
+      <StorefrontUnavailable
+        adminLink={
+          isAdminHost ? (
+            <Link href="/admin/stores" className="font-semibold text-teal-700 hover:underline">Manage stores</Link>
+          ) : undefined
+        }
+      />
+    );
+  }
 
   return (
-    <StorefrontShell isAdminHost={isAdminHost} catalog={catalog}>
+    <StorefrontRoot context={context} template={getStorefrontTemplate(context.store.templateKey)} isAdminHost={isAdminHost}>
       {children}
-    </StorefrontShell>
+    </StorefrontRoot>
   );
 }

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { HomeView } from "@/components/storefront/HomeView";
-import { BusinessHomePage } from "@/components/platform/BusinessSite";
-import { getRequestStorefront } from "@/lib/server/storefront/catalog";
 import { headers } from "next/headers";
+import { BusinessHomePage } from "@/components/platform/BusinessSite";
+import { getDb } from "@/lib/server/db";
+import { getPlatformName } from "@/lib/server/platform-brand";
+import { getFeaturedProducts, getRequestStorefront } from "@/lib/server/storefront/catalog";
+import { requireStorefrontPage } from "@/lib/server/storefront/page";
+import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
-import { storefrontPageMetadata, getPublicStorefrontSeoContext } from "@/lib/server/storefront/seo";
 import { buildStoreOrganizationJsonLd, serializeJsonLd } from "@/lib/storefront-seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -14,20 +16,17 @@ export async function generateMetadata(): Promise<Metadata> {
   if (isBusinessHost && !isPathPreviewHost) {
     const canonical = platformRootUrl("/", process.env.BETTER_AUTH_URL ?? "", storeHostConfig());
     return {
-      title: { absolute: "UAE Store" },
+      title: { absolute: await getPlatformName() },
       description: "Ecommerce services and store portfolio.",
       alternates: canonical ? { canonical } : undefined,
     };
   }
-  if (isPathPreviewHost) {
-    const { catalog } = await getRequestStorefront();
-    if (!catalog) {
-      return {
-        title: { absolute: "UAE Store" },
-        description: "Ecommerce services and store portfolio.",
-        robots: { index: false, follow: false },
-      };
-    }
+  if (isPathPreviewHost && !(await getRequestStorefront())) {
+    return {
+      title: { absolute: await getPlatformName() },
+      description: "Ecommerce services and store portfolio.",
+      robots: { index: false, follow: false },
+    };
   }
   const context = await getPublicStorefrontSeoContext();
   if (!context) return { robots: { index: false, follow: false } };
@@ -39,24 +38,26 @@ export async function generateMetadata(): Promise<Metadata> {
   });
 }
 
-// Homepage content (hero text, featured products, categories) comes from
-// the shown store's database record, so it can be rebranded per store in
-// Admin → Store settings without editing this file.
+// The store's homepage, composed by its template from the store's own
+// content (Admin → Store settings) and a bounded featured selection.
 export default async function Home() {
   const host = (await headers()).get("host") ?? "";
   const isBusinessHost = isPlatformBusinessHost(host);
-  const isPathPreviewHost = isStorefrontPathPreviewHost(host);
-  if (isBusinessHost && !isPathPreviewHost) return <BusinessHomePage />;
-  const context = await getPublicStorefrontSeoContext();
-  const { catalog } = await getRequestStorefront();
-  if (isBusinessHost && !catalog) return <BusinessHomePage />;
-  if (!catalog) return <HomeView />;
-  const description = catalog.store.tagline || catalog.store.heroText || `${catalog.store.name} online store.`;
-  const structuredData = context ? serializeJsonLd(buildStoreOrganizationJsonLd(context, description)) : null;
+  if (isBusinessHost && !isStorefrontPathPreviewHost(host)) return <BusinessHomePage />;
+  if (isBusinessHost && !(await getRequestStorefront())) return <BusinessHomePage />;
+
+  const { context, template } = await requireStorefrontPage();
+  const [seo, featured] = await Promise.all([
+    getPublicStorefrontSeoContext(),
+    getFeaturedProducts(getDb(), context.store.id, template.homepageProductCount),
+  ]);
+  const description = context.store.tagline || context.store.heroText || `${context.store.name} online store.`;
+  const structuredData = seo ? serializeJsonLd(buildStoreOrganizationJsonLd(seo, description)) : null;
+  const { Home: TemplateHome } = template;
   return (
     <>
       {structuredData ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} /> : null}
-      <HomeView />
+      <TemplateHome {...context} featured={featured} />
     </>
   );
 }

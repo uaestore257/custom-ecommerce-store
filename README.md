@@ -3,20 +3,20 @@
 A reusable ecommerce template run by an agency. Built with Next.js (App Router),
 TypeScript and Tailwind CSS.
 
-> **Partly connected to a database.** The admin's **stores, products and
-> categories** are stored in PostgreSQL ([Database](#database-phase-1)), and
-> the public storefront reads them from there (active stores and products
-> only). Checkout places real orders in the database (cash on delivery or
-> bank transfer, always unpaid until staff mark them paid), and the admin
-> can move orders through their statuses, cancel them (returning stock) and
-> record payment. The Platform Owner signs in on the isolated platform
-> admin host; Store Owners and team members use the business-root portal
-> ([docs/authentication.md](docs/authentication.md)).
-> Admin customers and agency settings still use sample data saved in the
-> browser's `localStorage`. Email can be configured through SMTP but is
-> disabled until configured; online payment providers are not connected.
-> Store Owners and Managers can manage custom storefront domains after DNS
-> ownership verification. See [Demo limitations](#demo-limitations).
+> **Pre-launch.** Stores, products, categories, orders, contact messages,
+> team access and custom domains are stored in PostgreSQL
+> ([Database](#database-phase-1)); the public storefront reads them through
+> the shared storefront core (active stores and products only). Every store
+> renders with a **storefront template** chosen on its Design page
+> ([docs/templates.md](docs/templates.md)). Checkout places real orders
+> (offline methods start unpaid until staff mark them paid). The Platform
+> Owner signs in on the isolated platform admin host; Store Owners and team
+> members use the business-root portal
+> ([docs/authentication.md](docs/authentication.md)). The agency profile
+> is still saved in the browser's `localStorage`. Email is SMTP and disabled
+> until configured; online payment adapters (Stripe Connect, JazzCash) run in
+> TEST mode only and need a deployment secret store. See
+> [Demo limitations](#demo-limitations).
 
 ## New Developer Setup
 
@@ -133,15 +133,18 @@ host. Set real platform contact details in `PLATFORM_CONTACT` in
 | --- | --- |
 | `lib/types.ts` | Demo data model: `Store`, `StoreSettings`, `Product`, `Category`, `Order`, `Customer` |
 | `lib/demo-data.ts` | Sample data for the three demo stores (also the database seed) |
-| `lib/demo-db.ts` | Browser demo data: admin customers, agency settings and legacy demo order details |
+| `lib/demo-db.ts` | Browser-only agency profile (and legacy demo data shapes) |
 | `lib/checkout.ts` | Checkout input validation (shared by the form and the server) and the order result shape |
 | `lib/server/orders.ts` | Server-side order placement: re-validation, atomic stock, idempotency |
 | `lib/server/admin/orders.ts` | The admin's orders: list, order page, status, cancellation and payment (one store at a time) |
-| `lib/server/storefront/catalog.ts` | Public storefront reads from the active store named by the request host |
-| `lib/storefront-types.ts` | Plain data shapes the storefront receives (money as exact minor units) |
+| `lib/server/storefront/catalog.ts` | Shared storefront core: store resolution by host and bounded, store-scoped reads |
+| `lib/storefront-types.ts` | The storefront data contract templates receive (money as exact minor units) |
+| `lib/storefront-urls.ts` | Storefront URLs (`/products/<slug>`, `/shop/<category>`), listing query parsing |
 | `lib/storefront-cart.ts` | Cart maths: current prices, stock caps, change detection, totals (pure, tested) |
 | `lib/storefront-cookie.ts` | The temporary store-choice cookie |
-| `lib/storefront.ts` | Storefront hook and the browser-side cart item list |
+| `lib/storefront.ts` | Browser-side store context, cart item list and the fresh-priced cart hook |
+| `lib/templates/` | Template registry, manifests and theme-config validation (pure) |
+| `templates/` | Storefront templates (`classic`, `atelier`): presentation only |
 | `lib/storage.ts` | Safe `localStorage` wrapper (works when storage is blocked) |
 | `lib/config.ts` | Options: store types, currencies, emirates, payment methods |
 | `components/` | Shared UI, storefront and admin components |
@@ -183,20 +186,22 @@ These parts are **not** implemented and need a backend:
   authorized store on the central portal. Domain actions derive the selected
   store from a server-validated membership and are unavailable to Staff and
   Platform Admin sessions.
-- **Payments.** Nothing is paid online and no card details are collected.
-  "Online card payment" can't be switched on because no payment provider is
-  connected, and "card on delivery" isn't offered at checkout yet.
+- **Payments.** No card details are collected by the app. Stripe Connect
+  and JazzCash adapters exist but run only in TEST mode and only after a
+  deployment installs a payment secret store (`configurePaymentSecretStore`);
+  without one, online methods are simply not offered.
 - **Tax.** No tax is calculated; orders record the store's "prices include
   tax" setting and a tax amount of zero.
-- **Contact form.** Messages are validated and rate-limited on the server and
-  saved to the database for that store, but there is no admin page to read
-  them yet and no email is sent. The store is chosen by the visitor's browser,
-  not yet by domain.
+- **Contact form.** Messages are validated and rate-limited on the server,
+  saved for the store the request host serves, and read in the store's
+  Messages inbox. No email is sent for them yet.
 - **Domains.** Adding a custom hostname does not register it, alter DNS, or
   provision hosting. The Store Owner or Manager must configure DNS with their
   hosting provider and publish the displayed TXT proof record before the
   hostname routes to the store.
-- **Template versioning.** There is none. Every store uses the current code.
+- **Templates.** Templates are application code (`templates/`), so every
+  store always runs the current version of its chosen template; a store's
+  template choice and options are data. See [docs/templates.md](docs/templates.md).
 
 Use made-up details when testing checkout locally. To go back to the original
 browser sample data, use **Agency settings → Reset demo data** (this does not

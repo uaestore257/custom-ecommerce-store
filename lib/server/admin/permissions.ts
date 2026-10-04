@@ -34,6 +34,8 @@ export const ACTION_PERMISSIONS = {
   setPrimaryStoreDomainAction: "store-owner-context",
   disableStoreDomainAction: "store-owner-context",
   setStoreOwnerAction: "platform-owner",
+  updateStoreDesignAction: "store-owner",
+  setStoreDemoAction: "platform-owner",
   setStoreStatusAction: "platform-owner",
   archiveStoreAction: "platform-owner",
   restoreStoreAction: "platform-owner",

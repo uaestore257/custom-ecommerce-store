@@ -66,6 +66,7 @@ import {
   setPrimaryStoreDomain,
   verifyStoreDomain,
 } from "@/lib/server/admin/domains";
+import { setStoreDemo, updateStoreDesign } from "@/lib/server/admin/design";
 
 const GENERIC_ERROR = "Something went wrong while saving. Please try again.";
 const SIGNED_OUT: ActionResult<never> = { ok: false, error: "Your session has ended. Please sign in again." };
@@ -195,6 +196,24 @@ export async function archiveStoreAction(storeId: unknown) {
 export async function restoreStoreAction(storeId: unknown) {
   if (!isId(storeId)) return badRequest;
   return asPlatformOwner("restoreStore", (owner) => restoreAdminStore(owner, getDb(), storeId));
+}
+
+// ---------- Store design (template selection) ----------
+// Presentation only: a template switch never touches products, orders or
+// customers (lib/server/admin/design.ts). OWNER or the platform owner;
+// MANAGER and STAFF are refused ("store-settings" action).
+
+export async function updateStoreDesignAction(storeId: unknown, input: unknown) {
+  if (!isId(storeId)) return badRequest;
+  return asStoreWriter("updateStoreDesign", storeId, "store-settings", ({ actor }) =>
+    updateStoreDesign(getDb(), storeId, actor.userId, input),
+  );
+}
+
+/** Platform owner only: demo stores showcase templates and are never indexed. */
+export async function setStoreDemoAction(storeId: unknown, isDemo: unknown) {
+  if (!isId(storeId)) return badRequest;
+  return asPlatformOwner("setStoreDemo", (owner) => setStoreDemo(owner, getDb(), storeId, isDemo));
 }
 
 // ---------- Products (one store: platform owner or that store's owner) ----------

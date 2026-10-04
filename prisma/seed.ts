@@ -134,6 +134,10 @@ async function seedDemoStores(db: PrismaClient) {
             name: store.name,
             businessType: store.type,
             status: store.status.toUpperCase() as "DRAFT" | "ACTIVE" | "PAUSED",
+            // Seeded stores are template showcases: the furniture store
+            // demonstrates the editorial Atelier template, the others Classic.
+            templateKey: store.type === "furniture" ? "atelier" : "classic",
+            isDemo: true,
             countryCode,
             baseCurrency: s.currency,
             timezone: extras.timezone,

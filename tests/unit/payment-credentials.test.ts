@@ -14,7 +14,6 @@ import { isOnlinePaymentMethodAvailable } from "../../lib/server/payments/method
 import type {
   PaymentCredentialContext,
   PaymentSecretStore,
-  ResolvedPaymentCredentials,
 } from "../../lib/server/payments/types";
 
 const stripeReference = "vault:store-a/stripe/account-123";

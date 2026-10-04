@@ -1,6 +1,7 @@
 import type { Metadata, MetadataRoute } from "next";
 import type { StorefrontCategory, StorefrontProduct, StorefrontStore } from "./storefront-types";
 import { storefrontUrlForSlug, type StoreHostConfig } from "./store-host";
+import { categoryPath, productPath } from "./storefront-urls";
 
 export interface StorefrontSeoContext {
   store: StorefrontStore;
@@ -126,10 +127,14 @@ export function buildStoreOrganizationJsonLd(
 
 export function buildProductJsonLd(
   context: StorefrontSeoContext,
-  product: StorefrontProduct,
+  product: Pick<StorefrontProduct, "id" | "slug" | "name" | "description" | "imageUrl" | "priceMinor" | "stock" | "sku"> &
+    Partial<Pick<StorefrontProduct, "images">>,
 ): Record<string, unknown> {
-  const url = storefrontCanonicalUrl(context, `/products/${encodeURIComponent(product.id)}`);
-  const image = absolutePublicImageUrl(product.imageUrl, new URL(url), context.config.adminHost);
+  const url = storefrontCanonicalUrl(context, productPath(product));
+  const imageSources = product.images?.length ? product.images.map((image) => image.url) : [product.imageUrl];
+  const images = imageSources
+    .map((source) => absolutePublicImageUrl(source, new URL(url), context.config.adminHost))
+    .filter((image): image is string => Boolean(image));
   const price = decimalAmount(product.priceMinor, context.store.minorUnits);
   return {
     "@context": "https://schema.org",
@@ -137,11 +142,13 @@ export function buildProductJsonLd(
     name: product.name,
     description: product.description,
     url,
-    ...(image ? { image } : {}),
+    ...(product.sku ? { sku: product.sku } : {}),
+    ...(images.length === 1 ? { image: images[0] } : images.length > 1 ? { image: images } : {}),
     offers: {
       "@type": "Offer",
       price,
       priceCurrency: context.store.currency,
+      availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
       url,
     },
   };
@@ -168,18 +175,14 @@ export function serializeJsonLd(value: Record<string, unknown>): string {
 
 export function buildStorefrontSitemapUrls(
   context: StorefrontSeoContext,
-  products: Pick<StorefrontProduct, "id">[],
-  categories: Pick<StorefrontCategory, "id">[],
+  products: Pick<StorefrontProduct, "id" | "slug">[],
+  categories: Pick<StorefrontCategory, "slug">[],
 ): string[] {
   return [
     storefrontCanonicalUrl(context, "/"),
     storefrontCanonicalUrl(context, "/shop"),
-    ...categories.map((category) =>
-      storefrontCanonicalUrl(context, `/shop?category=${encodeURIComponent(category.id)}`),
-    ),
-    ...products.map((product) =>
-      storefrontCanonicalUrl(context, `/products/${encodeURIComponent(product.id)}`),
-    ),
+    ...categories.filter((category) => category.slug).map((category) => storefrontCanonicalUrl(context, categoryPath(category))),
+    ...products.map((product) => storefrontCanonicalUrl(context, productPath(product))),
   ];
 }
 

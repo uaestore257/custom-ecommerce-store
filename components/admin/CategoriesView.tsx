@@ -50,9 +50,6 @@ export function CategoriesView({ categories }: { categories: AdminCategory[] }) 
           { label: "Categories" },
         ]}
       />
-      <Notice className="mb-5">
-        Categories are saved in the database. The public storefront still shows demo categories until it is connected.
-      </Notice>
       {error && <Notice tone="warning" className="mb-5">{error}</Notice>}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">

@@ -5,8 +5,8 @@ import type { CheckoutFulfillmentMethod } from "@/lib/checkout";
 import type { CurrencyCode } from "@/lib/types";
 
 /**
- * Storefront cart / checkout totals, in exact minor units from the
- * current server catalog.
+ * Storefront cart / checkout totals, in exact minor units from a fresh
+ * server read of the cart's products (shared by every template).
  */
 export function CartTotals({
   cart,
@@ -21,13 +21,13 @@ export function CartTotals({
   const totalMinor = cart.subtotalMinor + deliveryMinor;
   return (
     <dl className="space-y-2 text-sm">
-      <div className="flex justify-between">
-        <dt className="text-slate-600">Subtotal</dt>
+      <div className="flex justify-between gap-3">
+        <dt className="text-muted-foreground">Subtotal</dt>
         <dd className="font-medium tabular-nums">{formatStoreMoney(store, cart.subtotalMinor)}</dd>
       </div>
       <div className="flex justify-between gap-3">
-        <dt className="text-slate-600">{fulfillmentMethod === "PICKUP" ? "Pickup" : "Delivery"}</dt>
-        <dd className="text-right font-medium tabular-nums">
+        <dt className="text-muted-foreground">{fulfillmentMethod === "PICKUP" ? "Pickup" : "Delivery"}</dt>
+        <dd className="text-end font-medium tabular-nums">
           {fulfillmentMethod === "PICKUP"
             ? "No delivery fee"
             : deliveryMinor === BigInt(0)
@@ -35,7 +35,7 @@ export function CartTotals({
               : formatStoreMoney(store, deliveryMinor)}
         </dd>
       </div>
-      <div className="flex justify-between border-t border-slate-200 pt-3 text-base">
+      <div className="flex justify-between gap-3 border-t border-border pt-3 text-base">
         <dt className="font-semibold">Total</dt>
         <dd className="font-bold tabular-nums">{formatStoreMoney(store, totalMinor)}</dd>
       </div>

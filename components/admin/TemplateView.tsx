@@ -1,111 +1,95 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Boxes,
-  CreditCard,
-  House,
-  LayoutGrid,
-  Package,
-  Receipt,
-  Settings,
-  ShoppingCart,
-  Tag,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Card, Notice, PageHeader } from "@/components/ui";
+import type { TemplateManifest } from "@/lib/templates/types";
 
-const features: { icon: LucideIcon; title: string; text: string; href?: string }[] = [
-  { icon: House, title: "Storefront & homepage", text: "Hero, categories, featured products and calls to action.", href: "/" },
-  { icon: LayoutGrid, title: "Shop & category pages", text: "Product grid with search, category filter and sorting.", href: "/shop" },
-  { icon: Tag, title: "Product detail pages", text: "Image, price, description, stock and quantity selector.", href: "/shop" },
-  { icon: ShoppingCart, title: "Cart", text: "Quantities, remove items, subtotal and delivery fee.", href: "/cart" },
-  { icon: CreditCard, title: "Checkout", text: "Contact and delivery details with validation (demo — no payments).", href: "/checkout" },
-  { icon: Receipt, title: "Order management", text: "Order list, details and status updates per store." },
-  { icon: Package, title: "Product management", text: "Add, edit and delete products and categories per store." },
-  { icon: Users, title: "Customer management", text: "Customers created from each store's orders." },
-  { icon: Settings, title: "Store settings", text: "Branding, region, domain, delivery and payment options." },
-];
+export interface TemplateLibraryEntry {
+  manifest: TemplateManifest;
+  storeCount: number;
+  demos: { name: string; url: string }[];
+}
 
-const shared = [
-  "Page layouts and design system (cards, buttons, forms)",
-  "Storefront pages: home, shop, product, cart, checkout, about, contact",
-  "Cart and checkout logic, including total calculation",
-  "Admin screens for products, orders, customers and settings",
-  "Data model (Store, Product, Category, Order, Customer…)",
-];
+const yesNo = (value: boolean) => (value ? "Yes" : "No");
 
-const perStore = [
-  "Store name, slug, category and status",
-  "Logo and accent colour",
-  "Currency and country / region",
-  "Domain configuration",
-  "Products and categories",
-  "Orders and customers",
-  "Delivery fee and free-delivery threshold",
-  "Enabled payment methods",
-  "Homepage, About and Contact content",
-];
-
-export function TemplateView() {
+/**
+ * The platform's template library: every registered storefront template
+ * (application code, lib/templates/registry.ts), how many stores use it,
+ * and its live demo stores. Store owners choose a template on their
+ * store's Design page.
+ */
+export function TemplateView({ templates }: { templates: TemplateLibraryEntry[] }) {
   return (
     <>
       <PageHeader
-        title="Master Ecommerce Template"
-        description="The shared codebase every client store runs on. Improve a feature here once, and every client store gets it — while each store keeps its own branding, data and settings."
-        breadcrumbs={[{ label: "Agency Admin", href: "/admin" }, { label: "Master template" }]}
+        title="Template library"
+        description="Every client store runs on the same platform code and chooses one of these storefront templates. A template changes presentation only; products, orders, customers and settings are shared by all of them."
+        breadcrumbs={[{ label: "Agency Admin", href: "/admin" }, { label: "Templates" }]}
       />
 
       <Notice className="mb-8">
-        In this demo the template is the code in this repository. There is no separate template
-        publishing or versioning system: all client stores always use the current code.
+        Templates are part of the application code and versioned with it. Stores choose a template and its options on
+        their store&apos;s <strong>Design</strong> page; mark a store as a demo there to link it here as a live demo.
       </Notice>
 
-      <h2 className="text-lg font-semibold">Features included</h2>
-      <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map((f) => (
-          <li key={f.title}>
-            <Card className="h-full p-5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
-                <f.icon className="h-5 w-5" aria-hidden />
-              </span>
-              <h3 className="mt-3 font-semibold">{f.title}</h3>
-              <p className="mt-1 text-sm text-slate-600">{f.text}</p>
-              {f.href && (
-                <Link href={f.href} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-700 hover:underline">
-                  Preview
-                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-                </Link>
-              )}
+      <ul className="grid gap-6 lg:grid-cols-2">
+        {templates.map(({ manifest, storeCount, demos }) => (
+          <li key={manifest.key}>
+            <Card className="h-full p-5 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">{manifest.visualCategory}</p>
+                  <h2 className="mt-1 text-xl font-semibold">{manifest.name}</h2>
+                </div>
+                <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  v{manifest.version} · {storeCount} {storeCount === 1 ? "store" : "stores"}
+                </p>
+              </div>
+              <p className="mt-3 text-sm text-slate-600">{manifest.description}</p>
+
+              <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <Fact label="Navigation" value={manifest.design.navigation.replace("-", " ")} />
+                <Fact label="Density" value={manifest.design.density} />
+                <Fact label="Typography" value={`${manifest.design.typography.heading} / ${manifest.design.typography.body}`} />
+                <Fact label="Card images" value={manifest.design.cardImageRatio} />
+                <Fact label="Cart" value={manifest.design.cartPresentation === "page" ? "Cart page" : "Drawer + page"} />
+                <Fact label="Quick add on cards" value={yesNo(manifest.capabilities.quickAddOnCards)} />
+                <Fact label="Product gallery" value={yesNo(manifest.capabilities.productGallery)} />
+                <Fact label="RTL-ready layout" value={yesNo(manifest.capabilities.rtlReady)} />
+              </dl>
+
+              <p className="mt-5 text-xs font-medium uppercase tracking-wide text-slate-500">Homepage</p>
+              <p className="mt-1 text-sm text-slate-700">{manifest.homepageSections.join(" → ")}</p>
+              <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">Best for</p>
+              <p className="mt-1 text-sm text-slate-700">{manifest.bestFor.join(", ")}</p>
+
+              <div className="mt-5 border-t border-slate-200 pt-4 text-sm">
+                {demos.length > 0 ? (
+                  demos.map((demo) => (
+                    <a key={demo.url} href={demo.url} target="_blank" rel="noreferrer" className="mr-4 inline-flex items-center gap-1 font-semibold text-teal-700 hover:underline">
+                      Live demo: {demo.name} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                    </a>
+                  ))
+                ) : (
+                  <span className="text-slate-500">No demo store yet.</span>
+                )}
+              </div>
             </Card>
           </li>
         ))}
       </ul>
 
-      <div className="mt-10 grid gap-6 md:grid-cols-2">
-        <Card className="p-5 sm:p-6">
-          <div className="flex items-center gap-3">
-            <Boxes className="h-5 w-5 text-teal-700" aria-hidden />
-            <h2 className="text-lg font-semibold">Shared by all stores (template)</h2>
-          </div>
-          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-700">
-            {shared.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </Card>
-        <Card className="p-5 sm:p-6">
-          <div className="flex items-center gap-3">
-            <Settings className="h-5 w-5 text-teal-700" aria-hidden />
-            <h2 className="text-lg font-semibold">Configured per client store</h2>
-          </div>
-          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-700">
-            {perStore.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-          <Link href="/admin/stores" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-teal-700 hover:underline">
-            Manage client stores
-            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-          </Link>
-        </Card>
-      </div>
+      <p className="mt-8 text-sm text-slate-600">
+        <Link href="/admin/stores" className="font-semibold text-teal-700 hover:underline">Manage client stores</Link>
+      </p>
     </>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="font-medium capitalize text-slate-900">{value}</dd>
+    </div>
   );
 }

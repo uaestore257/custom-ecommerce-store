@@ -15,10 +15,13 @@ export function ProductImage({
   src,
   alt,
   className = "",
+  priority = false,
 }: {
   src: string;
   alt: string;
   className?: string;
+  /** Above-the-fold image (e.g. a hero or the main product photo): load eagerly. */
+  priority?: boolean;
 }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const failed = failedSrc === src;
@@ -28,7 +31,7 @@ export function ProductImage({
       <div
         role="img"
         aria-label={failed ? `${alt} (image could not be loaded)` : `${alt} (no image yet)`}
-        className={`flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400 ${className}`}
+        className={`flex flex-col items-center justify-center gap-2 bg-muted text-muted-foreground ${className}`}
       >
         {failed ? (
           <ImageOff className="h-8 w-8" aria-hidden />
@@ -45,6 +48,9 @@ export function ProductImage({
     <img
       src={src}
       alt={alt}
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      fetchPriority={priority ? "high" : "auto"}
       onError={() => setFailedSrc(src)}
       className={`object-cover ${className}`}
     />

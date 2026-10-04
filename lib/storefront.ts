@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 import {
   acceptedSession,
   computeCart,
@@ -9,22 +9,21 @@ import {
   type StoredSession,
 } from "./storefront-cart";
 import { clearStorefrontStoreCookie, setStorefrontStoreCookie } from "./storefront-cookie";
-import type {
-  StorefrontCatalog,
-  StorefrontCategory,
-  StorefrontProduct,
-  StorefrontStore,
-} from "./storefront-types";
+import type { CartProductRef, StorefrontContext, StorefrontProductSummary } from "./storefront-types";
 import { readJson, writeJson } from "./storage";
 
 // ---------------------------------------------------------------
-// STOREFRONT (browser side)
-// Store branding, categories, products, prices and stock come from the
-// server (lib/server/storefront/catalog.ts) through StorefrontDataContext,
-// provided by StorefrontShell. The browser keeps only the cart item list
-// — { storeId, productId, quantity } — and every price or stock figure is
-// recomputed from the current server catalog (lib/storefront-cart.ts).
-// A cart always belongs to exactly one store.
+// STOREFRONT (browser side) — shared by every template.
+//
+// The server renders catalogue pages; the browser only receives the
+// store context (branding, template, navigation) through
+// StorefrontDataContext, plus whatever products a page shows. The cart
+// keeps only { storeId, productId, quantity } in localStorage, and its
+// prices, stock and availability always come from a fresh server read of
+// exactly the products in it (/api/storefront/cart-products, resolved by
+// host). Cart maths is lib/storefront-cart.ts. A cart always belongs to
+// exactly one store. Templates call these hooks; they never fetch or
+// compute cart data themselves.
 // ---------------------------------------------------------------
 
 const KEY = "storefront";
@@ -58,10 +57,14 @@ function getServerSnapshot(): StoredSession | null | undefined {
   return undefined;
 }
 
+function notify() {
+  listeners.forEach((l) => l());
+}
+
 function onStorageEvent(event: StorageEvent) {
   if (event.key === null || event.key.endsWith(KEY)) {
     session = load();
-    listeners.forEach((l) => l());
+    notify();
   }
 }
 
@@ -77,7 +80,7 @@ function subscribe(listener: () => void) {
 function commit(next: StoredSession) {
   session = next;
   writeJson(KEY, next);
-  listeners.forEach((l) => l());
+  notify();
 }
 
 function useSession() {
@@ -104,7 +107,7 @@ export function resetStorefrontStore() {
   clearStorefrontStoreCookie();
   session = null;
   writeJson(KEY, null);
-  listeners.forEach((l) => l());
+  notify();
 }
 
 /** Empties a cart saved for another store than the one the server is showing. */
@@ -121,7 +124,7 @@ export type AddToCartResult =
  * @param shownStoreId the store the storefront is showing. Products of
  * any other store are refused.
  */
-export function addToCart(product: StorefrontProduct, quantity: number, shownStoreId: string): AddToCartResult {
+export function addToCart(product: CartProductRef, quantity: number, shownStoreId: string): AddToCartResult {
   if (product.storeId !== shownStoreId) return { ok: false, reason: "different-store" };
   const current = reconcileSession(getSnapshot(), shownStoreId);
   const existing = current.cart.find((item) => item.productId === product.id);
@@ -160,34 +163,144 @@ export function acceptCartChanges(summary: CartSummary, storeId: string) {
   commit(acceptedSession(summary, storeId));
 }
 
-// ---------------- Server data + combined hook ----------------
+// ---------------- Store context (from the server layout) ----------------
 
-export interface StorefrontData {
-  catalog: StorefrontCatalog | null;
+export const StorefrontDataContext = createContext<StorefrontContext | null>(null);
+
+/** The store this page serves (branding, template, navigation), or null outside a storefront. */
+export function useStorefrontContext(): StorefrontContext | null {
+  return useContext(StorefrontDataContext);
 }
 
-export const StorefrontDataContext = createContext<StorefrontData>({ catalog: null });
-
-export interface StorefrontView {
-  store: StorefrontStore;
-  categories: StorefrontCategory[];
-  /** ACTIVE products of this store, as the server last sent them. */
-  products: StorefrontProduct[];
-  cart: CartSummary;
-  /** false during the server render and hydration, before the saved cart is read. */
-  cartLoaded: boolean;
-}
-
-/** Everything a storefront page needs, or null if there is no public store to show. */
-export function useStorefront(): StorefrontView | null {
-  const { catalog } = useContext(StorefrontDataContext);
+/** Units in the cart for the shown store (no server read needed). */
+export function useCartCount(): number {
+  const context = useStorefrontContext();
   const current = useSession();
-  if (!catalog) return null;
-  return {
-    store: catalog.store,
-    categories: catalog.categories,
-    products: catalog.products,
-    cart: computeCart(catalog, current),
-    cartLoaded: current !== undefined,
-  };
+  if (!context || !current || current.storeId !== context.store.id) return 0;
+  return current.cart.reduce((sum, item) => sum + (item.storeId === context.store.id ? item.quantity : 0), 0);
+}
+
+/** How many of one product are in the cart (for add-to-cart buttons). */
+export function useQuantityInCart(productId: string): number {
+  const context = useStorefrontContext();
+  const current = useSession();
+  if (!context || !current || current.storeId !== context.store.id) return 0;
+  return current.cart.find((item) => item.productId === productId && item.storeId === context.store.id)?.quantity ?? 0;
+}
+
+// ---------------- Fresh product data for the cart ----------------
+
+interface CartProductsState {
+  storeId: string | null;
+  products: Map<string, StorefrontProductSummary>;
+  /** Ids the server has answered for (present or not) since the last refresh. */
+  checked: Set<string>;
+  error: boolean;
+  inFlight: string | null;
+  version: number;
+}
+
+let cartProducts: CartProductsState = {
+  storeId: null,
+  products: new Map(),
+  checked: new Set(),
+  error: false,
+  inFlight: null,
+  version: 0,
+};
+const productListeners = new Set<() => void>();
+
+function setCartProducts(next: Partial<CartProductsState>) {
+  cartProducts = { ...cartProducts, ...next, version: cartProducts.version + 1 };
+  productListeners.forEach((l) => l());
+}
+
+function subscribeCartProducts(listener: () => void) {
+  productListeners.add(listener);
+  return () => productListeners.delete(listener);
+}
+
+const getCartProductsVersion = () => cartProducts.version;
+const getServerCartProductsVersion = () => 0;
+
+async function fetchCartProducts(storeId: string, ids: string[]) {
+  const key = `${storeId}:${ids.join(",")}`;
+  if (cartProducts.inFlight === key) return;
+  setCartProducts({ inFlight: key, error: false });
+  try {
+    const response = await fetch(`/api/storefront/cart-products?ids=${encodeURIComponent(ids.join(","))}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error(`cart products: ${response.status}`);
+    const body = (await response.json()) as { storeId?: unknown; products?: unknown };
+    // The server decides the store from the host; refuse a mismatched answer.
+    if (body.storeId !== storeId || !Array.isArray(body.products)) throw new Error("cart products: unexpected store");
+    const products = new Map(cartProducts.storeId === storeId ? cartProducts.products : []);
+    for (const id of ids) products.delete(id);
+    for (const product of body.products as StorefrontProductSummary[]) {
+      if (product && product.storeId === storeId && ids.includes(product.id)) products.set(product.id, product);
+    }
+    const checked = new Set(cartProducts.storeId === storeId ? cartProducts.checked : []);
+    ids.forEach((id) => checked.add(id));
+    setCartProducts({ storeId, products, checked, inFlight: null });
+  } catch {
+    if (cartProducts.inFlight === key) setCartProducts({ inFlight: null, error: true });
+  }
+}
+
+/**
+ * Forget which cart products were checked, so every product in the cart is
+ * read again from the server (useCart's effect performs the read). Stable:
+ * safe to use in effect dependencies.
+ */
+export function requestCartRefresh() {
+  setCartProducts({ checked: new Set(), error: false });
+}
+
+export type CartStatus = "loading" | "ready" | "error";
+
+export interface CartView {
+  context: StorefrontContext;
+  cart: CartSummary;
+  /** "ready" only once every product in the cart has been checked with the server. */
+  status: CartStatus;
+  /** Re-read prices and stock of everything in the cart (e.g. when checkout opens). */
+  refresh: () => void;
+}
+
+/**
+ * The shown store's cart, priced from a fresh server read of its products.
+ * Opening a component that uses this hook re-checks prices and stock once
+ * (pass `refreshOnMount: false` for always-mounted surfaces like a header).
+ */
+export function useCart({ refreshOnMount = true }: { refreshOnMount?: boolean } = {}): CartView | null {
+  const context = useStorefrontContext();
+  const current = useSession();
+  useSyncExternalStore(subscribeCartProducts, getCartProductsVersion, getServerCartProductsVersion);
+  const storeId = context?.store.id ?? null;
+  const ids =
+    current && storeId && current.storeId === storeId
+      ? [...new Set(current.cart.filter((item) => item.storeId === storeId).map((item) => item.productId))].toSorted()
+      : [];
+
+  // Re-check everything when the component opens. New products are
+  // fetched by the effect below; quantity changes need no server read.
+  useEffect(() => {
+    if (refreshOnMount) requestCartRefresh();
+  }, [refreshOnMount]);
+
+  const sameStore = cartProducts.storeId === storeId;
+  const missing = ids.filter((id) => !sameStore || !cartProducts.checked.has(id));
+  const missingKey = missing.join(",");
+  useEffect(() => {
+    if (storeId && missingKey) void fetchCartProducts(storeId, missingKey.split(","));
+  }, [storeId, missingKey]);
+
+  if (!context) return null;
+  const products = sameStore ? [...cartProducts.products.values()] : [];
+  const settled = current !== undefined && cartProducts.inFlight === null;
+  const status: CartStatus =
+    settled && missing.length === 0 ? "ready" : settled && cartProducts.error ? "error" : "loading";
+  return { context, cart: computeCart({ ...context, products }, current), status, refresh: requestCartRefresh };
 }

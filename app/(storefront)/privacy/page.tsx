@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PolicyView } from "@/components/storefront/PolicyView";
+import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { storefrontPageMetadata } from "@/lib/server/storefront/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -11,6 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Placeholder until the store provides its own text (lib/policies.ts).
-export default function PrivacyPage() {
-  return <PolicyView policyId="privacy" />;
+export default async function PrivacyPage() {
+  const { context } = await requireStorefrontPage();
+  return <PolicyView policyId="privacy" store={context.store} />;
 }

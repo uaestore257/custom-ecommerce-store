@@ -51,8 +51,11 @@ pinned to their guarded `DATABASE_URL`/`TEST_DATABASE_URL` targets.
 Other optional or feature-specific variable names:
 
 * `STORE_DOMAINS` — legacy operator-managed host aliases only.
-* `TRUSTED_IP_HEADER` — set to the hosting proxy's trusted client-IP header
-  to apply public rate limits per visitor.
+* `TRUSTED_IP_HEADER` — the hosting proxy's trusted client-IP header, so
+  rate limits apply per visitor. Detected automatically on Vercel
+  (`x-real-ip`); required on any other production host, where admin
+  sign-in refuses to start without it rather than putting every visitor in
+  one shared rate-limit bucket.
 * `EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
   `SMTP_PASSWORD`, and `SMTP_SECURE` — required together only when enabling
   SMTP mail (see Email below).

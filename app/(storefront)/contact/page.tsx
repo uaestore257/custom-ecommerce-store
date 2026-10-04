@@ -3,6 +3,7 @@ import { ContactView } from "@/components/storefront/ContactView";
 import { BusinessContactPage } from "@/components/platform/BusinessSite";
 import { headers } from "next/headers";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost, platformRootUrl, storeHostConfig } from "@/lib/store-host";
+import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { storefrontPageMetadata } from "@/lib/server/storefront/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -25,5 +26,6 @@ export default async function ContactPage() {
   if (isPlatformBusinessHost((await headers()).get("host") ?? "")) {
     return <BusinessContactPage />;
   }
-  return <ContactView />;
+  const { context } = await requireStorefrontPage();
+  return <ContactView store={context.store} />;
 }

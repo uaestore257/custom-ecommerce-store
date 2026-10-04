@@ -24,7 +24,7 @@ import type { DbStoreStatus } from "./types";
 
 export type StoreAccess = "write" | "read" | "none";
 export type StoreMembershipRole = "OWNER" | "MANAGER" | "STAFF";
-export type StoreSection = "overview" | "products" | "categories" | "orders" | "messages" | "settings" | "team" | "customers" | "domains";
+export type StoreSection = "overview" | "products" | "categories" | "orders" | "messages" | "settings" | "team" | "customers" | "domains" | "design";
 
 export type AdminHost =
   | { kind: "admin" }

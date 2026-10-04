@@ -6,6 +6,7 @@ import { nextCookies } from "better-auth/next-js";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { adminHostOf } from "@/lib/admin/store-access";
 import { AUTH_COOKIE_PREFIX, normalizeHost } from "@/lib/auth/constants";
+import { clientIpFromHeader } from "@/lib/auth/trusted-ip";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password-policy";
 import { recordAudit } from "@/lib/server/audit";
 import { getDb } from "@/lib/server/db";
@@ -69,9 +70,7 @@ export const DISABLED_PATHS = [
 
 /** Client IP from the one header the hosting proxy is trusted to set. */
 export function trustedClientIp(headers: Headers | undefined, env: AuthEnv) {
-  if (!headers || !env.trustedIpHeader) return null;
-  const value = headers.get(env.trustedIpHeader)?.split(",")[0]?.trim();
-  return value ? value.slice(0, 64) : null;
+  return clientIpFromHeader(headers, env.trustedIpHeader);
 }
 
 export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
@@ -127,9 +126,9 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
       useSecureCookies: env.production,
       // Host-only cookies: never set a Domain attribute.
       crossSubDomainCookies: { enabled: false },
-      // Only trust the header named in TRUSTED_IP_HEADER. With none set,
-      // no client-supplied header (such as X-Forwarded-For) is believed and
-      // sign-in attempts share one rate-limit bucket.
+      // Only trust the resolved client-IP header (lib/auth/trusted-ip.ts).
+      // readAuthEnv() refuses production without one, so attempts never
+      // collapse into one shared rate-limit bucket there.
       ipAddress: { ipAddressHeaders: env.trustedIpHeader ? [env.trustedIpHeader] : [] },
     },
 

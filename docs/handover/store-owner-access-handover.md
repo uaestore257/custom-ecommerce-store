@@ -1,3 +1,8 @@
+> **Historical document.** This handover describes the store-owner access
+> work while it was in progress. That work has since been completed and
+> merged; trust the code, README.md and docs/*.md over the status tables
+> below.
+
 # Handover: store-owner access (Code X Store)
 
 Historical implementation notes follow; current status is summarized below.

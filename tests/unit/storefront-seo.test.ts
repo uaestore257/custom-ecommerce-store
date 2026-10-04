@@ -26,6 +26,11 @@ const store: StorefrontStore = {
   currency: "AED",
   minorUnits: 2,
   locale: "en-AE",
+  language: "en",
+  direction: "ltr",
+  templateKey: "classic",
+  theme: { palette: "light" },
+  isDemo: false,
   tagline: "Furniture for calm homes.",
   heroTitle: "Good things for your home",
   heroText: "Furniture and storage.",
@@ -48,6 +53,8 @@ const context: StorefrontSeoContext = { store, origin, config };
 const product: StorefrontProduct = {
   id: "product-1",
   storeId: "store-a",
+  slug: "",
+  images: [],
   name: "Oak Table",
   description: "Solid oak table.",
   sku: "OAK-1",
@@ -151,14 +158,14 @@ test("storefront SEO URLs use the verified custom origin across metadata and dis
   );
 });
 
-test("category metadata canonicalizes the existing store-scoped category route", () => {
+test("category metadata canonicalizes the store-scoped category route", () => {
   const metadata = buildStorefrontMetadata(context, {
     title: "Living Room | Nest & Oak Home",
     description: "Browse Living Room products.",
-    path: "/shop?category=category-1",
+    path: "/shop/living-room",
   });
   assert.deepEqual(metadata.alternates, {
-    canonical: "http://nest-and-oak.localhost:3000/shop?category=category-1",
+    canonical: "http://nest-and-oak.localhost:3000/shop/living-room",
   });
   assert.equal(metadata.description, "Browse Living Room products.");
 });
@@ -190,9 +197,26 @@ test("product JSON-LD uses accurate store price and omits internal image URLs", 
     "@type": "Offer",
     price: "1250.99",
     priceCurrency: "AED",
+    availability: "https://schema.org/InStock",
     url: "http://nest-and-oak.localhost:3000/products/product-1",
   });
   assert.equal(productData.image, product.imageUrl);
+  assert.equal(productData.sku, "OAK-1");
+
+  // A human-readable slug is the canonical product URL; every public image is listed.
+  const withSlug = buildProductJsonLd(context, {
+    ...product,
+    slug: "oak-table",
+    stock: 0,
+    images: [
+      { url: "https://cdn.example.test/a.jpg", alt: "" },
+      { url: "http://admin.localhost/private.png", alt: "" },
+      { url: "https://cdn.example.test/b.jpg", alt: "" },
+    ],
+  });
+  assert.equal(withSlug.url, "http://nest-and-oak.localhost:3000/products/oak-table");
+  assert.deepEqual(withSlug.image, ["https://cdn.example.test/a.jpg", "https://cdn.example.test/b.jpg"]);
+  assert.equal((withSlug.offers as { availability: string }).availability, "https://schema.org/OutOfStock");
 
   const hiddenImage = buildProductJsonLd(context, { ...product, imageUrl: "http://admin.localhost/private.png" });
   assert.equal("image" in hiddenImage, false);
@@ -225,12 +249,17 @@ test("robots allow public storefront crawling but exclude private routes and non
 });
 
 test("sitemap contains only URLs for the active store host", () => {
-  const urls = buildStorefrontSitemapUrls(context, [{ id: product.id }], [{ id: "category-1" }]);
+  const urls = buildStorefrontSitemapUrls(
+    context,
+    [{ id: product.id, slug: "" }, { id: "product-2", slug: "oak-dining-table" }],
+    [{ slug: "living-room" }, { slug: "" }],
+  );
   assert.deepEqual(urls, [
     "http://nest-and-oak.localhost:3000/",
     "http://nest-and-oak.localhost:3000/shop",
-    "http://nest-and-oak.localhost:3000/shop?category=category-1",
+    "http://nest-and-oak.localhost:3000/shop/living-room",
     "http://nest-and-oak.localhost:3000/products/product-1",
+    "http://nest-and-oak.localhost:3000/products/oak-dining-table",
   ]);
   assert.equal(urls.some((url) => url.includes("admin.localhost") || url.includes("threadline")), false);
 });

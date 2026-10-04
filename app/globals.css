@@ -1,28 +1,89 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------
+   DESIGN TOKENS
+   Two design languages share this file:
+   * Admin: Tailwind's own palette (slate/teal) directly. Stable; no
+     template ever changes it.
+   * Storefront: SEMANTIC roles below (bg-background, text-foreground,
+     text-muted-foreground, border-border, bg-surface, bg-accent,
+     text-accent-foreground, rounded-card, font-heading, ...). Each value
+     points at a --sf-* custom property that the active template sets on
+     the storefront root (lib/templates/theme.ts, components/storefront/
+     StorefrontRoot.tsx). Shared storefront components use ONLY these
+     roles, so a template can change the whole visual system without
+     editing them. The :root values are neutral defaults (also what admin
+     previews of shared components see).
+   ------------------------------------------------------------------ */
 :root {
   --background: #ffffff;
   --foreground: #0f172a;
-  /* Storefront accent. Each client store overrides this with its own
-     accent colour (see components/storefront/StorefrontShell.tsx). */
+  /* Legacy accent, still read by a few admin/shared components. */
   --brand: #0f766e;
+
+  --sf-background: #ffffff;
+  --sf-foreground: #0f172a;
+  --sf-muted: #f8fafc;
+  --sf-muted-foreground: #475569;
+  --sf-border: #e2e8f0;
+  --sf-surface: #ffffff;
+  --sf-surface-elevated: #ffffff;
+  --sf-accent: #0f766e;
+  --sf-accent-foreground: #ffffff;
+  --sf-destructive: #dc2626;
+  --sf-success: #047857;
+  --sf-warning: #b45309;
+  --sf-focus: #0f172a;
+  --sf-radius-control: 0.5rem;
+  --sf-radius-card: 1rem;
+  --sf-font-heading: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  --sf-font-body: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --color-brand: var(--brand);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-playfair), Georgia, serif;
+
+  /* Storefront semantic roles */
+  --color-background: var(--sf-background);
+  --color-foreground: var(--sf-foreground);
+  --color-muted: var(--sf-muted);
+  --color-muted-foreground: var(--sf-muted-foreground);
+  --color-border: var(--sf-border);
+  --color-surface: var(--sf-surface);
+  --color-surface-elevated: var(--sf-surface-elevated);
+  --color-card: var(--sf-surface);
+  --color-accent: var(--sf-accent);
+  --color-accent-foreground: var(--sf-accent-foreground);
+  --color-destructive: var(--sf-destructive);
+  --color-success: var(--sf-success);
+  --color-warning: var(--sf-warning);
+  --color-focus: var(--sf-focus);
+  --radius-control: var(--sf-radius-control);
+  --radius-card: var(--sf-radius-card);
+  --font-heading: var(--sf-font-heading);
+  --font-body: var(--sf-font-body);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 dialog::backdrop {
   background: rgb(15 23 42 / 0.45);
+}
+
+/* Respect a visitor's reduced-motion preference everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

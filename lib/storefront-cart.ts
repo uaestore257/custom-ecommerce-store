@@ -13,7 +13,7 @@
 // everything then (lib/server/orders.ts).
 // ---------------------------------------------------------------
 import { formatMinorUnits } from "./money";
-import type { StorefrontCatalog, StorefrontCategory, StorefrontProduct, StorefrontStore } from "./storefront-types";
+import type { StorefrontCatalog, StorefrontCategory, StorefrontProductSummary, StorefrontStore } from "./storefront-types";
 
 export interface StoredCartItem {
   storeId: string;
@@ -28,7 +28,7 @@ export interface StoredSession {
 }
 
 export interface CartLine {
-  product: StorefrontProduct;
+  product: StorefrontProductSummary;
   /** What would be ordered: the requested quantity, capped to current stock. */
   quantity: number;
   /** What the shopper asked for. Larger than `quantity` when stock ran low. */
@@ -155,13 +155,16 @@ export function formatStoreMoney(
   return formatMinorUnits(typeof minor === "bigint" ? minor : BigInt(minor), store.currency, store.minorUnits, store.locale);
 }
 
-export function productDeliveryDescription(product: StorefrontProduct, store: StorefrontStore) {
+export function productDeliveryDescription(
+  product: Pick<StorefrontProductSummary, "pickupOnly" | "freeDelivery" | "deliveryFeeMinor">,
+  store: Pick<StorefrontStore, "currency" | "minorUnits" | "locale">,
+) {
   if (product.pickupOnly) return "Pickup Only";
   if (product.freeDelivery) return "Free Delivery";
   return `Delivery: ${formatStoreMoney(store, product.deliveryFeeMinor)}`;
 }
 
-export function isProductOnSale(product: Pick<StorefrontProduct, "priceMinor" | "compareAtMinor">) {
+export function isProductOnSale(product: Pick<StorefrontProductSummary, "priceMinor" | "compareAtMinor">) {
   return product.compareAtMinor !== null && BigInt(product.compareAtMinor) > BigInt(product.priceMinor);
 }
 
