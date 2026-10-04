@@ -310,6 +310,17 @@ model Store {
   // Tax setting only; no tax is calculated in Phase 1.
   pricesIncludeTax Boolean @default(false)
 
+  // Storefront presentation. templateKey names a template in the code
+  // registry (lib/templates/registry.ts); an unknown key renders the
+  // default template. themeConfig holds only that template's enumerated
+  // option choices, normalized on every read (lib/templates/theme.ts):
+  // never markup, component names or arbitrary CSS.
+  templateKey String  @default("classic") @db.VarChar(40)
+  themeConfig Json    @default("{}")
+  /// A demonstration store (template showcase). Real tenant in every other
+  /// respect; demo stores are never indexed by search engines.
+  isDemo      Boolean @default(false)
+
   // Branding and contact
   logoUrl      String?
   accentColor  String? @db.VarChar(7)

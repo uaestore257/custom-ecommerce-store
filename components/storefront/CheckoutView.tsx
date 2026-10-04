@@ -5,8 +5,16 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import { CircleCheck, ShoppingCart } from "lucide-react";
 import { placeOrderAction } from "@/app/(storefront)/actions";
-import { EmptyState, LoadingState } from "@/components/EmptyState";
-import { buttonClass, errorProps, Field, inputClass, LinkButton, Notice } from "@/components/ui";
+import {
+  sfButtonClass,
+  SfEmptyState,
+  sfErrorProps as errorProps,
+  SfField as Field,
+  sfInputClass,
+  SfLinkButton,
+  SfLoading,
+  SfNotice as Notice,
+} from "@/components/storefront/primitives";
 import {
   CHECKOUT_PAYMENT_METHODS,
   validateCheckoutFields,
@@ -17,10 +25,10 @@ import {
 } from "@/lib/checkout";
 import { PAYMENT_METHODS, paymentMethodLabel, UAE_EMIRATES } from "@/lib/config";
 import { paymentInstructions } from "@/lib/payment-instructions";
-import { clearCart, useStorefront } from "@/lib/storefront";
+import { clearCart, useCart } from "@/lib/storefront";
 import { formatStoreMoney, hasCartChanges } from "@/lib/storefront-cart";
 import type { StorefrontStore } from "@/lib/storefront-types";
-import { CartChangesNotice, NOT_RESERVED_NOTE, useCatalogRefreshOnOpen } from "./CartChanges";
+import { CartChangesNotice, NOT_RESERVED_NOTE } from "./CartChanges";
 import { CartTotals } from "./OrderSummary";
 
 interface CheckoutForm {
@@ -43,10 +51,15 @@ const emptyForm: CheckoutForm = {
   paymentMethod: "",
 };
 
+/**
+ * The ONE checkout every template uses (templates restyle it through their
+ * tokens; they never fork it). Prices, stock and totals come from a fresh
+ * server read of the cart's products, and the server re-checks everything
+ * again when the order is placed (lib/server/orders.ts).
+ */
 export function CheckoutView() {
-  const view = useStorefront();
+  const view = useCart();
   const router = useRouter();
-  const { checking } = useCatalogRefreshOnOpen();
   const [form, setForm] = useState<CheckoutForm>(emptyForm);
   const [errors, setErrors] = useState<CheckoutFieldErrors>({});
   const [serverError, setServerError] = useState("");
@@ -57,7 +70,8 @@ export function CheckoutView() {
   const attemptKey = useRef<string | null>(null);
 
   if (!view) return null;
-  const { store, cart, cartLoaded } = view;
+  const { context: { store }, cart, status, refresh } = view;
+  const checking = status !== "ready";
   const isUae = store.countryCode === "AE";
   const fulfillmentMethod = cart.requiresPickup ? "PICKUP" : form.fulfillmentMethod;
 
@@ -73,10 +87,23 @@ export function CheckoutView() {
     return <OrderConfirmation order={placed} store={store} />;
   }
 
-  if (!cartLoaded) {
+  if (status === "error") {
     return (
       <main className="mx-auto max-w-xl px-4 py-20 sm:px-6">
-        <LoadingState label="Loading your cart…" />
+        <Notice tone="error">
+          We couldn&apos;t check your cart&apos;s current prices and stock.{" "}
+          <button type="button" className="font-semibold underline" onClick={refresh}>
+            Try again
+          </button>
+        </Notice>
+      </main>
+    );
+  }
+
+  if (status === "loading" && cart.lines.length === 0) {
+    return (
+      <main className="mx-auto max-w-xl px-4 py-20 sm:px-6">
+        <SfLoading label="Loading your cart…" />
       </main>
     );
   }
@@ -84,11 +111,11 @@ export function CheckoutView() {
   if (cart.lines.length === 0) {
     return (
       <main className="mx-auto max-w-xl px-4 py-20 sm:px-6">
-        <EmptyState
+        <SfEmptyState
           icon={ShoppingCart}
           title="Your cart is empty"
           description="Add some products before checking out."
-          action={<LinkButton href="/shop" tone="brand">Go to shop</LinkButton>}
+          action={<SfLinkButton href="/shop">Go to shop</SfLinkButton>}
         />
       </main>
     );
@@ -167,13 +194,13 @@ export function CheckoutView() {
         focusFirst(result.fieldErrors);
       }
       // Prices, stock or availability may have changed: re-check the cart.
-      router.refresh();
+      refresh();
     });
   }
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
+      <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
 
       <Notice className="mt-6">
         Card details are never collected by this store.
@@ -184,7 +211,7 @@ export function CheckoutView() {
         Prices and stock are checked again when you place your order.
       </Notice>
 
-      <p className="mt-3 text-sm text-slate-500" aria-live="polite">
+      <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">
         {checking ? "Checking current prices and stock…" : "Prices and stock checked with the store just now."}
       </p>
       <CartChangesNotice cart={cart} store={store} className="mt-4" />
@@ -206,8 +233,8 @@ export function CheckoutView() {
 
       <form onSubmit={handleSubmit} noValidate className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-8">
-          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
-            <legend className="px-1 text-lg font-semibold">Contact details</legend>
+          <fieldset className="min-w-0 rounded-card border border-border bg-surface p-4 sm:p-6">
+            <legend className="px-1 font-heading text-lg font-semibold">Contact details</legend>
             <div className="mt-2 grid gap-4 sm:grid-cols-2">
               <Field label="Full name" htmlFor="checkout-name" required error={errors.name} className="sm:col-span-2">
                 <input
@@ -215,7 +242,7 @@ export function CheckoutView() {
                   autoComplete="name"
                   value={form.name}
                   onChange={(e) => update("name", e.target.value)}
-                  className={inputClass(!!errors.name)}
+                  className={sfInputClass(!!errors.name)}
                 />
               </Field>
               <Field label="Email" htmlFor="checkout-email" required error={errors.email}>
@@ -225,7 +252,7 @@ export function CheckoutView() {
                   autoComplete="email"
                   value={form.email}
                   onChange={(e) => update("email", e.target.value)}
-                  className={inputClass(!!errors.email)}
+                  className={sfInputClass(!!errors.email)}
                 />
               </Field>
               <Field label="Phone" htmlFor="checkout-phone" required error={errors.phone}>
@@ -236,20 +263,20 @@ export function CheckoutView() {
                   placeholder={isUae ? "050 123 4567" : ""}
                   value={form.phone}
                   onChange={(e) => update("phone", e.target.value)}
-                  className={inputClass(!!errors.phone)}
+                  className={sfInputClass(!!errors.phone)}
                 />
               </Field>
             </div>
           </fieldset>
 
-          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
-            <legend className="px-1 text-lg font-semibold">Fulfillment</legend>
+          <fieldset className="min-w-0 rounded-card border border-border bg-surface p-4 sm:p-6">
+            <legend className="px-1 font-heading text-lg font-semibold">Fulfillment</legend>
             <div className="mt-2 space-y-3">
               {([
                 ["DELIVERY", "Delivery"],
                 ["PICKUP", "Pickup at the store"],
               ] as const).map(([method, label]) => (
-                <label key={method} className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+                <label key={method} className="flex items-start gap-3 rounded-control border border-border p-4">
                   <input
                     type="radio"
                     name="fulfillmentMethod"
@@ -257,7 +284,7 @@ export function CheckoutView() {
                     checked={fulfillmentMethod === method}
                     disabled={cart.requiresPickup && method === "DELIVERY"}
                     onChange={() => update("fulfillmentMethod", method)}
-                    className="mt-1 accent-[var(--brand)]"
+                    className="mt-1 accent-[var(--sf-accent)]"
                   />
                   <span className="font-medium">{label}</span>
                 </label>
@@ -265,7 +292,7 @@ export function CheckoutView() {
             </div>
             {fulfillmentMethod === "DELIVERY" && (
             <>
-            <h2 className="mt-5 text-lg font-semibold">{isUae ? "UAE delivery address" : "Delivery address"}</h2>
+            <h2 className="mt-5 font-heading text-lg font-semibold">{isUae ? "UAE delivery address" : "Delivery address"}</h2>
             <div className="mt-2 grid gap-4 sm:grid-cols-2">
               <Field
                 label="Address"
@@ -281,7 +308,7 @@ export function CheckoutView() {
                   autoComplete="street-address"
                   value={form.address}
                   onChange={(e) => update("address", e.target.value)}
-                  className={inputClass(!!errors.address)}
+                  className={sfInputClass(!!errors.address)}
                 />
               </Field>
               <Field label={isUae ? "Emirate" : "City"} htmlFor="checkout-city" required error={errors.city}>
@@ -290,7 +317,7 @@ export function CheckoutView() {
                     {...errorProps("checkout-city", errors.city)}
                     value={form.city}
                     onChange={(e) => update("city", e.target.value)}
-                    className={inputClass(!!errors.city)}
+                    className={sfInputClass(!!errors.city)}
                   >
                     <option value="">Choose emirate…</option>
                     {UAE_EMIRATES.map((emirate) => (
@@ -303,20 +330,20 @@ export function CheckoutView() {
                     autoComplete="address-level2"
                     value={form.city}
                     onChange={(e) => update("city", e.target.value)}
-                    className={inputClass(!!errors.city)}
+                    className={sfInputClass(!!errors.city)}
                   />
                 )}
               </Field>
-              <div className="text-sm text-slate-600 sm:self-end sm:pb-3">
-                Country: <span className="font-medium text-slate-900">{store.countryName}</span>
+              <div className="text-sm text-muted-foreground sm:self-end sm:pb-3">
+                Country: <span className="font-medium text-foreground">{store.countryName}</span>
               </div>
             </div>
             </>
             )}
           </fieldset>
 
-          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-6">
-            <legend className="px-1 text-lg font-semibold">Payment method</legend>
+          <fieldset className="min-w-0 rounded-card border border-border bg-surface p-4 sm:p-6">
+            <legend className="px-1 font-heading text-lg font-semibold">Payment method</legend>
             <div
               id="checkout-paymentMethod"
               tabIndex={-1}
@@ -328,8 +355,8 @@ export function CheckoutView() {
               {paymentOptions.map((method) => (
                 <label
                   key={method.id}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${
-                    form.paymentMethod === method.id ? "border-brand bg-brand/5" : "border-slate-200"
+                  className={`flex cursor-pointer items-start gap-3 rounded-control border p-4 ${
+                    form.paymentMethod === method.id ? "border-accent bg-accent/5" : "border-border"
                   }`}
                 >
                   <input
@@ -338,33 +365,33 @@ export function CheckoutView() {
                     value={method.id}
                     checked={form.paymentMethod === method.id}
                     onChange={() => update("paymentMethod", method.id)}
-                    className="mt-1 accent-[var(--brand)]"
+                    className="mt-1 accent-[var(--sf-accent)]"
                   />
                   <span>
                     <span className="block font-medium">{method.label}</span>
-                    <span className="text-sm text-slate-500">{method.description}</span>
+                    <span className="text-sm text-muted-foreground">{method.description}</span>
                   </span>
                 </label>
               ))}
               {paymentOptions.length === 0 && (
-                <p className="text-sm text-slate-500">No payment methods are available.</p>
+                <p className="text-sm text-muted-foreground">No payment methods are available.</p>
               )}
             </div>
             {errors.paymentMethod && (
-              <p id="checkout-paymentMethod-error" className="mt-2 text-sm text-red-600">
+              <p id="checkout-paymentMethod-error" className="mt-2 text-sm text-destructive">
                 {errors.paymentMethod}
               </p>
             )}
           </fieldset>
         </div>
 
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-slate-50 p-6 lg:sticky lg:top-24">
-          <h2 className="text-lg font-semibold">Order summary</h2>
-          <ul className="mt-4 space-y-3 border-b border-slate-200 pb-4 text-sm">
+        <aside className="h-fit rounded-card border border-border bg-surface-elevated p-6 lg:sticky lg:top-24">
+          <h2 className="font-heading text-lg font-semibold">Order summary</h2>
+          <ul className="mt-4 space-y-3 border-b border-border pb-4 text-sm">
             {cart.lines.map(({ product, quantity, lineTotalMinor }) => (
               <li key={product.id} className="flex justify-between gap-3">
                 <span>
-                  {product.name} <span className="text-slate-500">× {quantity}</span>
+                  {product.name} <span className="text-muted-foreground">× {quantity}</span>
                 </span>
                 <span className="shrink-0 tabular-nums">{formatStoreMoney(store, lineTotalMinor)}</span>
               </li>
@@ -376,15 +403,15 @@ export function CheckoutView() {
           <button
             type="submit"
             disabled={!canPlace}
-            className={`${buttonClass("primary", { size: "lg", tone: "brand" })} mt-6 w-full`}
+            className={`${sfButtonClass("primary", "lg")} mt-6 w-full`}
           >
             {submitting ? "Placing your order…" : checking ? "Checking prices…" : "Place order"}
           </button>
           {cartChanged && (
-            <p className="mt-2 text-xs text-amber-800">Review the cart updates above before placing your order.</p>
+            <p className="mt-2 text-xs text-warning">Review the cart updates above before placing your order.</p>
           )}
-          <p className="mt-2 text-xs text-slate-500">{NOT_RESERVED_NOTE}</p>
-          <Link href="/cart" className="mt-3 block text-center text-sm font-medium text-slate-600 hover:underline">
+          <p className="mt-2 text-xs text-muted-foreground">{NOT_RESERVED_NOTE}</p>
+          <Link href="/cart" className="mt-3 block text-center text-sm font-medium text-muted-foreground hover:underline">
             Back to cart
           </Link>
         </aside>
@@ -398,14 +425,14 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
   const money = (minor: string) => formatStoreMoney(store, minor);
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-16">
-      <div className="rounded-3xl border border-slate-200 p-5 text-center sm:p-8">
-        <CircleCheck className="mx-auto h-12 w-12 text-emerald-600" aria-hidden />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">Order placed</h1>
-        <p className="mt-2 text-slate-600">
-          Thank you. Your order number is <strong className="text-slate-900">{order.orderNumber}</strong>.
-          Please keep it for your records — no confirmation email is sent yet.
+      <div className="rounded-card border border-border bg-surface p-5 text-center sm:p-8">
+        <CircleCheck className="mx-auto h-12 w-12 text-success" aria-hidden />
+        <h1 className="mt-4 font-heading text-2xl font-bold tracking-tight sm:text-3xl">Order placed</h1>
+        <p className="mt-2 text-muted-foreground">
+          Thank you. Your order number is <strong className="text-foreground">{order.orderNumber}</strong>.
+          Please keep it for your records.
         </p>
-        <Notice className="mt-6 text-left">
+        <Notice className="mt-6 text-start">
           {order.paymentMethod === "bank_transfer" ? (
             <>
               <strong>Payment: bank transfer — not paid yet.</strong>{" "}
@@ -433,7 +460,7 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
           )}
         </Notice>
 
-        <ul className="mt-6 space-y-2 border-y border-slate-200 py-4 text-left text-sm">
+        <ul className="mt-6 space-y-2 border-y border-border py-4 text-start text-sm">
           {order.lines.map((line, index) => (
             <li key={index} className="flex justify-between gap-3">
               <span>{line.name} × {line.quantity}</span>
@@ -441,13 +468,13 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
             </li>
           ))}
         </ul>
-        <dl className="mt-4 space-y-2 text-left text-sm">
+        <dl className="mt-4 space-y-2 text-start text-sm">
           <div className="flex justify-between">
-            <dt className="text-slate-600">Subtotal</dt>
+            <dt className="text-muted-foreground">Subtotal</dt>
             <dd className="font-medium tabular-nums">{money(order.subtotalMinor)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-slate-600">{order.fulfillmentMethod === "PICKUP" ? "Pickup" : "Delivery"}</dt>
+            <dt className="text-muted-foreground">{order.fulfillmentMethod === "PICKUP" ? "Pickup" : "Delivery"}</dt>
             <dd className="font-medium tabular-nums">
               {order.fulfillmentMethod === "PICKUP"
                 ? "No delivery fee"
@@ -456,17 +483,17 @@ function OrderConfirmation({ order, store }: { order: PlacedOrder; store: Storef
                   : money(order.shippingMinor)}
             </dd>
           </div>
-          <div className="flex justify-between border-t border-slate-200 pt-3 text-base">
+          <div className="flex justify-between border-t border-border pt-3 text-base">
             <dt className="font-semibold">Total to pay</dt>
             <dd className="font-bold tabular-nums">{money(order.totalMinor)}</dd>
           </div>
         </dl>
-        <p className="mt-4 text-left text-sm text-slate-600">
+        <p className="mt-4 text-start text-sm text-muted-foreground">
           {order.fulfillmentMethod === "PICKUP" ? "Pickup at the store" : `Delivery to ${order.deliveryTo}`} · Payment: {paymentMethodLabel(order.paymentMethod)} (unpaid)
         </p>
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <LinkButton href="/shop" tone="brand">Continue shopping</LinkButton>
+          <SfLinkButton href="/shop">Continue shopping</SfLinkButton>
         </div>
       </div>
     </main>

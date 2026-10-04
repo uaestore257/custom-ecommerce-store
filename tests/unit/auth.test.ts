@@ -25,6 +25,7 @@ const goodEnv = {
   BETTER_AUTH_SECRET: "s".repeat(40),
   BETTER_AUTH_URL: "https://admin.codexstore.com",
   ADMIN_HOST: "admin.codexstore.com",
+  TRUSTED_IP_HEADER: "x-real-ip",
   NODE_ENV: "production",
 } as unknown as NodeJS.ProcessEnv;
 
@@ -32,7 +33,7 @@ test("auth settings are validated and fail closed", () => {
   const env = readAuthEnv(goodEnv);
   assert.equal(env.baseURL, "https://admin.codexstore.com");
   assert.equal(env.adminHost, "admin.codexstore.com");
-  assert.equal(env.trustedIpHeader, null);
+  assert.equal(env.trustedIpHeader, "x-real-ip");
   assert.equal(env.production, true);
 
   const bad = [
@@ -48,6 +49,25 @@ test("auth settings are validated and fail closed", () => {
   assert.equal(readAuthEnv(local as unknown as NodeJS.ProcessEnv).adminHost, "admin.localhost:3000", "local production build");
   assert.throws(() => readAuthEnv({ ...local, BETTER_AUTH_URL: "http://admin.localhost.evil.com", ADMIN_HOST: "admin.localhost.evil.com" } as unknown as NodeJS.ProcessEnv), AuthConfigError);
   assert.equal(readAuthEnv({ ...goodEnv, TRUSTED_IP_HEADER: "X-Real-IP" } as unknown as NodeJS.ProcessEnv).trustedIpHeader, "x-real-ip");
+});
+
+test("production refuses to run sign-in with every visitor in one shared rate-limit bucket", () => {
+  const noHeader = { ...goodEnv, TRUSTED_IP_HEADER: undefined } as unknown as NodeJS.ProcessEnv;
+  assert.throws(() => readAuthEnv(noHeader), /TRUSTED_IP_HEADER/);
+  assert.throws(() => readAuthEnv({ ...noHeader, TRUSTED_IP_HEADER: "   " } as unknown as NodeJS.ProcessEnv), /TRUSTED_IP_HEADER/);
+  // Vercel overwrites x-real-ip at its edge, so it is resolved automatically.
+  assert.equal(readAuthEnv({ ...noHeader, VERCEL: "1" } as unknown as NodeJS.ProcessEnv).trustedIpHeader, "x-real-ip");
+  // An explicit value always wins over the platform default.
+  assert.equal(
+    readAuthEnv({ ...noHeader, VERCEL: "1", TRUSTED_IP_HEADER: "cf-connecting-ip" } as unknown as NodeJS.ProcessEnv).trustedIpHeader,
+    "cf-connecting-ip",
+  );
+  // A malformed value is never silently ignored, even on Vercel.
+  assert.throws(() => readAuthEnv({ ...noHeader, VERCEL: "1", TRUSTED_IP_HEADER: "x-real-ip x" } as unknown as NodeJS.ProcessEnv), AuthConfigError);
+  // Development and local *.localhost production builds may run without one.
+  assert.equal(readAuthEnv({ ...noHeader, NODE_ENV: "development" } as unknown as NodeJS.ProcessEnv).trustedIpHeader, null);
+  const local = { ...noHeader, BETTER_AUTH_URL: "http://admin.localhost:3000", ADMIN_HOST: "admin.localhost:3000" };
+  assert.equal(readAuthEnv(local as unknown as NodeJS.ProcessEnv).trustedIpHeader, null);
 });
 
 test("the seed refuses production and non-dev databases", () => {

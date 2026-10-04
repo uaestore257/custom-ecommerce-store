@@ -13,6 +13,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       : { rules: { userAgent: "*", allow: "/" } };
   }
   const context = await getPublicStorefrontSeoContext();
-  if (!context) return buildStorefrontRobots(false);
+  // Demo stores are real tenants but are never crawled.
+  if (!context || context.store.isDemo) return buildStorefrontRobots(false);
   return buildStorefrontRobots(true, storefrontCanonicalUrl(context, "/sitemap.xml"));
 }

@@ -36,3 +36,27 @@ export async function testActor(db: PrismaClient): Promise<PlatformOwner> {
   const user = await db.user.create({ data: { email: `actor-${id}@example.com`, name: `Test actor ${id}` } });
   return { userId: user.id, email: user.email, name: user.name } as PlatformOwner;
 }
+
+/**
+ * Offers bank transfer the way Store Owner payment settings do: an enabled
+ * "bank_transfer" provider account holding the (public) bank details,
+ * linked to the store's enabled bank_transfer method. Bank transfer is only
+ * offered once those details exist.
+ */
+export async function enableBankTransfer(db: PrismaClient, storeId: string) {
+  const account = await db.paymentProviderAccount.create({
+    data: {
+      storeId,
+      provider: "bank_transfer",
+      displayName: "Bank transfer",
+      mode: "TEST",
+      enabled: true,
+      publicConfig: { bankName: "Example Bank", accountName: "Example Store LLC", accountNumber: "0001234567" },
+    },
+    select: { id: true },
+  });
+  await db.storePaymentMethod.update({
+    where: { storeId_method: { storeId, method: "bank_transfer" } },
+    data: { enabled: true, providerAccountId: account.id },
+  });
+}

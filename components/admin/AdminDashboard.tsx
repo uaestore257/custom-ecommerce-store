@@ -10,7 +10,7 @@ import { useDemoState } from "@/lib/demo-db";
 import type { AdminStoreSummary, DbStoreStatus } from "@/lib/admin/types";
 import { ClientStoreCard, MoreStoresCard } from "./ClientStoreCard";
 
-const TEMPLATE_FEATURES = ["Storefront", "Shop & products", "Cart & checkout", "Orders", "Customers", "Settings"];
+const TEMPLATE_FEATURES = ["Shared commerce core", "Cart & checkout", "Orders", "SEO", "Storefront templates"];
 
 /** Stores come from the database; the agency profile is still demo data. */
 export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
@@ -46,7 +46,7 @@ export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
     <>
       <PageHeader
         title="Your Agency Admin"
-        description={`${agency.agencyName} manages customer website projects from one place. Every client store runs on the shared Master Ecommerce Template, with its own branding, products, orders and settings.`}
+        description={`${agency.agencyName} manages customer website projects from one place. Every client store runs on the shared platform with its own storefront template, branding, products, orders and settings.`}
         actions={
           <LinkButton href="/admin/stores/new">
             <Plus className="h-4 w-4" aria-hidden />
@@ -93,8 +93,8 @@ export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Level 2 · Shared</p>
-                <p className="text-lg font-semibold">Master Ecommerce Template</p>
-                <p className="text-sm text-slate-600">One reusable codebase for every client store.</p>
+                <p className="text-lg font-semibold">Platform &amp; template library</p>
+                <p className="text-sm text-slate-600">One codebase for every client store; each store picks a storefront template.</p>
               </div>
             </div>
             <ul className="mt-4 flex flex-wrap gap-2">
@@ -108,7 +108,7 @@ export function AdminDashboard({ stores }: { stores: AdminStoreSummary[] }) {
               href="/admin/template"
               className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-teal-700 hover:underline"
             >
-              View template
+              View templates
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Link>
           </div>

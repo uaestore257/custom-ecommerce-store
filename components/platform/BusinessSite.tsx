@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { PLATFORM_FALLBACK_NAME } from "@/lib/platform-brand";
 import { getDb } from "@/lib/server/db";
+import { getPlatformName } from "@/lib/server/platform-brand";
 import { storefrontPreviewUrlForSlug, storeHostConfig } from "@/lib/store-host";
 
 const navigation = [
@@ -11,12 +13,13 @@ const navigation = [
   { href: "/contact", label: "Contact" },
 ];
 
-export function BusinessSiteShell({ children }: { children: ReactNode }) {
+export async function BusinessSiteShell({ children }: { children: ReactNode }) {
+  const platformName = await getPlatformName();
   return (
     <div className="flex min-h-screen flex-col bg-white text-slate-900">
       <header className="border-b border-slate-200">
         <nav className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
-          <Link href="/" className="text-lg font-bold tracking-tight">UAE Store</Link>
+          <Link href="/" className="text-lg font-bold tracking-tight">{platformName}</Link>
           <div className="flex flex-wrap gap-4 text-sm font-medium text-slate-600">
             {navigation.map((item) => (
               <Link key={item.href} href={item.href} className="hover:text-teal-700">{item.label}</Link>
@@ -33,7 +36,7 @@ export function BusinessSiteShell({ children }: { children: ReactNode }) {
       <div className="flex-1">{children}</div>
       <footer className="border-t border-slate-200">
         <div className="mx-auto flex max-w-6xl flex-wrap justify-between gap-3 px-4 py-6 text-sm text-slate-500 sm:px-6">
-          <span>UAE Store — ecommerce platform and services</span>
+          <span>{platformName} — ecommerce platform and services</span>
           <Link href="/contact" className="hover:text-teal-700">Contact</Link>
         </div>
       </footer>
@@ -135,7 +138,7 @@ export async function BusinessContactPage() {
   });
   return (
     <BusinessContentPage
-      title={`Contact ${settings?.platformName ?? "UAE Store"}`}
+      title={`Contact ${settings?.platformName.trim() || PLATFORM_FALLBACK_NAME}`}
       eyebrow="Contact"
       description={
         settings?.contactEmail

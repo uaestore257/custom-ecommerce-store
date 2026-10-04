@@ -1,30 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
-import { buttonClass, Notice } from "@/components/ui";
+import { sfButtonClass, SfNotice } from "@/components/storefront/primitives";
 import { acceptCartChanges } from "@/lib/storefront";
 import { formatStoreMoney, hasCartChanges, type CartLine, type CartSummary } from "@/lib/storefront-cart";
 import type { StorefrontStore } from "@/lib/storefront-types";
-
-/**
- * Re-reads the catalog from the server when the cart or checkout opens,
- * so prices and stock are reconciled against current data rather than
- * whatever the page had when it was first loaded. `checking` is true
- * until that refresh has finished.
- */
-export function useCatalogRefreshOnOpen() {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const [refreshed, setRefreshed] = useState(false);
-  useEffect(() => {
-    startTransition(() => {
-      router.refresh();
-      setRefreshed(true);
-    });
-  }, [router]);
-  return { checking: !refreshed || isPending };
-}
 
 export function pluralItems(n: number) {
   return `${n} ${n === 1 ? "item" : "items"}`;
@@ -34,9 +13,9 @@ export function pluralItems(n: number) {
 export function CartChangesNotice({ cart, store, className = "" }: { cart: CartSummary; store: StorefrontStore; className?: string }) {
   if (!hasCartChanges(cart)) return null;
   return (
-    <Notice tone="warning" className={className}>
+    <SfNotice tone="warning" className={className}>
       <p className="font-semibold">Your cart was updated to match the store&apos;s current prices and stock.</p>
-      <ul className="mt-2 list-disc space-y-1 pl-5">
+      <ul className="mt-2 list-disc space-y-1 ps-5">
         {cart.priceChangedCount > 0 && (
           <li>{pluralItems(cart.priceChangedCount)} changed price since you added {cart.priceChangedCount === 1 ? "it" : "them"}.</li>
         )}
@@ -53,12 +32,12 @@ export function CartChangesNotice({ cart, store, className = "" }: { cart: CartS
       <p className="mt-2">The totals shown already use the current prices.</p>
       <button
         type="button"
-        className={`${buttonClass("secondary", { size: "sm" })} mt-3`}
+        className={`${sfButtonClass("secondary", "sm")} mt-3`}
         onClick={() => acceptCartChanges(cart, store.id)}
       >
         OK, update my cart
       </button>
-    </Notice>
+    </SfNotice>
   );
 }
 
@@ -66,7 +45,7 @@ export function CartChangesNotice({ cart, store, className = "" }: { cart: CartS
 export function CartLineChange({ line, store }: { line: CartLine; store: StorefrontStore }) {
   if (!line.previousPriceMinor && line.quantity === line.requestedQuantity) return null;
   return (
-    <div className="mt-1 space-y-0.5 text-xs font-medium text-amber-800">
+    <div className="mt-1 space-y-0.5 text-xs font-medium text-warning">
       {line.previousPriceMinor && (
         <p>
           Price changed: was {formatStoreMoney(store, line.previousPriceMinor)}, now{" "}

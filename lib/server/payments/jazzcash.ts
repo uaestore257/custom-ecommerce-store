@@ -4,7 +4,6 @@ import type {
   PaymentProviderAdapter,
   ProviderCheckoutInput,
   ResolvedPaymentCredentials,
-  VerifiedPaymentEvent,
 } from "./types";
 
 const JAZZCASH_SANDBOX_URL = "https://sandbox.jazzcash.com.pk/CustomerPortal/TransactionManagement/DoTransactionViaSDK/";

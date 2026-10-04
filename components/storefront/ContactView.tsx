@@ -2,8 +2,14 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 import { Mail, MapPin, Phone } from "lucide-react";
-import { buttonClass, errorProps, Field, inputClass, Notice } from "@/components/ui";
-import { useStorefront } from "@/lib/storefront";
+import {
+  sfButtonClass,
+  sfErrorProps as errorProps,
+  SfField as Field,
+  sfInputClass as inputClass,
+  SfNotice as Notice,
+} from "@/components/storefront/primitives";
+import type { StorefrontStore } from "@/lib/storefront-types";
 import { validateInquiry, type InquiryFieldErrors } from "@/lib/inquiry";
 import { submitInquiryAction } from "@/app/(storefront)/actions";
 
@@ -16,16 +22,13 @@ interface ContactForm {
 
 const emptyForm: ContactForm = { name: "", email: "", subject: "", message: "" };
 
-export function ContactView() {
-  const view = useStorefront();
+/** Shared contact page; the store comes from the server layout, and the action re-checks it against the host. */
+export function ContactView({ store }: { store: StorefrontStore }) {
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState<InquiryFieldErrors>({});
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState("");
   const [isPending, startTransition] = useTransition();
-  if (!view) return null;
-  const { store } = view;
-
   function update(key: keyof ContactForm, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
@@ -56,8 +59,8 @@ export function ContactView() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">Contact {store.name}</h1>
-      <p className="mt-3 max-w-xl text-slate-600">
+      <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-4xl">Contact {store.name}</h1>
+      <p className="mt-3 max-w-xl text-muted-foreground">
         Questions about a product, delivery or an order? Get in touch.
       </p>
 
@@ -65,14 +68,14 @@ export function ContactView() {
         <ul className="space-y-4">
           {store.contactEmail && (
             <ContactItem icon={Mail} label="Email">
-              <a href={`mailto:${store.contactEmail}`} className="hover:text-brand hover:underline">
+              <a href={`mailto:${store.contactEmail}`} className="hover:text-accent hover:underline">
                 {store.contactEmail}
               </a>
             </ContactItem>
           )}
           {store.contactPhone && (
             <ContactItem icon={Phone} label="Phone">
-              <a href={`tel:${store.contactPhone.replace(/\s/g, "")}`} className="hover:text-brand hover:underline">
+              <a href={`tel:${store.contactPhone.replace(/\s/g, "")}`} className="hover:text-accent hover:underline">
                 {store.contactPhone}
               </a>
             </ContactItem>
@@ -81,11 +84,11 @@ export function ContactView() {
             <ContactItem icon={MapPin} label="Address">{store.contactAddress}</ContactItem>
           )}
           {!store.contactEmail && !store.contactPhone && !store.contactAddress && (
-            <li className="text-sm text-slate-500">Contact details have not been added yet.</li>
+            <li className="text-sm text-muted-foreground">Contact details have not been added yet.</li>
           )}
         </ul>
 
-        <div className="rounded-2xl border border-slate-200 p-4 sm:p-6">
+        <div className="rounded-card border border-border bg-surface p-4 sm:p-6">
           {submitted && (
             <Notice tone="success" className="mb-6">
               Thanks! Your message has been sent to the store.
@@ -134,7 +137,7 @@ export function ContactView() {
               />
             </Field>
             <div className="sm:col-span-2">
-              <button type="submit" disabled={isPending} className={buttonClass("primary", { tone: "brand" })}>
+              <button type="submit" disabled={isPending} className={sfButtonClass("primary")}>
                 {isPending ? "Sending…" : "Send message"}
               </button>
             </div>
@@ -155,13 +158,13 @@ function ContactItem({
   children: React.ReactNode;
 }) {
   return (
-    <li className="flex gap-4 rounded-2xl border border-slate-200 p-5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+    <li className="flex gap-4 rounded-card border border-border bg-surface p-5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
         <Icon className="h-5 w-5" aria-hidden />
       </span>
       <span className="min-w-0 text-sm">
-        <span className="block font-semibold text-slate-900">{label}</span>
-        <span className="break-words text-slate-600">{children}</span>
+        <span className="block font-semibold text-foreground">{label}</span>
+        <span className="break-words text-muted-foreground">{children}</span>
       </span>
     </li>
   );

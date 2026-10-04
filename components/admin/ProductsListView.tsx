@@ -55,10 +55,6 @@ export function ProductsListView({ products, categories }: { products: AdminProd
         actions={addButton}
       />
 
-      <Notice className="mb-5">
-        Products are saved in the database. The public storefront still shows demo data until it is connected in a
-        later phase.
-      </Notice>
       {notice && (
         <Notice tone={notice.tone} className="mb-5">
           <span role="status">{notice.text}</span>

@@ -11,6 +11,7 @@ import {
   Mail,
   Menu,
   Package,
+  Palette,
   Plus,
   Receipt,
   Settings,
@@ -39,7 +40,7 @@ const agencyNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
   { label: "Client stores", href: "/admin/stores", icon: StoreIcon, exact: true },
   { label: "Create store", href: "/admin/stores/new", icon: Plus, exact: true },
-  { label: "Master template", href: "/admin/template", icon: LayoutTemplate },
+  { label: "Templates", href: "/admin/template", icon: LayoutTemplate },
   { label: "Agency settings", href: "/admin/settings", icon: Settings },
 ];
 
@@ -53,6 +54,7 @@ export function storeNav(storeId: string): NavItem[] {
     { label: "Messages", href: `${base}/messages`, icon: Mail },
     { label: "Customers", href: `${base}/customers`, icon: Users },
     { label: "Domains", href: "/admin/domains", icon: Globe },
+    { label: "Design", href: `${base}/design`, icon: Palette },
     { label: "Store settings", href: `${base}/settings`, icon: Settings },
   ];
 }
@@ -68,6 +70,7 @@ export function storeNavForViewer(storeId: string, platform: boolean, role: Stor
         Messages: "messages",
         Customers: "customers",
         Domains: "domains",
+        Design: "design",
         "Store settings": "settings",
       };
       const allowedSection = section[item.label];

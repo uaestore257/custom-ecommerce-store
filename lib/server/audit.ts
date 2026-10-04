@@ -31,6 +31,8 @@ export type AuditAction =
   | "store.domain_verify"
   | "store.domain_primary"
   | "store.domain_disable"
+  | "store.design_update"
+  | "store.demo_flag"
   | "order.status_change"
   | "order.cancel"
   | "order.payment_change"

@@ -6,16 +6,19 @@ PostgreSQL + Prisma 7.
 overview and settings (including archive/restore), products (list, add,
 edit, delete/archive) and categories (add, rename, reorder, delete); and the
 public storefront's reads — store branding and content, categories, active
-products, prices, stock and product-level delivery options (`lib/server/storefront/catalog.ts`, which only
-ever returns ACTIVE, non-archived stores and ACTIVE products, through
-`storeScope()`); checkout's orders (`lib/server/orders.ts`, see
+products, prices, stock and product-level delivery options (`lib/server/storefront/catalog.ts`, the
+shared storefront core, which only ever returns ACTIVE, non-archived stores
+and ACTIVE products, filters every query by the store the request host
+resolved, and loads bounded pages — see [docs/templates.md](templates.md));
+checkout's orders (`lib/server/orders.ts`, see
 [Orders](#orders)); and the admin's order management
 ([Order management](#order-management)), plus the Store Owner's read-only,
 store-scoped Customers page.
 
-**Still browser demo data** (`lib/demo-db.ts`, localStorage): the cart's item
-list (product ids and quantities only — never prices), agency settings and
-old demo order details. These are connected in later phases.
+**Kept in the browser** (localStorage): the shopper's cart item list
+(`lib/storefront.ts`; product ids and quantities only — prices and stock are
+always re-read from the server), and the agency profile plus old demo order
+details (`lib/demo-db.ts`), which are connected in later phases.
 
 ## Orders
 

@@ -1,5 +1,6 @@
 import "server-only";
-import { isValidIpHeaderName, normalizeHost } from "@/lib/auth/constants";
+import { normalizeHost } from "@/lib/auth/constants";
+import { resolveTrustedIpHeader } from "@/lib/auth/trusted-ip";
 
 // ---------------------------------------------------------------
 // Authentication settings from the environment (see .env.example).
@@ -15,7 +16,10 @@ export interface AuthEnv {
   baseURL: string;
   /** Host (and port, if any) of the admin, e.g. admin.codexstore.com */
   adminHost: string;
-  /** Header the hosting proxy sets to the real client IP, if known. */
+  /**
+   * Header the hosting proxy sets to the real client IP (lib/auth/trusted-ip.ts).
+   * Null only outside production or for a local *.localhost production build.
+   */
   trustedIpHeader: string | null;
   production: boolean;
 }
@@ -48,8 +52,18 @@ export function readAuthEnv(env: NodeJS.ProcessEnv = process.env): AuthEnv {
     throw new AuthConfigError(`ADMIN_HOST (${adminHost}) must match the host of BETTER_AUTH_URL (${url.host}).`);
   }
 
-  const header = env.TRUSTED_IP_HEADER?.trim().toLowerCase() || null;
-  if (header && !isValidIpHeaderName(header)) throw new AuthConfigError("TRUSTED_IP_HEADER must be a single header name.");
+  const ip = resolveTrustedIpHeader(env);
+  if (ip.header === null && ip.reason === "invalid") {
+    throw new AuthConfigError("TRUSTED_IP_HEADER must be a single header name.");
+  }
+  // Without a client IP every visitor shares ONE sign-in rate-limit bucket,
+  // so one client could lock everyone out. Refuse that in production
+  // (Vercel is detected automatically; see lib/auth/trusted-ip.ts).
+  if (ip.header === null && production && !local) {
+    throw new AuthConfigError(
+      "TRUSTED_IP_HEADER must name the header your hosting proxy sets to the client IP (e.g. x-real-ip) in production.",
+    );
+  }
 
-  return { secret, baseURL: url.origin, adminHost, trustedIpHeader: header, production };
+  return { secret, baseURL: url.origin, adminHost, trustedIpHeader: ip.header, production };
 }

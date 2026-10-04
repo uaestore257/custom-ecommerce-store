@@ -23,21 +23,21 @@ export function AgencySettingsView() {
       <AgencySettingsForm key={resetCount} agency={state.agency} />
 
       <Card className="mt-10 p-5 sm:p-6">
-        <h2 className="text-lg font-semibold">Demo data</h2>
+        <h2 className="text-lg font-semibold">Browser-only settings</h2>
         <Notice className="mt-3">
-          This is a frontend demo. There is no login, no database and no server: all stores, products,
-          orders and settings are saved in this browser&apos;s localStorage only.
+          The agency profile above is not in the database yet: it is saved in this browser&apos;s localStorage only.
+          Stores, products, categories, orders and team access are saved in the database and are not affected by a reset.
         </Notice>
         <button type="button" className={`${buttonClass("secondary")} mt-4`} onClick={() => setConfirmReset(true)}>
           <RotateCcw className="h-4 w-4" aria-hidden />
-          Reset demo data
+          Reset browser-only settings
         </button>
       </Card>
 
       <ConfirmDialog
         open={confirmReset}
-        title="Reset all demo data?"
-        confirmLabel="Reset everything"
+        title="Reset browser-only settings?"
+        confirmLabel="Reset"
         danger
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => {
@@ -47,7 +47,7 @@ export function AgencySettingsView() {
           setResetCount((n) => n + 1);
         }}
       >
-        All stores, products, orders, customers, settings and the demo cart go back to the original sample data.
+        The agency profile and this browser&apos;s storefront cart go back to their defaults. Nothing in the database changes.
       </ConfirmDialog>
     </>
   );

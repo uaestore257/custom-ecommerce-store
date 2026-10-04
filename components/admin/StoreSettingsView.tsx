@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { Archive, Tags } from "lucide-react";
 import { archiveStoreAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { buttonClass, Card, LinkButton, Notice, PageHeader } from "@/components/ui";
+import { buttonClass, Card, LinkButton, PageHeader } from "@/components/ui";
 import type { AdminStoreDetail, ReferenceOptions } from "@/lib/admin/types";
 import { StoreForm } from "./StoreForm";
 import { StoreOwnerCard, StoreSuspensionCard } from "./StorePlatformControls";
@@ -29,11 +29,6 @@ export function StoreSettingsView({ store, reference }: { store: AdminStoreDetai
       />
 
       <div className="space-y-6">
-        <Notice>
-          Settings are saved in the database. The public storefront still shows demo data until it is connected in a
-          later phase, so changes here don&apos;t appear on it yet.
-        </Notice>
-
         <StoreForm key={store.id} mode="edit" store={store} reference={reference} />
 
         <Card className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">

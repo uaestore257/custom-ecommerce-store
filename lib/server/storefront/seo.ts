@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { normalizeRequestHostname } from "@/lib/store-domains";
@@ -12,7 +13,12 @@ import {
 import { getRequestStorefront } from "./catalog";
 import { getDb } from "../db";
 
-export async function getPublicStorefrontSeoContext(): Promise<StorefrontSeoContext | null> {
+/**
+ * The SEO origin for this request's store: its verified primary custom
+ * domain, else its platform host. Null on platform/admin hosts and for
+ * non-public stores, so the platform root is never a store's canonical.
+ */
+export const getPublicStorefrontSeoContext = cache(async (): Promise<StorefrontSeoContext | null> => {
   const host = (await headers()).get("host") ?? "";
   const config = storeHostConfig();
   const match = matchStoreHost(host, config);
@@ -27,22 +33,22 @@ export async function getPublicStorefrontSeoContext(): Promise<StorefrontSeoCont
   if (domain && domain.status !== "VERIFIED") return null;
   if (!domain && match.kind !== "store") return null;
 
-  const { catalog } = await getRequestStorefront();
-  if (!catalog) return null;
-  if (domain && catalog.store.id !== domain.storeId) return null;
-  if (!domain && match.kind === "store" && catalog.store.slug !== match.slug) return null;
+  const storefront = await getRequestStorefront();
+  if (!storefront) return null;
+  if (domain && storefront.store.id !== domain.storeId) return null;
+  if (!domain && match.kind === "store" && storefront.store.slug !== match.slug) return null;
 
   const baseUrl = process.env.BETTER_AUTH_URL;
   if (!baseUrl) return null;
   const primaryDomain = await getDb().storeDomain.findFirst({
-    where: { storeId: catalog.store.id, status: "VERIFIED", isPrimary: true },
+    where: { storeId: storefront.store.id, status: "VERIFIED", isPrimary: true },
     select: { hostname: true },
   });
   const origin = primaryDomain
     ? storefrontOriginForDomain(primaryDomain.hostname, baseUrl, config)
-    : storefrontOriginForSlug(catalog.store, baseUrl, config);
-  return origin ? { store: catalog.store, origin, config } : null;
-}
+    : storefrontOriginForSlug(storefront.store, baseUrl, config);
+  return origin ? { store: storefront.store, origin, config } : null;
+});
 
 export async function storefrontPageMetadata(input: {
   title: string;
@@ -52,5 +58,7 @@ export async function storefrontPageMetadata(input: {
 }): Promise<Metadata> {
   const context = await getPublicStorefrontSeoContext();
   if (!context) return { robots: { index: false, follow: false } };
-  return buildStorefrontMetadata(context, input);
+  const metadata = buildStorefrontMetadata(context, input);
+  // Demo stores are real tenants but are never indexed.
+  return context.store.isDemo ? { ...metadata, robots: { index: false, follow: true } } : metadata;
 }

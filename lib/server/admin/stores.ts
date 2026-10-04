@@ -13,7 +13,6 @@ import {
   hasErrors,
   PAYMENT_METHOD_IDS,
   PLATFORM_STORE_STATUS_VALUES,
-  validateStorePaymentMethods,
   validateStoreBase,
   validateStoreOwner,
   validateStoreSettings,
