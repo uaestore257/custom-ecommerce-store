@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { Card, Notice, PageHeader } from "@/components/ui";
 import type { TemplateManifest } from "@/lib/templates/types";
 import { cartLabel, navigationLabel } from "@/lib/templates/vocabulary";
+import { TemplateDemoStoresCard } from "./TemplateDemoStoresCard";
 
 export interface TemplateLibraryEntry {
   manifest: TemplateManifest;
@@ -31,6 +32,11 @@ export function TemplateView({ templates }: { templates: TemplateLibraryEntry[] 
         Templates are part of the application code and versioned with it. Stores choose a template and its options on
         their store&apos;s <strong>Design</strong> page; mark a store as a demo there to link it here as a live demo.
       </Notice>
+
+      <TemplateDemoStoresCard
+        templateNames={Object.fromEntries(templates.map(({ manifest }) => [manifest.key, manifest.name]))}
+        withDemo={templates.filter(({ demos }) => demos.length > 0).length}
+      />
 
       <ul className="grid gap-6 lg:grid-cols-2">
         {templates.map(({ manifest, storeCount, demos }) => (

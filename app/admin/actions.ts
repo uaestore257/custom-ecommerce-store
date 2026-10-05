@@ -19,6 +19,7 @@
 // ---------------------------------------------------------------
 import type { ActionResult } from "@/lib/admin/types";
 import { getDb } from "@/lib/server/db";
+import { provisionTemplateDemoStores } from "@/lib/server/template-demo-stores";
 import { getAuth } from "@/lib/server/auth/auth";
 import { updateOwnAccount } from "@/lib/server/auth/account";
 import { updateAgencySettings } from "@/lib/server/agency";
@@ -215,6 +216,23 @@ export async function updateStoreDesignAction(storeId: unknown, input: unknown) 
   return asStoreWriter("updateStoreDesign", storeId, "store-settings", ({ actor }) =>
     updateStoreDesign(getDb(), storeId, actor.userId, input),
   );
+}
+
+/**
+ * Platform owner only: creates the missing template demo stores (one per
+ * template, lib/template-demo-stores.ts). Additive and safe to repeat: it
+ * never updates or deletes anything and never touches a client store.
+ */
+export async function provisionTemplateDemoStoresAction() {
+  return asPlatformOwner("provisionTemplateDemoStores", async (owner) => {
+    const results = await provisionTemplateDemoStores(getDb(), { actorUserId: owner.userId });
+    const created = results.filter((result) => result.outcome === "created").length;
+    return {
+      ok: true as const,
+      data: { results },
+      message: created === 0 ? "Nothing to create: every template already has a demo store or was skipped." : `${created} demo ${created === 1 ? "store" : "stores"} created.`,
+    };
+  });
 }
 
 /** Platform owner only: demo stores showcase templates and are never indexed. */
