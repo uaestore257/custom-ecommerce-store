@@ -46,6 +46,7 @@ export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) 
               role="tab"
               id={`work-tab-${category.slug}`}
               aria-selected={selected}
+              aria-label={`${category.title}, ${category.demos.length} ${category.demos.length === 1 ? "demo store" : "demo stores"}`}
               aria-controls={`work-panel-${category.slug}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => setActive(category.slug)}
@@ -55,10 +56,8 @@ export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) 
               }`}
             >
               {category.title}
-              <span className={`font-mono text-[11px] ${selected ? "text-background/70" : "text-muted-foreground"}`}>
-                <span className="sr-only">, </span>
+              <span aria-hidden className={`font-mono text-[11px] ${selected ? "text-background/70" : "text-muted-foreground"}`}>
                 {category.demos.length}
-                <span className="sr-only"> {category.demos.length === 1 ? "demo store" : "demo stores"}</span>
               </span>
             </button>
           );
@@ -70,7 +69,7 @@ export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) 
           key={category.slug}
           role="tabpanel"
           id={`work-panel-${category.slug}`}
-          aria-labelledby={`work-tab-${category.slug}`}
+          aria-label={category.title}
           hidden={category.slug !== current.slug}
           tabIndex={0}
           className={`mt-10 ${focusRing}`}
@@ -94,11 +93,10 @@ export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) 
                     href={demo.url}
                     target="_blank"
                     rel="noopener"
+                    aria-label={`View Live: ${demo.name} (opens in a new tab)`}
                     className={`group mt-auto inline-flex min-h-12 items-center justify-between gap-3 border-t border-border pt-4 text-sm font-medium text-accent transition-colors hover:text-foreground ${focusRing}`}
                   >
-                    <span>
-                      View Live<span className="sr-only">: {demo.name} (opens in a new tab)</span>
-                    </span>
+                    <span>View Live</span>
                     <ArrowUpRight className="h-4 w-4 shrink-0 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 rtl:-scale-x-100" aria-hidden />
                   </a>
                 </div>
