@@ -1,6 +1,8 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { hasErrors, PAYMENT_METHOD_IDS, validateProduct } from "@/lib/admin/validation";
+import { SERVICE_CATEGORIES } from "@/lib/platform/services";
 import { TEMPLATE_DEMO_STORES, type DemoStoreSpec } from "@/lib/template-demo-stores";
 import { TEMPLATE_KEYS, type TemplateKey } from "@/lib/templates/registry";
 import { isSlug } from "@/lib/validation";
@@ -12,9 +14,8 @@ import { recordAudit } from "./audit";
 //
 // Safe to run more than once and against any database the operator
 // chooses (scripts/provision-template-demos.ts asks for confirmation):
-//   * a store whose slug already exists is never changed — if it is a demo
-//     it counts as present; if it is a CLIENT store, its template is
-//     reported and skipped;
+//   * a store whose slug already exists is never changed — if it is a
+//     client store, the demo gets a separate available slug;
 //   * a template that already has a demo store (any slug) is skipped;
 //   * every spec is validated with the admin's own rules before anything
 //     is written, and each store is created in one transaction;
@@ -26,8 +27,8 @@ export type DemoProvisionOutcome =
   | "would-create"
   | "exists"
   | "template-has-demo"
-  | "slug-used-by-client-store"
-  | "invalid";
+  | "invalid"
+  | "failed";
 
 export interface DemoProvisionResult {
   template: TemplateKey;
@@ -52,6 +53,9 @@ async function specProblems(db: PrismaClient, spec: DemoStoreSpec): Promise<{ pr
   if (!country) problems.push(`unknown country ${spec.countryCode}`);
   if (languages.length !== new Set(spec.languages).size) problems.push("unknown language");
   if (!spec.languages.includes(spec.defaultLanguage)) problems.push("default language is not a store language");
+  if (!SERVICE_CATEGORIES.some((category) => category.slug === spec.workServiceSlug)) {
+    problems.push(`invalid Work service category ${spec.workServiceSlug}`);
+  }
   if (!isSlug(spec.slug)) problems.push(`invalid store slug ${spec.slug}`);
   const categoryNames = spec.categories.map((category) => category.name);
   if (new Set(categoryNames).size !== categoryNames.length) problems.push("duplicate category name");
@@ -102,12 +106,62 @@ function orderPrefix(slug: string) {
 }
 
 async function createDemoStore(db: PrismaClient, template: TemplateKey, spec: DemoStoreSpec, reference: Reference, actorUserId: string | null) {
+  const categoryIds = new Map<string, string>();
+  const categorySlugs = new Set<string>();
+  const categories = spec.categories.map((category, position) => {
+    const id = randomUUID();
+    const slug = uniqueSlug(category.slug ?? toSlug(category.name, `category-${position + 1}`), categorySlugs);
+    categorySlugs.add(slug);
+    categoryIds.set(category.name, id);
+    return {
+      id,
+      position,
+      translation: { locale: spec.defaultLanguage, name: category.name, slug },
+    };
+  });
+
+  const productSlugs = new Set<string>();
+  const products = spec.products.map((product, position) => {
+    const id = randomUUID();
+    const categoryId = categoryIds.get(product.category);
+    if (!categoryId) throw new Error(`${product.sku}: unknown category`);
+    const { values } = validateProduct(productInput(product, categoryId), reference.minorUnits);
+    const slug = uniqueSlug(product.slug ?? toSlug(product.name, `product-${position + 1}`), productSlugs);
+    productSlugs.add(slug);
+    return {
+      id,
+      categoryId: values.categoryId,
+      status: values.status,
+      featured: values.featured,
+      deliveryFeeMinor: values.deliveryFeeMinor,
+      freeDelivery: values.freeDelivery,
+      pickupOnly: values.pickupOnly,
+      translation: {
+        locale: spec.defaultLanguage,
+        name: values.name,
+        description: values.description,
+        slug,
+      },
+      variant: {
+        id: randomUUID(),
+        sku: values.sku,
+        isDefault: true,
+        position: 0,
+        currency: spec.currency,
+        priceMinor: values.priceMinor,
+        compareAtMinor: values.compareAtMinor,
+        stock: values.stock,
+      },
+    };
+  });
+
   await db.$transaction(async (tx) => {
     const store = await tx.store.create({
       data: {
         slug: spec.slug,
         name: spec.name,
         businessType: spec.businessType,
+        workServiceSlug: spec.workServiceSlug,
         status: "ACTIVE",
         isDemo: true,
         templateKey: template,
@@ -128,47 +182,31 @@ async function createDemoStore(db: PrismaClient, template: TemplateKey, spec: De
       data: { storeId: store.id, locale: spec.defaultLanguage, ...spec.content },
     });
 
-    const categoryIds = new Map<string, string>();
-    const categorySlugs = new Set<string>();
-    for (const [position, category] of spec.categories.entries()) {
-      const slug = uniqueSlug(category.slug ?? toSlug(category.name, `category-${position + 1}`), categorySlugs);
-      categorySlugs.add(slug);
-      const created = await tx.category.create({
-        data: { storeId: store.id, position, translations: { create: [{ locale: spec.defaultLanguage, name: category.name, slug }] } },
-        select: { id: true },
-      });
-      categoryIds.set(category.name, created.id);
-    }
+    await tx.category.createMany({
+      data: categories.map(({ id, position }) => ({ id, storeId: store.id, position })),
+    });
+    await tx.categoryTranslation.createMany({
+      data: categories.map(({ id: categoryId, translation }) => ({ categoryId, storeId: store.id, ...translation })),
+    });
 
-    const productSlugs = new Set<string>();
-    for (const [position, product] of spec.products.entries()) {
-      const { values } = validateProduct(productInput(product, categoryIds.get(product.category)!), reference.minorUnits);
-      const slug = uniqueSlug(product.slug ?? toSlug(product.name, `product-${position + 1}`), productSlugs);
-      productSlugs.add(slug);
-      await tx.product.create({
-        data: {
-          storeId: store.id,
-          categoryId: values.categoryId,
-          status: values.status,
-          featured: values.featured,
-          deliveryFeeMinor: values.deliveryFeeMinor,
-          freeDelivery: values.freeDelivery,
-          pickupOnly: values.pickupOnly,
-          translations: { create: [{ locale: spec.defaultLanguage, name: values.name, description: values.description, slug }] },
-          variants: {
-            create: [{
-              sku: values.sku,
-              isDefault: true,
-              position: 0,
-              currency: spec.currency,
-              priceMinor: values.priceMinor,
-              compareAtMinor: values.compareAtMinor,
-              stock: values.stock,
-            }],
-          },
-        },
-      });
-    }
+    await tx.product.createMany({
+      data: products.map(({ id, categoryId, status, featured, deliveryFeeMinor, freeDelivery, pickupOnly }) => ({
+        id,
+        storeId: store.id,
+        categoryId,
+        status,
+        featured,
+        deliveryFeeMinor,
+        freeDelivery,
+        pickupOnly,
+      })),
+    });
+    await tx.productTranslation.createMany({
+      data: products.map(({ id: productId, translation }) => ({ productId, storeId: store.id, ...translation })),
+    });
+    await tx.productVariant.createMany({
+      data: products.map(({ id: productId, variant }) => ({ ...variant, productId, storeId: store.id })),
+    });
 
     // Like a new store: cash on delivery only; online payment stays off.
     await tx.storePaymentMethod.createMany({
@@ -199,34 +237,55 @@ export async function provisionTemplateDemoStores(
   const results: DemoProvisionResult[] = [];
   for (const template of TEMPLATE_KEYS) {
     const spec = specs[template];
-    const bySlug = await db.store.findUnique({ where: { slug: spec.slug }, select: { isDemo: true, templateKey: true } });
-    if (bySlug) {
-      results.push(
-        bySlug.isDemo
-          ? { template, slug: spec.slug, outcome: "exists", detail: `demo store on ${bySlug.templateKey}` }
-          : { template, slug: spec.slug, outcome: "slug-used-by-client-store", detail: "left untouched" },
-      );
-      continue;
+    try {
+      const bySlug = await db.store.findUnique({ where: { slug: spec.slug }, select: { isDemo: true, templateKey: true } });
+      if (bySlug?.isDemo && bySlug.templateKey === template) {
+        results.push({ template, slug: spec.slug, outcome: "exists", detail: `demo store on ${bySlug.templateKey}` });
+        continue;
+      }
+      const otherDemo = await db.store.findFirst({
+        where: { isDemo: true, archivedAt: null, templateKey: template },
+        select: { slug: true },
+      });
+      if (otherDemo) {
+        results.push({ template, slug: spec.slug, outcome: "template-has-demo", detail: otherDemo.slug });
+        continue;
+      }
+      let createSpec = spec;
+      if (bySlug) {
+        const baseSlug = `${spec.slug}-demo`;
+        let candidate = baseSlug;
+        let suffix = 2;
+        while (await db.store.findUnique({ where: { slug: candidate }, select: { isDemo: true } })) {
+          candidate = `${baseSlug}-${suffix++}`;
+        }
+        createSpec = { ...spec, slug: candidate };
+      }
+      const { problems, reference } = await specProblems(db, createSpec);
+      if (problems.length > 0 || !reference) {
+        results.push({ template, slug: createSpec.slug, outcome: "invalid", detail: problems.join("; ") });
+        continue;
+      }
+      if (options.dryRun) {
+        results.push({ template, slug: createSpec.slug, outcome: "would-create", detail: `${spec.products.length} products` });
+        continue;
+      }
+      await createDemoStore(db, template, createSpec, reference, options.actorUserId ?? null);
+      results.push({
+        template,
+        slug: createSpec.slug,
+        outcome: "created",
+        detail: bySlug ? `separate demo created; preferred address ${spec.slug} remains untouched` : `${spec.products.length} products`,
+      });
+    } catch (error) {
+      console.error(`[template demo provisioning] ${template} (${spec.slug}) failed`, error);
+      results.push({
+        template,
+        slug: spec.slug,
+        outcome: "failed",
+        detail: "Could not create this demo store; see server logs for details.",
+      });
     }
-    const otherDemo = await db.store.findFirst({
-      where: { isDemo: true, archivedAt: null, templateKey: template },
-      select: { slug: true },
-    });
-    if (otherDemo) {
-      results.push({ template, slug: spec.slug, outcome: "template-has-demo", detail: otherDemo.slug });
-      continue;
-    }
-    const { problems, reference } = await specProblems(db, spec);
-    if (problems.length > 0 || !reference) {
-      results.push({ template, slug: spec.slug, outcome: "invalid", detail: problems.join("; ") });
-      continue;
-    }
-    if (options.dryRun) {
-      results.push({ template, slug: spec.slug, outcome: "would-create", detail: `${spec.products.length} products` });
-      continue;
-    }
-    await createDemoStore(db, template, spec, reference, options.actorUserId ?? null);
-    results.push({ template, slug: spec.slug, outcome: "created", detail: `${spec.products.length} products` });
   }
   return results;
 }

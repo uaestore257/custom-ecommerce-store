@@ -31,7 +31,7 @@ async function main() {
     for (const result of results) {
       console.log(`${result.template.padEnd(8)} ${result.slug.padEnd(16)} ${result.outcome}${result.detail ? ` (${result.detail})` : ""}`);
     }
-    if (results.some((result) => result.outcome === "invalid")) process.exitCode = 1;
+    if (results.some((result) => result.outcome === "invalid" || result.outcome === "failed")) process.exitCode = 1;
   } finally {
     await db.$disconnect();
   }

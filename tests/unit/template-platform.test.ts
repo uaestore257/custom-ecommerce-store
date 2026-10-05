@@ -133,13 +133,16 @@ test("the Work page reads demos through the server allow-list, never a store id 
 });
 
 test("platform Work-category controls use canonical Services categories and are platform-owner only", () => {
-  const admin = read("components/admin/StoreDesignView.tsx");
+  const admin = read("components/admin/StoreDemoControls.tsx");
   const action = read("app/admin/actions.ts");
   const permissions = read("lib/server/admin/permissions.ts");
   assert.match(admin, /SERVICE_CATEGORIES\.map/);
   assert.match(admin, /setStoreWorkServiceCategoryAction/);
   assert.match(action, /asPlatformOwner\("setStoreWorkServiceCategory"/);
   assert.match(permissions, /setStoreWorkServiceCategoryAction: "platform-owner"/);
+  const overview = read("components/admin/StoreOverviewView.tsx");
+  assert.match(overview, /<StoreDemoControls/);
+  assert.match(overview, /layout="inline"/, "the platform control is adjacent to Preview storefront on Manage");
 });
 
 // ---------- New store: template choice ----------

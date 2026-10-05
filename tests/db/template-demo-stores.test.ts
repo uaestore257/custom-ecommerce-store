@@ -49,8 +49,11 @@ test("a dry run writes nothing; a real run creates each missing demo store once,
     assert.equal(store.templateKey, key);
     assert.equal(store.isDemo, true);
     assert.equal(store.status, "ACTIVE");
+    assert.equal(store.workServiceSlug, spec.workServiceSlug, `${key}: explicit Work category is set during provisioning`);
     assert.equal(store._count.products, spec.products.length);
     assert.equal(store._count.memberships, 0, "a demo store has no owner account");
+    assert.equal(await db.productTranslation.count({ where: { storeId: store.id } }), spec.products.length, `${key}: product translations reference the store`);
+    assert.equal(await db.productVariant.count({ where: { storeId: store.id } }), spec.products.length, `${key}: products have their default variants`);
     const context = (await getStorefrontContext(db, store.id))!;
     assert.equal(context.store.templateKey, key);
     assert.deepEqual(context.store.paymentMethods, ["cash_on_delivery"], "no online payment on a demo store");
@@ -69,7 +72,7 @@ test("a dry run writes nothing; a real run creates each missing demo store once,
   assert.equal(await db.store.count({ where: { slug: { in: Object.values(specs).map((spec) => spec.slug) } } }), 4, "re-running creates nothing");
 });
 
-test("a client store that already uses a demo slug is reported and never touched", async () => {
+test("a client store that already uses the preferred demo slug is never touched and gets a separate demo", async () => {
   const tag = uid();
   const specs = freshSpecs(tag);
   await db.store.updateMany({ where: { isDemo: true, templateKey: "kinetic", archivedAt: null }, data: { archivedAt: new Date() } });
@@ -87,9 +90,14 @@ test("a client store that already uses a demo slug is reported and never touched
   });
   const before = await db.store.findUniqueOrThrow({ where: { id: client.id } });
   const results = await provisionTemplateDemoStores(db, { specs });
-  assert.equal(results.find((result) => result.template === "kinetic")!.outcome, "slug-used-by-client-store");
+  const kinetic = results.find((result) => result.template === "kinetic")!;
+  assert.equal(kinetic.outcome, "created");
+  assert.equal(kinetic.slug, `${specs.kinetic.slug}-demo`);
   assert.deepEqual(await db.store.findUniqueOrThrow({ where: { id: client.id } }), before, "the client store is unchanged");
   assert.equal(await db.product.count({ where: { storeId: client.id } }), 0);
+  const demo = await db.store.findUniqueOrThrow({ where: { slug: kinetic.slug } });
+  assert.equal(demo.isDemo, true);
+  assert.equal(demo.templateKey, "kinetic");
 });
 
 test("an invalid spec writes nothing", async () => {

@@ -228,10 +228,16 @@ export async function provisionTemplateDemoStoresAction() {
   return asPlatformOwner("provisionTemplateDemoStores", async (owner) => {
     const results = await provisionTemplateDemoStores(getDb(), { actorUserId: owner.userId });
     const created = results.filter((result) => result.outcome === "created").length;
+    const failures = results.filter((result) => result.outcome === "invalid" || result.outcome === "failed").length;
     return {
       ok: true as const,
       data: { results },
-      message: created === 0 ? "Nothing to create: every template already has a demo store or was skipped." : `${created} demo ${created === 1 ? "store" : "stores"} created.`,
+      message: [
+        created > 0 ? `${created} demo ${created === 1 ? "store" : "stores"} created.` : "No new demo stores were created.",
+        failures > 0
+          ? `${failures} template${failures === 1 ? "" : "s"} need${failures === 1 ? "s" : ""} attention; see the results below.`
+          : "",
+      ].filter(Boolean).join(" "),
     };
   });
 }

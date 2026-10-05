@@ -55,6 +55,15 @@ export async function listTemplateDemoStores(client: Client): Promise<TemplateDe
   return result;
 }
 
+/** Non-archived demo stores for the private platform-owner management UI. */
+export async function listAdminDemoStores(client: Client) {
+  return client.store.findMany({
+    where: { isDemo: true, archivedAt: null },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, name: true, templateKey: true },
+  });
+}
+
 /** How many non-archived stores use each registered template (platform template library). */
 export async function countStoresByTemplate(client: Client): Promise<Record<TemplateKey, number>> {
   const rows = await client.store.groupBy({ by: ["templateKey"], where: { archivedAt: null }, _count: { _all: true } });

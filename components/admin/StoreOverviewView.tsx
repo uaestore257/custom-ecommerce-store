@@ -13,6 +13,7 @@ import type { AdminStoreDetail, DbStoreStatus } from "@/lib/admin/types";
 import type { PaymentMethodId, StoreType } from "@/lib/types";
 import type { StoreMembershipRole } from "@/lib/admin/store-access";
 import { PreviewStorefrontButton } from "./PreviewStorefrontButton";
+import { StoreDemoControls } from "./StoreDemoControls";
 
 export function StoreOverviewView({
   store,
@@ -61,6 +62,14 @@ export function StoreOverviewView({
         actions={
           <>
             {(platform || role === "OWNER") && <PreviewStorefrontButton store={store} previewUrl={previewUrl} />}
+            {platform && (
+              <StoreDemoControls
+                storeId={store.id}
+                isDemo={store.isDemo}
+                workServiceSlug={store.workServiceSlug}
+                layout="inline"
+              />
+            )}
             {platform ? (
               <>
                 <LinkButton href={`${base}/settings`} variant="secondary">
@@ -95,6 +104,12 @@ export function StoreOverviewView({
         </Notice>
       )}
       {error && <Notice tone="warning" className="mb-6">{error}</Notice>}
+      {platform && (
+        <p className="mb-6 text-sm text-slate-600">
+          Portfolio includes only active, unarchived demo stores with a registered template, active products, a storefront URL,
+          and an explicitly assigned Work service category.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Metric label="Active products" value={`${activeProducts} / ${store.productCount}`} />

@@ -36,6 +36,8 @@ export interface AdminStoreSummary {
 
 /** Everything the store settings form edits. */
 export interface AdminStoreDetail extends AdminStoreSummary {
+  isDemo: boolean;
+  workServiceSlug: string | null;
   timezone: string;
   defaultLanguage: string;
   languages: string[]; // enabled languages

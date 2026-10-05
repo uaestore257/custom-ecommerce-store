@@ -334,7 +334,36 @@ test("explicit Work assignments support Ecommerce, Websites and AI and follow de
   assert.equal(categories[0].demos[0].templateKey, "noor");
   assert.equal(categories[0].demos[0].templateName, "Noor");
 
+  const beforeRemoval = await db.store.findUniqueOrThrow({
+    where: { id: ecommerceStore },
+    select: { name: true, businessType: true, status: true, archivedAt: true, workServiceSlug: true, templateKey: true },
+  });
+  const productsBeforeRemoval = await db.product.findMany({
+    where: { storeId: ecommerceStore },
+    select: { id: true },
+  });
   assert.ok((await setStoreDemo(actor, db, ecommerceStore, false)).ok);
+  assert.deepEqual(
+    await db.store.findUniqueOrThrow({
+      where: { id: ecommerceStore },
+      select: { name: true, businessType: true, status: true, archivedAt: true, workServiceSlug: true, templateKey: true, isDemo: true },
+    }),
+    { ...beforeRemoval, isDemo: false },
+    "removing a demo changes only Store.isDemo",
+  );
+  assert.deepEqual(
+    await db.product.findMany({ where: { storeId: ecommerceStore }, select: { id: true } }),
+    productsBeforeRemoval,
+    "removing a demo preserves its products",
+  );
+  const demoFlagAudits = await db.auditEvent.findMany({
+    where: { action: "store.demo_flag", storeId: ecommerceStore, actorUserId: actor.userId },
+    select: { metadata: true },
+  });
+  assert.ok(
+    demoFlagAudits.some(({ metadata }) => JSON.stringify(metadata) === JSON.stringify({ isDemo: false })),
+    "removal is audited with the platform owner and new demo state",
+  );
   assert.ok((await setStoreDemo(actor, db, websiteStore, false)).ok);
   assert.ok((await setStoreDemo(actor, db, aiStore, false)).ok);
   assert.ok((await setStoreDemo(actor, db, unassigned, false)).ok);

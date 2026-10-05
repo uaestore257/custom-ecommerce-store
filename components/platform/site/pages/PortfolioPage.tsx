@@ -33,21 +33,25 @@ export async function PortfolioPage() {
         </div>
       </section>
 
-      {categories.length > 0 && (
-        <section aria-labelledby="work-demos-title" id="live-demos" className="scroll-mt-28 border-t border-border">
-          <div className={`${CONTAINER} py-24 lg:py-32`}>
-            <SectionHeading
-              id="work-demos-title"
-              eyebrow="Live demos"
-              title="Explore by category."
-              lede="Choose a category to see every live demo we run for it, pick one for the details, then open it live: browse, search, add to cart and walk through checkout."
-            />
+      <section aria-labelledby="work-demos-title" id="live-demos" className="scroll-mt-28 border-t border-border">
+        <div className={`${CONTAINER} py-24 lg:py-32`}>
+          <SectionHeading
+            id="work-demos-title"
+            eyebrow="Live demos"
+            title="Explore by category."
+            lede="Choose a category to see every live demo we run for it, pick one for the details, then open it live: browse, search, add to cart and walk through checkout."
+          />
+          {categories.length > 0 ? (
             <div data-reveal className="mt-14">
               <WorkDemoBrowser categories={categories} />
             </div>
-          </div>
-        </section>
-      )}
+          ) : (
+            <p className="mt-14 max-w-2xl text-pretty text-lg leading-relaxed text-foreground/70" role="status">
+              We&apos;re preparing live stores to explore. Please check back soon.
+            </p>
+          )}
+        </div>
+      </section>
 
       <section aria-label="Under the hood" className="border-t border-border">
         <div className={`${CONTAINER} flex flex-wrap items-center justify-between gap-6 py-14`}>

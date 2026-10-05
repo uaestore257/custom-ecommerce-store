@@ -15,8 +15,11 @@
 // Provisioning: lib/server/template-demo-stores.ts.
 // ---------------------------------------------------------------
 import { createSeedState } from "./demo-data";
+import { SERVICE_CATEGORIES } from "./platform/services";
 import type { TemplateKey } from "./templates/registry";
 import type { StoreType } from "./types";
+
+export type DemoWorkServiceSlug = (typeof SERVICE_CATEGORIES)[number]["slug"];
 
 export interface DemoStoreProduct {
   name: string;
@@ -39,6 +42,8 @@ export interface DemoStoreSpec {
   slug: string;
   name: string;
   businessType: StoreType;
+  /** Explicit canonical Services category used to list this demo on Work. */
+  workServiceSlug: DemoWorkServiceSlug;
   countryCode: string;
   currency: string;
   timezone: string;
@@ -70,6 +75,7 @@ function fromSeed(slug: string): DemoStoreSpec {
     slug: store.slug,
     name: store.name,
     businessType: store.type,
+    workServiceSlug: "ecommerce",
     countryCode: "AE",
     currency: s.currency,
     timezone: "Asia/Dubai",
@@ -105,6 +111,7 @@ export const TEMPLATE_DEMO_STORES: Readonly<Record<TemplateKey, DemoStoreSpec>> 
     slug: "pulse-audio",
     name: "Pulse Audio",
     businessType: "electronics",
+    workServiceSlug: "ecommerce",
     ...UAE,
     defaultLanguage: "en",
     languages: ["en"],
@@ -134,6 +141,7 @@ export const TEMPLATE_DEMO_STORES: Readonly<Record<TemplateKey, DemoStoreSpec>> 
     slug: "maison-lumiere",
     name: "Maison Lumière",
     businessType: "fashion",
+    workServiceSlug: "ecommerce",
     ...UAE,
     defaultLanguage: "en",
     languages: ["en"],
@@ -164,6 +172,7 @@ export const TEMPLATE_DEMO_STORES: Readonly<Record<TemplateKey, DemoStoreSpec>> 
     slug: "daily-basket",
     name: "Daily Basket",
     businessType: "grocery",
+    workServiceSlug: "ecommerce",
     ...UAE,
     defaultLanguage: "en",
     languages: ["en"],
@@ -201,6 +210,7 @@ export const TEMPLATE_DEMO_STORES: Readonly<Record<TemplateKey, DemoStoreSpec>> 
     slug: "dar-al-oud",
     name: "دار العود",
     businessType: "beauty",
+    workServiceSlug: "ecommerce",
     ...UAE,
     defaultLanguage: "ar",
     languages: ["ar", "en"],
