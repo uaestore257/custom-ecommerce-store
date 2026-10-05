@@ -34,6 +34,7 @@ export type AuditAction =
   | "store.domain_disable"
   | "store.design_update"
   | "store.demo_flag"
+  | "store.demo_provision"
   | "order.status_change"
   | "order.cancel"
   | "order.payment_change"
