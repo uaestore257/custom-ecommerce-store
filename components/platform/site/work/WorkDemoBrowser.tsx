@@ -13,9 +13,9 @@ const EYEBROW = "font-mono text-[11px] uppercase tracking-[0.22em] text-muted-fo
 /**
  * Work's live demos: one tab per Services category that has a demo (WAI-ARIA
  * tabs: arrow keys, mirrored in RTL, Home/End). A category lists ALL its
- * demos; choosing one opens its short details, whose "Ask for a
- * walkthrough" opens the live demo store. Categories arrive already
- * filtered on the server: a category is only here when it has a demo.
+ * demos; choosing one opens its short details and the "View Live" link.
+ * Categories arrive already filtered on the server: a category is only here
+ * when it has a demo.
  */
 export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) {
   const [active, setActive] = useState(categories[0]?.slug);
@@ -207,10 +207,10 @@ function DemoDetails({ demo, index, headingRef }: { demo: WorkDemo; index: numbe
           href={demo.url}
           target="_blank"
           rel="noopener"
-          aria-label={`Ask for a walkthrough: open the live ${demo.name} demo store (opens in a new tab)`}
+          aria-label={`View Live: open the live ${demo.name} demo store (opens in a new tab)`}
           className={`group mt-8 inline-flex min-h-12 items-center justify-center gap-3 rounded-md bg-accent px-6 text-sm font-medium text-accent-foreground transition-[filter,transform] duration-300 hover:brightness-110 active:scale-[0.98] ${focusRing}`}
         >
-          Ask for a walkthrough
+          View Live
           <ArrowRight className="h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 rtl:rotate-180 rtl:group-hover:-translate-x-1" aria-hidden />
         </a>
       </div>

@@ -11,6 +11,7 @@ import type { PrismaClient } from "../../lib/generated/prisma/client";
 import { workCategories } from "../../lib/platform/work";
 import { listAdminCategories } from "../../lib/server/admin/categories";
 import { setStoreDemo, updateStoreDesign } from "../../lib/server/admin/design";
+import { setStoreWorkServiceCategory } from "../../lib/server/admin/work-category";
 import { createAdminProduct } from "../../lib/server/admin/products";
 import { createAdminStore } from "../../lib/server/admin/stores";
 import { placeOrder } from "../../lib/server/orders";
@@ -212,22 +213,23 @@ const url = (slug: string) => `https://${slug}.demo.example/`;
 test("Work lists only ACTIVE demo stores with a registered template and live products", async () => {
   const actor = await testActor(db);
   const tag = uid();
-  const demo = async (overrides: Record<string, unknown>, withProduct = true) => {
+  const demo = async (overrides: Record<string, unknown>, workServiceSlug?: string, withProduct = true) => {
     const store = await makeStore({ name: `Work ${tag} ${uid()}`, ...overrides });
     if (withProduct) await makeProduct(store);
     assert.ok((await setStoreDemo(actor, db, store, true)).ok);
+    if (workServiceSlug) assert.ok((await setStoreWorkServiceCategory(actor, db, store, workServiceSlug)).ok);
     return store;
   };
-  const furniture = await demo({ businessType: "furniture", templateKey: "atelier" });
-  const fashion = await demo({ businessType: "fashion", templateKey: "maison" });
-  const other = await demo({ businessType: "other" }); // any industry: still an ecommerce demo
+  const furniture = await demo({ businessType: "furniture", templateKey: "atelier" }, "ecommerce");
+  const fashion = await demo({ businessType: "fashion", templateKey: "maison" }, "ecommerce");
+  const other = await demo({ businessType: "other" });
   const client = await makeStore({ name: `Work ${tag} client`, businessType: "beauty" });
   await makeProduct(client); // a client store: never a demo
-  const draft = await demo({ businessType: "grocery", status: "DRAFT" });
-  const empty = await demo({ businessType: "electronics" }, false); // no live products
-  const archived = await demo({ businessType: "beauty" });
+  const draft = await demo({ businessType: "grocery", status: "DRAFT" }, "ecommerce");
+  const empty = await demo({ businessType: "electronics" }, "ecommerce", false); // no live products
+  const archived = await demo({ businessType: "beauty" }, "ecommerce");
   await db.store.update({ where: { id: archived }, data: { archivedAt: new Date() } });
-  const unknownTemplate = await demo({ businessType: "beauty" });
+  const unknownTemplate = await demo({ businessType: "beauty" }, "ecommerce");
   await db.store.update({ where: { id: unknownTemplate }, data: { templateKey: "retired" } });
 
   const listed = (await loadWorkDemoStores(db, url)).filter((store) => store.name.startsWith(`Work ${tag}`));
@@ -235,14 +237,14 @@ test("Work lists only ACTIVE demo stores with a registered template and live pro
   for (const id of [furniture, fashion, other, client, draft, empty, archived, unknownTemplate]) {
     names.set(id, (await db.store.findUniqueOrThrow({ where: { id } })).name);
   }
-  assert.deepEqual(listed.map((store) => store.name).sort(), [names.get(furniture), names.get(fashion), names.get(other)].sort());
-  for (const excluded of [client, draft, empty, archived, unknownTemplate]) {
+  assert.deepEqual(listed.map((store) => store.name).sort(), [names.get(furniture), names.get(fashion)].sort());
+  for (const excluded of [other, client, draft, empty, archived, unknownTemplate]) {
     assert.ok(!listed.some((store) => store.name === names.get(excluded)), "excluded store never listed");
   }
   for (const store of listed) {
     assert.deepEqual(
       Object.keys(store).sort(),
-      ["headline", "industry", "name", "screenshots", "signatures", "tagline", "templateKey", "templateName", "url"],
+      ["headline", "industry", "name", "screenshots", "serviceSlug", "signatures", "tagline", "templateKey", "templateName", "url"],
       "presentation facts only",
     );
   }
@@ -250,33 +252,91 @@ test("Work lists only ACTIVE demo stores with a registered template and live pro
   assert.equal(maison.templateName, "Maison");
   assert.equal(maison.industry, "Fashion");
   assert.equal(maison.screenshots, null, "no screenshots exist for this store: none are borrowed");
-  assert.equal(listed.find((store) => store.name === names.get(other))!.industry, null);
+  assert.ok(!listed.some((store) => store.name === names.get(other)), "business type does not assign a Work category");
 
   // A demo whose host has no storefront URL has no live link — and so isn't listed.
   assert.equal((await loadWorkDemoStores(db, () => null)).length, 0);
 });
 
-test("all demo stores sit under the Services Ecommerce category, which follows a demo's live state and template", async () => {
+test("explicit Work assignments support Ecommerce, Websites and AI and follow demo eligibility", async () => {
   const actor = await testActor(db);
   const tag = uid();
-  const store = await makeStore({ name: `Category ${tag}`, businessType: "electronics", templateKey: "kinetic" });
-  await makeProduct(store);
-  const mine = async () =>
-    workCategories({ ecommerce: (await loadWorkDemoStores(db, url)).filter((demo) => demo.name === `Category ${tag}`) });
+  const ecommerceStore = await makeStore({ name: `Category ${tag} Ecommerce`, businessType: "electronics", templateKey: "kinetic" });
+  const websiteStore = await makeStore({ name: `Category ${tag} Website`, businessType: "other" });
+  const aiStore = await makeStore({ name: `Category ${tag} AI`, businessType: "other" });
+  for (const [store, serviceSlug] of [
+    [ecommerceStore, "ecommerce"],
+    [websiteStore, "websites"],
+    [aiStore, "ai"],
+  ] as const) {
+    assert.ok((await setStoreWorkServiceCategory(actor, db, store, serviceSlug)).ok);
+  }
+  for (const store of [ecommerceStore, websiteStore, aiStore]) await makeProduct(store);
+  const mine = async () => {
+    const demos = (await loadWorkDemoStores(db, url)).filter((demo) => demo.name.startsWith(`Category ${tag}`));
+    const grouped: Record<string, typeof demos> = {};
+    for (const demo of demos) (grouped[demo.serviceSlug] ??= []).push(demo);
+    return workCategories(grouped);
+  };
 
   assert.deepEqual(await mine(), [], "not a demo yet: no category");
-  assert.ok((await setStoreDemo(actor, db, store, true)).ok);
+  assert.ok((await setStoreDemo(actor, db, ecommerceStore, true)).ok);
+  assert.ok((await setStoreDemo(actor, db, websiteStore, true)).ok);
+  assert.ok((await setStoreDemo(actor, db, aiStore, true)).ok);
   let categories = await mine();
-  assert.deepEqual(categories.map((category) => [category.slug, category.title]), [["ecommerce", "Ecommerce"]]);
+  assert.deepEqual(categories.map((category) => [category.slug, category.title]), [
+    ["ecommerce", "Ecommerce"],
+    ["websites", "Websites"],
+    ["ai", "AI solutions"],
+  ]);
   assert.equal(categories[0].demos[0].templateKey, "kinetic");
-  const slug = (await db.store.findUniqueOrThrow({ where: { id: store } })).slug;
+  const slug = (await db.store.findUniqueOrThrow({ where: { id: ecommerceStore } })).slug;
   assert.equal(categories[0].demos[0].url, url(slug), "the live link is the store's own storefront");
+  assert.equal(categories[1].demos[0].serviceSlug, "websites");
+  assert.equal(categories[2].demos[0].serviceSlug, "ai");
 
-  assert.ok((await updateStoreDesign(db, store, actor.userId, { templateKey: "noor", theme: {} })).ok);
+  const unassigned = await makeStore({ name: `Category ${tag} Unassigned`, businessType: "furniture" });
+  await makeProduct(unassigned);
+  assert.ok((await setStoreDemo(actor, db, unassigned, true)).ok);
+  assert.equal(
+    (await db.store.findUniqueOrThrow({ where: { id: unassigned }, select: { workServiceSlug: true } })).workServiceSlug,
+    null,
+    "an unassigned demo remains unassigned regardless of business type",
+  );
+  assert.deepEqual((await mine()).map((category) => category.slug), ["ecommerce", "websites", "ai"], "business type alone does not expose the store");
+
+  const beforeAssignment = await db.store.findUniqueOrThrow({
+    where: { id: unassigned },
+    select: { name: true, businessType: true, templateKey: true, isDemo: true },
+  });
+  const invalid = await setStoreWorkServiceCategory(actor, db, unassigned, "not-a-service");
+  assert.equal(invalid.ok, false, "invalid category assignment is rejected");
+  const assigned = await setStoreWorkServiceCategory(actor, db, unassigned, "support");
+  assert.ok(assigned.ok);
+  assert.deepEqual(
+    await db.store.findUniqueOrThrow({
+      where: { id: unassigned },
+      select: { name: true, businessType: true, templateKey: true, isDemo: true },
+    }),
+    beforeAssignment,
+    "category assignment preserves ordinary Store fields",
+  );
+  assert.ok(
+    await db.auditEvent.findFirst({
+      where: { action: "store.work_service_category", storeId: unassigned, actorUserId: actor.userId },
+    }),
+    "category assignment is audited",
+  );
+  assert.deepEqual((await mine()).map((category) => category.slug), ["ecommerce", "websites", "ai", "support"]);
+
+  assert.ok((await updateStoreDesign(db, ecommerceStore, actor.userId, { templateKey: "noor", theme: {} })).ok);
   categories = await mine();
   assert.equal(categories[0].demos[0].templateKey, "noor");
   assert.equal(categories[0].demos[0].templateName, "Noor");
 
-  assert.ok((await setStoreDemo(actor, db, store, false)).ok);
-  assert.deepEqual(await mine(), [], "no longer a demo: the category disappears");
+  assert.ok((await setStoreDemo(actor, db, ecommerceStore, false)).ok);
+  assert.ok((await setStoreDemo(actor, db, websiteStore, false)).ok);
+  assert.ok((await setStoreDemo(actor, db, aiStore, false)).ok);
+  assert.ok((await setStoreDemo(actor, db, unassigned, false)).ok);
+  assert.deepEqual(await mine(), [], "no longer a demo: the categories disappear");
 });

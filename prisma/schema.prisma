@@ -365,6 +365,8 @@ model Store {
   /// A demonstration store (template showcase). Real tenant in every other
   /// respect; demo stores are never indexed by search engines.
   isDemo      Boolean @default(false)
+  /// Explicit public Work category slug; validated against SERVICE_CATEGORIES in the application.
+  workServiceSlug String? @db.VarChar(40)
 
   // Branding and contact
   logoUrl      String?

@@ -69,6 +69,7 @@ import {
   verifyStoreDomain,
 } from "@/lib/server/admin/domains";
 import { setStoreDemo, updateStoreDesign } from "@/lib/server/admin/design";
+import { setStoreWorkServiceCategory } from "@/lib/server/admin/work-category";
 
 const GENERIC_ERROR = "Something went wrong while saving. Please try again.";
 const SIGNED_OUT: ActionResult<never> = { ok: false, error: "Your session has ended. Please sign in again." };
@@ -239,6 +240,14 @@ export async function provisionTemplateDemoStoresAction() {
 export async function setStoreDemoAction(storeId: unknown, isDemo: unknown) {
   if (!isId(storeId)) return badRequest;
   return asPlatformOwner("setStoreDemo", (owner) => setStoreDemo(owner, getDb(), storeId, isDemo));
+}
+
+/** Platform owner only: assign this store to a canonical Services category on Work. */
+export async function setStoreWorkServiceCategoryAction(storeId: unknown, workServiceSlug: unknown) {
+  if (!isId(storeId)) return badRequest;
+  return asPlatformOwner("setStoreWorkServiceCategory", (owner) =>
+    setStoreWorkServiceCategory(owner, getDb(), storeId, workServiceSlug),
+  );
 }
 
 // ---------- Products (one store: platform owner or that store's owner) ----------

@@ -11,20 +11,18 @@ import { SERVICE_CATEGORIES, type ServiceCategory } from "./services";
 // at least one real, live demo. A category without a demo is simply not
 // rendered in Work (Services itself is never filtered).
 //
-// Today the only live demos are demo storefronts (Store.isDemo): they are
-// ecommerce stores, so they belong to the "ecommerce" Services category.
-// Demos of other kinds can be added to their own category later through
-// the same DemosByService map; until then those categories stay hidden.
+// A demo appears only when a platform owner explicitly assigns it a
+// canonical Services category. Store business types describe industries,
+// not the Services taxonomy, and are never used to infer that assignment.
 // ---------------------------------------------------------------
-
-/** The Services category every demo storefront belongs to. */
-export const STORE_DEMO_SERVICE_SLUG = "ecommerce";
 
 /** A live demo as Work shows it. Only presentation facts — never owners, orders or settings. */
 export interface WorkDemo {
   name: string;
   /** The store's industry as the admin set it ("Furniture"), or null. */
   industry: string | null;
+  /** Canonical Services category slug for the public Work tab. */
+  serviceSlug: string;
   templateKey: TemplateKey;
   templateName: string;
   /** The store's own tagline, in its default language. */
@@ -45,6 +43,14 @@ export interface WorkDemo {
 
 /** Live demos per Services category slug. */
 export type DemosByService = Readonly<Partial<Record<string, readonly WorkDemo[]>>>;
+
+/**
+ * Accept an explicit Work category only when it is in the canonical Services
+ * taxonomy. Industry/business type is intentionally not an input.
+ */
+export function resolveWorkServiceSlug(value: unknown): string | null {
+  return typeof value === "string" && SERVICE_CATEGORIES.some((category) => category.slug === value) ? value : null;
+}
 
 export interface WorkCategory {
   /** The Services category slug. */

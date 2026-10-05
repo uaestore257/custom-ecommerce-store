@@ -83,6 +83,8 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   restoreStoreAction: () => actions.restoreStoreAction(t.storeId),
   updateStoreDesignAction: () => actions.updateStoreDesignAction(t.storeId, { templateKey: "atelier", theme: { palette: "charcoal" } }),
   setStoreDemoAction: () => actions.setStoreDemoAction(t.storeId, true),
+  setStoreWorkServiceCategoryAction: () => actions.setStoreWorkServiceCategoryAction(t.storeId, "websites"),
+  provisionTemplateDemoStoresAction: () => actions.provisionTemplateDemoStoresAction(),
   updateAgencySettingsAction: () => actions.updateAgencySettingsAction({ platformName: "Hijacked agency", contactEmail: "attacker@example.com" }),
   createProductAction: () => actions.createProductAction(t.storeId, { name: "Injected", sku: `INJ-${uid()}` }),
   updateProductAction: () => actions.updateProductAction(t.storeId, t.productId, { name: "Hijacked" }),
@@ -123,7 +125,7 @@ const seeded = () => calls({
 /** Everything a refused action could have changed. */
 async function snapshot() {
   const [stores, products, categories, memberships, users, orders, variants, inquiries, audit, agency] = await Promise.all([
-    db.store.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true, status: true, archivedAt: true, updatedAt: true, templateKey: true, themeConfig: true, isDemo: true } }),
+    db.store.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true, status: true, archivedAt: true, updatedAt: true, templateKey: true, themeConfig: true, isDemo: true, workServiceSlug: true } }),
     db.product.findMany({ orderBy: { id: "asc" }, select: { id: true, status: true, updatedAt: true } }),
     db.category.findMany({ orderBy: { id: "asc" }, select: { id: true, position: true, updatedAt: true } }),
     db.storeMembership.findMany({ orderBy: { id: "asc" }, select: { id: true, userId: true, role: true } }),

@@ -3,10 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Check, ExternalLink } from "lucide-react";
-import { setStoreDemoAction, updateStoreDesignAction } from "@/app/admin/actions";
+import { setStoreDemoAction, setStoreWorkServiceCategoryAction, updateStoreDesignAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { buttonClass, Card, Notice, PageHeader } from "@/components/ui";
 import type { AdminStoreDesign } from "@/lib/server/admin/design";
+import { SERVICE_CATEGORIES } from "@/lib/platform/services";
 import type { TemplateKey } from "@/lib/templates/registry";
 import type { TemplateManifest, ThemeChoice } from "@/lib/templates/types";
 import { cartDescription } from "@/lib/templates/vocabulary";
@@ -231,16 +232,27 @@ export function StoreDesignView({
         </p>
       </ConfirmDialog>
 
-      {platform && <DemoStoreCard storeId={storeId} isDemo={design.isDemo} />}
+      {platform && (
+        <DemoStoreCard storeId={storeId} isDemo={design.isDemo} workServiceSlug={design.workServiceSlug} />
+      )}
     </>
   );
 }
 
 /** Platform owner only: a demo store is a normal store that showcases a template and is never indexed. */
-function DemoStoreCard({ storeId, isDemo }: { storeId: string; isDemo: boolean }) {
+function DemoStoreCard({
+  storeId,
+  isDemo,
+  workServiceSlug,
+}: {
+  storeId: string;
+  isDemo: boolean;
+  workServiceSlug: string | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [selectedServiceSlug, setSelectedServiceSlug] = useState(workServiceSlug ?? "");
   return (
     <Card className="mt-10 p-5 sm:p-6">
       <h2 className="text-lg font-semibold">Template demo store</h2>
@@ -250,6 +262,35 @@ function DemoStoreCard({ storeId, isDemo }: { storeId: string; isDemo: boolean }
           : "Mark this store as a live demo of its template. It stays a normal store; it is linked from the template library and hidden from search engines."}
       </p>
       {error && <Notice tone="warning" className="mt-3">{error}</Notice>}
+      <label className="mt-4 block max-w-md text-sm font-medium text-slate-900">
+        Work service category
+        <select
+          value={selectedServiceSlug}
+          disabled={pending}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSelectedServiceSlug(value);
+            startTransition(async () => {
+              setError("");
+              const result = await setStoreWorkServiceCategoryAction(storeId, value || null);
+              if (result.ok) router.refresh();
+              else {
+                setSelectedServiceSlug(workServiceSlug ?? "");
+                setError(result.error);
+              }
+            });
+          }}
+          className="mt-1 block min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+        >
+          <option value="">Not assigned (hidden from Work)</option>
+          {SERVICE_CATEGORIES.map((category) => (
+            <option key={category.slug} value={category.slug}>{category.title}</option>
+          ))}
+        </select>
+        <span className="mt-1 block font-normal text-slate-600">
+          Only a demo store with an eligible storefront appears under its explicitly assigned Services category.
+        </span>
+      </label>
       <button
         type="button"
         disabled={pending}

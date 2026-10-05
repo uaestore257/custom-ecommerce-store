@@ -20,6 +20,7 @@ export interface AdminStoreDesign {
   templateKey: TemplateKey;
   theme: ThemeSelection;
   isDemo: boolean;
+  workServiceSlug: string | null;
 }
 
 /** Demo stores per template, for "View live demo" links (public, ACTIVE only). */
@@ -28,11 +29,16 @@ export type TemplateDemoStores = Partial<Record<TemplateKey, { id: string; name:
 export async function getAdminStoreDesign(client: Client, storeId: string): Promise<AdminStoreDesign | null> {
   const store = await client.store.findFirst({
     where: { id: storeId, archivedAt: null },
-    select: { templateKey: true, themeConfig: true, isDemo: true },
+    select: { templateKey: true, themeConfig: true, isDemo: true, workServiceSlug: true },
   });
   if (!store) return null;
   const templateKey = resolveTemplateKey(store.templateKey);
-  return { templateKey, theme: normalizeThemeConfig(getTemplateDefinition(templateKey), store.themeConfig), isDemo: store.isDemo };
+  return {
+    templateKey,
+    theme: normalizeThemeConfig(getTemplateDefinition(templateKey), store.themeConfig),
+    isDemo: store.isDemo,
+    workServiceSlug: store.workServiceSlug,
+  };
 }
 
 export async function listTemplateDemoStores(client: Client): Promise<TemplateDemoStores> {
@@ -77,7 +83,10 @@ export async function updateStoreDesign(
   if (!theme.ok) return { ok: false, error: "Please fix the highlighted fields.", fieldErrors: theme.errors };
 
   return client.$transaction(async (tx) => {
-    const before = await tx.store.findFirst({ where: { id: storeId, archivedAt: null }, select: { templateKey: true, isDemo: true } });
+    const before = await tx.store.findFirst({
+      where: { id: storeId, archivedAt: null },
+      select: { templateKey: true, isDemo: true, workServiceSlug: true },
+    });
     if (!before) return { ok: false, error: "This store does not exist or has been archived." };
     await tx.store.update({ where: { id: storeId }, data: { templateKey, themeConfig: { ...theme.value } } });
     await recordAudit(tx, {
@@ -92,7 +101,11 @@ export async function updateStoreDesign(
         theme: Object.entries(theme.value).map(([option, choice]) => `${option}=${choice}`),
       },
     });
-    return { ok: true, data: { templateKey, theme: theme.value, isDemo: before.isDemo }, message: "Design saved." };
+    return {
+      ok: true,
+      data: { templateKey, theme: theme.value, isDemo: before.isDemo, workServiceSlug: before.workServiceSlug },
+      message: "Design saved.",
+    };
   });
 }
 
