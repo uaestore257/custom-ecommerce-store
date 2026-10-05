@@ -64,11 +64,10 @@ Copy-Item -LiteralPath .env.example -Destination .env -NoClobber
 ```
 
 If `.env` already exists, stop and inspect it privately; do not replace it.
-Edit `.env` locally if needed. Set `DATABASE_URL` to the intended development
-database. When using this Compose file, set `POSTGRES_PORT` to its chosen host
-port and use the same port in `POSTGRES_PORT`, `DATABASE_URL`, and
-`TEST_DATABASE_URL`; if you configure local `DIRECT_URL`, point it at the
-intended local database too. Keep `.env` private;
+Edit `.env` locally if needed. The single local PostgreSQL instance uses
+`127.0.0.1:5435`, with `shop_dev` for development and `shop_test` for tests.
+Set `DATABASE_URL` and any local `DIRECT_URL` to `localhost:5435/shop_dev`;
+set `TEST_DATABASE_URL` to `localhost:5435/shop_test`. Keep `.env` private;
 `.gitignore` excludes it. `TEST_DATABASE_URL` must refer to a different,
 disposable test database and is not needed for normal setup.
 `DATABASE_URL` is the app runtime URL. `DIRECT_URL` is optional for local
@@ -77,36 +76,25 @@ Prisma falls back to `DATABASE_URL`. Keep local URLs pointed at the intended
 local database. Destructive `db:reset` and `test:db` commands are pinned to
 their separately guarded `DATABASE_URL` and `TEST_DATABASE_URL` targets.
 
-## Start an isolated PostgreSQL instance with Compose
+## Use the canonical local PostgreSQL instance
 
-The Compose project name determines the container and named-volume namespace.
-The default name can select existing resources; the default host port can
-already be in use. Inspect Docker containers, volumes, and the chosen port
-first. Do not run plain `docker compose up -d` if you have not confirmed which
-project and volume it will use.
-
-Use a fresh project name and a free host port to create separate resources.
-Generate the project name once and record it; reuse it when restarting this
-same local database so Compose reconnects to its existing volume. Generate a
-different name only when you intentionally want a separate database. This
-example binds PostgreSQL only to loopback:
+The repository uses exactly one PostgreSQL 16 Compose service, bound to
+`127.0.0.1:5435` and container port `5432`. Compose creates `shop_dev` and
+`shop_test` when its named volume is first initialized. Do not choose another
+host port, create another Compose project/container, or remove the volume to
+change the mapping. Before starting Compose, inspect the existing containers
+and confirm the service and named volume are the intended ones; preserve that
+volume when recreating the service.
 
 ```powershell
-$projectName = "custom-ecommerce-local-$([guid]::NewGuid().ToString('N'))"
-$env:POSTGRES_PORT = "5436"
-docker compose -p $projectName up -d
-Write-Output "Record this Compose project name for later use: $projectName"
+docker compose config
+docker ps --filter ancestor=postgres:16
 ```
 
-Choose a port not already published by a container or process, and set the
-same port in `POSTGRES_PORT`, `DATABASE_URL`, and `TEST_DATABASE_URL` in `.env`.
-Run the Compose command from the repository directory so Compose loads `.env`.
-Use a fresh project name once, record it, then reuse it whenever restarting
-this same database; a different name creates another volume. The first
-initialization of a new volume creates `shop_dev` and `shop_test`; the init
-SQL does not run again on an initialized volume. Compose uses the local-only
-`shop` credentials from `docker-compose.yml`; do not expose this service to a
-network.
+Run `docker compose up -d` only after confirming it will reuse the existing
+container's Compose project and named volume. The first initialization creates
+the two databases; the init SQL does not run again on an initialized volume.
+Compose uses local-only credentials; do not expose this service to a network.
 
 Do not run `docker compose down -v`: it deletes the Compose project's data
 volume. Do not stop, remove, or reconfigure containers or volumes you did not

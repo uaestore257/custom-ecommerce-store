@@ -12,6 +12,7 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const LOCAL_POSTGRES_PORT = "5435";
 const TEST_DATABASE = /(^|[_-])test($|[_-])/i;
 
 function parseDatabaseTarget(connectionString: string, variable: string) {
@@ -44,6 +45,9 @@ export function validateTestDatabaseTarget(testUrl: string, databaseUrl?: string
   const target = parseDatabaseTarget(testUrl, "TEST_DATABASE_URL");
   if (!LOCAL_HOSTS.has(target.host)) {
     throw new Error("TEST_DATABASE_URL must target localhost or a loopback address before it can be reset.");
+  }
+  if (target.port !== LOCAL_POSTGRES_PORT) {
+    throw new Error(`TEST_DATABASE_URL must use local PostgreSQL port ${LOCAL_POSTGRES_PORT} before it can be reset.`);
   }
   if (!TEST_DATABASE.test(target.database)) {
     throw new Error(`Refusing to reset "${target.database}": database name must contain a separate test segment.`);

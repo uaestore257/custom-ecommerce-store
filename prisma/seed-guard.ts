@@ -9,6 +9,7 @@ export class ResetRefused extends Error {}
 const THROWAWAY_NAME = /(^|[_-])(dev|test|local|demo)($|[_-])/i;
 /** Hosts on this computer. A reset never reaches a database elsewhere. */
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const LOCAL_POSTGRES_PORT = "5435";
 
 /** Throws unless the target looks like a local development or test database. */
 export function assertSafeToSeed(env: NodeJS.ProcessEnv = process.env) {
@@ -17,7 +18,16 @@ export function assertSafeToSeed(env: NodeJS.ProcessEnv = process.env) {
   }
   const url = env.DATABASE_URL;
   if (!url) throw new SeedRefused("DATABASE_URL is not set (see .env.example).");
-  const name = new URL(url).pathname.slice(1);
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    throw new SeedRefused("DATABASE_URL is not a valid URL.");
+  }
+  if (!LOCAL_HOSTS.has(target.hostname.toLowerCase()) || (target.port || "5432") !== LOCAL_POSTGRES_PORT) {
+    throw new SeedRefused(`Refusing to seed: DATABASE_URL must target localhost on port ${LOCAL_POSTGRES_PORT}.`);
+  }
+  const name = target.pathname.slice(1);
   if (!THROWAWAY_NAME.test(name)) {
     throw new SeedRefused(
       `Refusing to seed "${name}": demo data is only seeded into databases whose name marks them as dev/test/local/demo (e.g. shop_dev).`,
@@ -43,6 +53,9 @@ export function assertSafeToReset(env: NodeJS.ProcessEnv = process.env) {
   }
   if (!LOCAL_HOSTS.has(target.hostname)) {
     throw new ResetRefused(`Refusing to reset a database on "${target.hostname}": only databases on this computer (localhost) can be reset.`);
+  }
+  if ((target.port || "5432") !== LOCAL_POSTGRES_PORT) {
+    throw new ResetRefused(`Refusing to reset: DATABASE_URL must use local PostgreSQL port ${LOCAL_POSTGRES_PORT}.`);
   }
   const name = target.pathname.slice(1);
   if (!THROWAWAY_NAME.test(name)) {

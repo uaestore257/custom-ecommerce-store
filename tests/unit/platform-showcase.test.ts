@@ -83,6 +83,7 @@ test("themeCssVariables is unchanged by the semanticCssVariables extraction", ()
 });
 
 test("showcased templates are registered, listed once, with case copy and screenshots", () => {
+  assert.deepEqual([...SHOWCASE_ORDER].sort(), ["atelier", "classic", "kinetic", "maison", "market", "noor"]);
   assert.ok(SHOWCASE_ORDER.length > 0);
   assert.equal(new Set(SHOWCASE_ORDER).size, SHOWCASE_ORDER.length);
   for (const key of SHOWCASE_ORDER) {

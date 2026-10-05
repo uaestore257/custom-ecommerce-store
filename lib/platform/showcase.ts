@@ -228,7 +228,7 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
  * offered in the template explorer and the admin; it just isn't shown as a
  * case study yet. Each key at most once (tested).
  */
-export const SHOWCASE_ORDER = ["atelier", "classic"] as const satisfies readonly TemplateKey[];
+export const SHOWCASE_ORDER = ["atelier", "classic", "kinetic", "maison", "market", "noor"] as const satisfies readonly TemplateKey[];
 export type ShowcasedTemplateKey = (typeof SHOWCASE_ORDER)[number];
 
 export function isShowcasedTemplate(key: TemplateKey): key is ShowcasedTemplateKey {

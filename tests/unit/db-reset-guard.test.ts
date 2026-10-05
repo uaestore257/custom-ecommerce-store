@@ -10,10 +10,10 @@ const env = (vars: Record<string, string | undefined>) => vars as unknown as Nod
 
 test("a dev or test database on this computer can be reset", () => {
   for (const url of [
-    "postgresql://u:p@localhost:5433/shop_dev",
-    "postgresql://u:p@localhost:5433/shop_test",
-    "postgresql://u:p@127.0.0.1:5432/shop_local",
-    "postgresql://u:p@[::1]:5432/demo",
+    "postgresql://u:p@localhost:5435/shop_dev",
+    "postgresql://u:p@localhost:5435/shop_test",
+    "postgresql://u:p@127.0.0.1:5435/shop_local",
+    "postgresql://u:p@[::1]:5435/demo",
   ]) {
     assert.doesNotThrow(() => assertSafeToReset(env({ DATABASE_URL: url })), url);
   }
@@ -21,18 +21,25 @@ test("a dev or test database on this computer can be reset", () => {
 
 test("production, remote hosts, real-looking names and missing or broken URLs are refused", () => {
   for (const vars of [
-    { NODE_ENV: "production", DATABASE_URL: "postgresql://u:p@localhost:5433/shop_dev" },
+    { NODE_ENV: "production", DATABASE_URL: "postgresql://u:p@localhost:5435/shop_dev" },
     { DATABASE_URL: "postgresql://u:p@db.example.com:5432/shop_dev" }, // dev name, but not on this computer
     { DATABASE_URL: "postgresql://u:p@10.0.0.5:5432/shop_test" },
     { DATABASE_URL: "postgresql://u:p@localhost.evil.com:5432/shop_dev" },
-    { DATABASE_URL: "postgresql://u:p@localhost:5433/shop" },
-    { DATABASE_URL: "postgresql://u:p@localhost:5433/shop_production" },
-    { DATABASE_URL: "postgresql://u:p@localhost:5433/latest" }, // "test" inside a word doesn't count
+    { DATABASE_URL: "postgresql://u:p@localhost:5435/shop" },
+    { DATABASE_URL: "postgresql://u:p@localhost:5435/shop_production" },
+    { DATABASE_URL: "postgresql://u:p@localhost:5435/latest" }, // "test" inside a word doesn't count
     { DATABASE_URL: "not a url" },
     {},
   ]) {
     assert.throws(() => assertSafeToReset(env(vars)), ResetRefused, JSON.stringify(vars));
   }
+});
+
+test("a loopback database on a non-canonical local port cannot be reset", () => {
+  assert.throws(
+    () => assertSafeToReset(env({ DATABASE_URL: "postgresql://localhost:5433/shop_dev" })),
+    ResetRefused,
+  );
 });
 
 test("npm run db:reset runs the guarded script, never `prisma migrate reset` directly", () => {

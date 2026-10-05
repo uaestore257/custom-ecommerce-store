@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const LOCAL_POSTGRES_PORT = "5435";
 const DEVELOPMENT_DATABASE = /(^|[_-])(dev|local|demo)($|[_-])/i;
 const TEST_DATABASE = /(^|[_-])test($|[_-])/i;
 
@@ -50,6 +51,9 @@ export function getLocalDevelopmentTarget(env = process.env, { useMigrationUrl =
   if (!LOCAL_HOSTS.has(target.host)) {
     throw new Error("Refusing: local database commands only allow localhost/loopback hosts.");
   }
+  if (target.port !== LOCAL_POSTGRES_PORT) {
+    throw new Error(`Refusing: local database commands require PostgreSQL port ${LOCAL_POSTGRES_PORT}.`);
+  }
   if (!DEVELOPMENT_DATABASE.test(target.database)) {
     throw new Error("Refusing: database name must clearly identify a dev, local, or demo database.");
   }
@@ -86,6 +90,9 @@ export function getTestDatabaseTarget(env = process.env) {
   const target = parseTarget(env.TEST_DATABASE_URL, "TEST_DATABASE_URL");
   if (!LOCAL_HOSTS.has(target.host)) {
     throw new Error("Refusing: database resets for tests only allow localhost/loopback hosts.");
+  }
+  if (target.port !== LOCAL_POSTGRES_PORT) {
+    throw new Error(`Refusing: test database resets require PostgreSQL port ${LOCAL_POSTGRES_PORT}.`);
   }
   if (!TEST_DATABASE.test(target.database)) {
     throw new Error("Refusing: TEST_DATABASE_URL database name must contain a separate test segment.");

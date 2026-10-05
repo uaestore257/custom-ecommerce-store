@@ -71,8 +71,8 @@ test("production refuses to run sign-in with every visitor in one shared rate-li
 });
 
 test("the seed refuses production and non-dev databases", () => {
-  assert.doesNotThrow(() => assertSafeToSeed({ DATABASE_URL: "postgresql://u:p@localhost:5433/shop_dev" } as unknown as NodeJS.ProcessEnv));
-  assert.doesNotThrow(() => assertSafeToSeed({ DATABASE_URL: "postgresql://u:p@localhost:5433/shop_test" } as unknown as NodeJS.ProcessEnv));
+  assert.doesNotThrow(() => assertSafeToSeed({ DATABASE_URL: "postgresql://u:p@localhost:5435/shop_dev" } as unknown as NodeJS.ProcessEnv));
+  assert.doesNotThrow(() => assertSafeToSeed({ DATABASE_URL: "postgresql://u:p@localhost:5435/shop_test" } as unknown as NodeJS.ProcessEnv));
   for (const env of [
     { NODE_ENV: "production", DATABASE_URL: "postgresql://u:p@localhost/shop_dev" },
     { DATABASE_URL: "postgresql://u:p@db.example.com/shop" },
@@ -82,6 +82,13 @@ test("the seed refuses production and non-dev databases", () => {
   ]) {
     assert.throws(() => assertSafeToSeed(env as unknown as NodeJS.ProcessEnv), SeedRefused, JSON.stringify(env));
   }
+});
+
+test("the seed refuses a non-canonical local PostgreSQL port", () => {
+  assert.throws(
+    () => assertSafeToSeed({ DATABASE_URL: "postgresql://localhost:5433/shop_dev" } as unknown as NodeJS.ProcessEnv),
+    SeedRefused,
+  );
 });
 
 test("host helpers", () => {

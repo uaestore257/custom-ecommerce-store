@@ -24,6 +24,13 @@ test("rejects a remote test target", () => {
   ), /TEST_DATABASE_URL must target localhost or a loopback address/);
 });
 
+test("rejects a loopback test target on a non-canonical PostgreSQL port", () => {
+  assert.throws(
+    () => validateTestDatabaseTarget("postgresql://localhost:5433/shop_test"),
+    /must use local PostgreSQL port 5435/,
+  );
+});
+
 test("rejects a malformed test URL", () => {
   assert.throws(() => validateTestDatabaseTarget("not a URL"), /valid PostgreSQL URL/);
 });

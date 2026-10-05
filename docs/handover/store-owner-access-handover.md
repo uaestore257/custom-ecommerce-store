@@ -74,7 +74,7 @@ merchant API and response-verification contract is implemented.
 Code X Store (repo `uaestore257/custom-ecommerce-store`): a multi-store
 ecommerce platform for UAE furniture businesses. Next.js 16 (App Router;
 `proxy.ts` replaces middleware), TypeScript, Tailwind, Prisma 7 +
-PostgreSQL 16 (Docker on `localhost:5433`: `shop_dev` for development,
+PostgreSQL 16 (Docker on `localhost:5435`: `shop_dev` for development,
 `shop_test` for tests), Better Auth 1.7.6.
 
 Read first: `AGENTS.md` (this Next.js differs from older versions — read

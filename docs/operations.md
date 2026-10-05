@@ -159,7 +159,7 @@ Environment-variable inventory (names only):
   other production host (set it only to a header the hosting proxy overwrites).
 * **Legacy/optional:** `STORE_DOMAINS` (operator-managed aliases only).
 * **Local/non-production only:** `TEST_DATABASE_URL` (disposable database),
-  `POSTGRES_PORT`, `DEMO_NEST_AND_OAK_OWNER_PASSWORD`,
+  `DEMO_NEST_AND_OAK_OWNER_PASSWORD`,
   `DEMO_THREADLINE_OWNER_PASSWORD`, `DEMO_VOLTBOX_OWNER_PASSWORD`.
 * **Payment:** no production payment credential environment variables are
   implemented; do not create placeholder names or values.

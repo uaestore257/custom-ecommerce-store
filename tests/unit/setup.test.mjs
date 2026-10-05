@@ -59,6 +59,27 @@ test("database write guard accepts only loopback development database targets", 
   );
 });
 
+test("local database guards reject non-canonical PostgreSQL ports", () => {
+  assert.throws(
+    () => getLocalDevelopmentTarget({ DATABASE_URL: "postgresql://localhost:5433/shop_dev" }),
+    /require PostgreSQL port 5435/,
+  );
+  assert.throws(
+    () => getLocalDevelopmentTarget({
+      DATABASE_URL: "postgresql://localhost:5435/shop_dev",
+      DIRECT_URL: "postgresql://127.0.0.1:5433/shop_dev",
+    }),
+    /require PostgreSQL port 5435/,
+  );
+  assert.throws(
+    () => getTestDatabaseTarget({
+      DATABASE_URL: "postgresql://localhost:5435/shop_dev",
+      TEST_DATABASE_URL: "postgresql://localhost:5433/shop_test",
+    }),
+    /require PostgreSQL port 5435/,
+  );
+});
+
 test("test database reset guard requires a separate local test database", () => {
   const env = {
     DATABASE_URL: "postgresql://shop:secret@127.0.0.1:5435/shop_dev",
@@ -121,7 +142,7 @@ test("production deploy guard requires explicit production mode and a non-local 
   assert.throws(
     () => getProductionTarget({
       ...production,
-      DATABASE_URL: "postgresql://app:secret@127.0.0.1:5432/store",
+      DATABASE_URL: "postgresql://app:secret@127.0.0.1:5435/store",
     }),
     /localhost\/loopback/,
   );
@@ -171,9 +192,9 @@ test("local migration guard confirms DIRECT_URL when configured and falls back o
   assert.deepEqual(
     getLocalDevelopmentTarget({
       DATABASE_URL: "postgresql://localhost:5435/shop_dev",
-      DIRECT_URL: "postgresql://127.0.0.1:5436/shop_local",
+      DIRECT_URL: "postgresql://127.0.0.1:5435/shop_local",
     }),
-    { database: "shop_local", host: "127.0.0.1", port: "5436" },
+    { database: "shop_local", host: "127.0.0.1", port: "5435" },
   );
   assert.deepEqual(
     getLocalDevelopmentTarget({ DATABASE_URL: "postgresql://localhost:5435/shop_dev" }),
@@ -186,7 +207,7 @@ test("local reset guard remains tied to DATABASE_URL when DIRECT_URL is present"
     getLocalDevelopmentTarget(
       {
         DATABASE_URL: "postgresql://localhost:5435/shop_dev",
-        DIRECT_URL: "postgresql://127.0.0.1:5436/shop_other",
+        DIRECT_URL: "postgresql://127.0.0.1:5435/shop_other",
       },
       { useMigrationUrl: false },
     ),
