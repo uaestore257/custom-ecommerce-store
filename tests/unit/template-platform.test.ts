@@ -5,17 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { validateStoreBase } from "../../lib/admin/validation";
-import { STORE_TYPES } from "../../lib/config";
 import { SERVICE_CATEGORIES } from "../../lib/platform/services";
-import {
-  INDUSTRY_SERVICE_ITEM,
-  industryTitle,
-  isIndustryType,
-  WORK_SERVICE_SLUG,
-  workCategories,
-  type IndustryType,
-  type WorkDemoStore,
-} from "../../lib/platform/work";
+import { STORE_DEMO_SERVICE_SLUG, storeIndustryLabel, workCategories, type WorkDemo } from "../../lib/platform/work";
 import { isOnlinePaymentMethodAvailable } from "../../lib/server/payments/methods";
 import { DEFAULT_TEMPLATE_KEY, TEMPLATE_KEYS } from "../../lib/templates/registry";
 
@@ -53,59 +44,47 @@ test("Services keeps its categories, order and items (Work only reads them)", ()
   assert.ok(!/from "[^"]*(work|showcase|server)[^"]*"/.test(page), "Services does not depend on Work, demo stores or the database");
 });
 
-// ---------- Work reads Services ----------
+// ---------- Work: the Services categories that have a live demo ----------
 
-test("every Work industry is an item Services really lists, and every store type but 'other' has one", () => {
-  const ecommerce = SERVICE_CATEGORIES.find((category) => category.slug === WORK_SERVICE_SLUG)!;
-  for (const item of Object.values(INDUSTRY_SERVICE_ITEM)) assert.ok(ecommerce.items.includes(item), item);
-  assert.deepEqual(
-    Object.keys(INDUSTRY_SERVICE_ITEM).sort(),
-    STORE_TYPES.map((type) => type.value).filter((value) => value !== "other").sort(),
-  );
-  assert.equal(isIndustryType("furniture"), true);
-  assert.equal(isIndustryType("other"), false);
-  assert.equal(isIndustryType("toString"), false, "no prototype keys");
-  assert.equal(industryTitle("Food & grocery ecommerce"), "Food & grocery");
-});
-
-const demo = (name: string, industry: IndustryType): WorkDemoStore => ({
+const demo = (name: string): WorkDemo => ({
   name,
-  industry,
+  industry: "Furniture",
   templateKey: "classic",
   templateName: "Classic",
   tagline: null,
+  headline: "A headline.",
+  signatures: ["One", "Two"],
   url: `https://${name.toLowerCase()}.example/`,
+  screenshots: null,
 });
 
-test("Work shows a category only when it has a demo, in Services order, each with only its own demos", () => {
-  assert.deepEqual(workCategories([]), [], "no demos: no categories, no empty states");
-  const categories = workCategories([
-    demo("Oak", "furniture"),
-    demo("Volt", "electronics"),
-    demo("Linen", "fashion"),
-    demo("Teak", "furniture"),
-  ]);
+test("Work's categories ARE the Services categories, in Services order, shown only when they have a demo", () => {
+  const all = Object.fromEntries(SERVICE_CATEGORIES.map((category) => [category.slug, [demo(category.slug)]]));
   assert.deepEqual(
-    categories.map((category) => [category.slug, category.title, category.demos.map((d) => d.name)]),
-    [
-      ["furniture", "Furniture", ["Oak", "Teak"]],
-      ["fashion", "Fashion", ["Linen"]],
-      ["electronics", "Electronics", ["Volt"]],
-    ],
+    workCategories(all).map((category) => [category.slug, category.title]),
+    SERVICE_CATEGORIES.map((category) => [category.slug, category.title]),
+    "every Services category, same names and order, once each has a demo",
   );
-  assert.ok(!categories.some((category) => category.slug === "beauty" || category.slug === "grocery"), "no demo, no category");
-  for (const category of categories) {
-    assert.ok(category.demos.every((d) => d.industry === category.slug));
-    assert.ok(SERVICE_CATEGORIES[0].items.includes(category.serviceItem));
-  }
+  assert.deepEqual(workCategories({}), [], "no demos: no categories and no empty states");
+  // Only store demos exist today: Ecommerce shows, Mobile apps (and every other category) is hidden from Work.
+  const today = workCategories({ [STORE_DEMO_SERVICE_SLUG]: [demo("Oak"), demo("Linen")] });
+  assert.deepEqual(today.map((category) => category.title), ["Ecommerce"]);
+  assert.deepEqual(today[0].demos.map((d) => d.name), ["Oak", "Linen"], "a category lists ALL its demos");
+  assert.ok(!today.some((category) => category.slug === "apps"), "no Mobile apps demo, no Mobile apps category in Work");
+  assert.deepEqual(workCategories({ apps: [demo("Mobile")] }).map((c) => c.title), ["Mobile apps"], "a category appears as soon as it has a demo");
+  assert.deepEqual(workCategories({ ecommerce: [] }), [], "an empty list is no demo");
+  assert.deepEqual(workCategories({ "not-a-service": [demo("X")] }), [], "Work never invents a category Services doesn't list");
+  assert.deepEqual(workCategories({ toString: [demo("X")] } as never), [], "no prototype keys");
+  assert.equal(STORE_DEMO_SERVICE_SLUG, "ecommerce");
+  assert.ok(SERVICE_CATEGORIES.some((category) => category.slug === STORE_DEMO_SERVICE_SLUG));
 });
 
-test("Work never invents a category: it follows whatever Services lists", () => {
-  const renamed = SERVICE_CATEGORIES.map((category) =>
-    category.slug === "ecommerce" ? { ...category, items: category.items.filter((item) => item !== "Fashion ecommerce") } : category,
-  );
-  assert.deepEqual(workCategories([demo("Linen", "fashion")], renamed), [], "an industry Services stops listing leaves Work too");
-  assert.deepEqual(workCategories([demo("Oak", "furniture")], []), [], "no Services ecommerce category: nothing");
+test("a demo store's industry label comes from its admin store type", () => {
+  assert.equal(storeIndustryLabel("furniture"), "Furniture");
+  assert.equal(storeIndustryLabel("grocery"), "Grocery");
+  assert.equal(storeIndustryLabel("other"), null);
+  assert.equal(storeIndustryLabel(null), null);
+  assert.equal(storeIndustryLabel("made-up"), null);
 });
 
 test("the Work page reads demos through the server allow-list, never a store id from the request", () => {
@@ -119,12 +98,10 @@ test("the Work page reads demos through the server allow-list, never a store id 
     assert.ok(!select.includes(privateField), `${privateField} is never read`);
   }
   const browser = read("components/platform/site/work/WorkDemoBrowser.tsx");
-  assert.match(browser, /role="tablist"/);
-  assert.match(browser, /role="tab"/);
-  assert.match(browser, /aria-selected/);
-  assert.match(browser, /role="tabpanel"/);
-  assert.match(browser, /View Live/);
-  assert.match(browser, /opens in a new tab/);
+  for (const pattern of [/role="tablist"/, /role="tab"/, /aria-selected/, /role="tabpanel"/, /aria-expanded/, /Ask for a walkthrough/, /opens in a new tab/]) {
+    assert.match(browser, pattern);
+  }
+  assert.match(browser, /href=\{demo\.url\}/, "Ask for a walkthrough opens the live demo store itself");
 });
 
 // ---------- New store: template choice ----------

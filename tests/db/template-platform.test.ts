@@ -209,7 +209,7 @@ test("theme options never travel to an incompatible template; switching back is 
 
 const url = (slug: string) => `https://${slug}.demo.example/`;
 
-test("Work lists only ACTIVE demo stores with a registered template, a Services industry and live products", async () => {
+test("Work lists only ACTIVE demo stores with a registered template and live products", async () => {
   const actor = await testActor(db);
   const tag = uid();
   const demo = async (overrides: Record<string, unknown>, withProduct = true) => {
@@ -220,48 +220,57 @@ test("Work lists only ACTIVE demo stores with a registered template, a Services 
   };
   const furniture = await demo({ businessType: "furniture", templateKey: "atelier" });
   const fashion = await demo({ businessType: "fashion", templateKey: "maison" });
+  const other = await demo({ businessType: "other" }); // any industry: still an ecommerce demo
   const client = await makeStore({ name: `Work ${tag} client`, businessType: "beauty" });
   await makeProduct(client); // a client store: never a demo
   const draft = await demo({ businessType: "grocery", status: "DRAFT" });
   const empty = await demo({ businessType: "electronics" }, false); // no live products
-  const other = await demo({ businessType: "other" }); // not a Services industry
   const archived = await demo({ businessType: "beauty" });
   await db.store.update({ where: { id: archived }, data: { archivedAt: new Date() } });
   const unknownTemplate = await demo({ businessType: "beauty" });
   await db.store.update({ where: { id: unknownTemplate }, data: { templateKey: "retired" } });
 
   const listed = (await loadWorkDemoStores(db, url)).filter((store) => store.name.startsWith(`Work ${tag}`));
-  const names = new Map(
-    await Promise.all(
-      [furniture, fashion, client, draft, empty, other, archived, unknownTemplate].map(async (id) => [id, (await db.store.findUniqueOrThrow({ where: { id } })).name] as const),
-    ),
-  );
-  assert.deepEqual(listed.map((store) => store.name).sort(), [names.get(furniture), names.get(fashion)].sort());
-  for (const store of listed) {
-    assert.deepEqual(Object.keys(store).sort(), ["industry", "name", "tagline", "templateKey", "templateName", "url"], "presentation facts only");
+  const names = new Map<string, string>();
+  for (const id of [furniture, fashion, other, client, draft, empty, archived, unknownTemplate]) {
+    names.set(id, (await db.store.findUniqueOrThrow({ where: { id } })).name);
   }
-  assert.equal(listed.find((store) => store.name === names.get(fashion))!.templateName, "Maison");
+  assert.deepEqual(listed.map((store) => store.name).sort(), [names.get(furniture), names.get(fashion), names.get(other)].sort());
+  for (const excluded of [client, draft, empty, archived, unknownTemplate]) {
+    assert.ok(!listed.some((store) => store.name === names.get(excluded)), "excluded store never listed");
+  }
+  for (const store of listed) {
+    assert.deepEqual(
+      Object.keys(store).sort(),
+      ["headline", "industry", "name", "screenshots", "signatures", "tagline", "templateKey", "templateName", "url"],
+      "presentation facts only",
+    );
+  }
+  const maison = listed.find((store) => store.name === names.get(fashion))!;
+  assert.equal(maison.templateName, "Maison");
+  assert.equal(maison.industry, "Fashion");
+  assert.equal(maison.screenshots, null, "no screenshots exist for this store: none are borrowed");
+  assert.equal(listed.find((store) => store.name === names.get(other))!.industry, null);
 
-  // A demo whose host has no storefront URL gets no View Live link — and so isn't listed.
+  // A demo whose host has no storefront URL has no live link — and so isn't listed.
   assert.equal((await loadWorkDemoStores(db, () => null)).length, 0);
 });
 
-test("a Work category appears only with a live demo, and follows the demo's template when it is switched", async () => {
+test("all demo stores sit under the Services Ecommerce category, which follows a demo's live state and template", async () => {
   const actor = await testActor(db);
   const tag = uid();
   const store = await makeStore({ name: `Category ${tag}`, businessType: "electronics", templateKey: "kinetic" });
   await makeProduct(store);
   const mine = async () =>
-    workCategories((await loadWorkDemoStores(db, url)).filter((demo) => demo.name === `Category ${tag}`));
+    workCategories({ ecommerce: (await loadWorkDemoStores(db, url)).filter((demo) => demo.name === `Category ${tag}`) });
 
   assert.deepEqual(await mine(), [], "not a demo yet: no category");
   assert.ok((await setStoreDemo(actor, db, store, true)).ok);
   let categories = await mine();
-  assert.deepEqual(categories.map((category) => category.slug), ["electronics"]);
-  assert.equal(categories[0].title, "Electronics");
+  assert.deepEqual(categories.map((category) => [category.slug, category.title]), [["ecommerce", "Ecommerce"]]);
   assert.equal(categories[0].demos[0].templateKey, "kinetic");
   const slug = (await db.store.findUniqueOrThrow({ where: { id: store } })).slug;
-  assert.equal(categories[0].demos[0].url, url(slug), "View Live is the store's own storefront");
+  assert.equal(categories[0].demos[0].url, url(slug), "the live link is the store's own storefront");
 
   assert.ok((await updateStoreDesign(db, store, actor.userId, { templateKey: "noor", theme: {} })).ok);
   categories = await mine();
