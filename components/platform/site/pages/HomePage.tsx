@@ -40,7 +40,7 @@ export async function HomePage() {
           </div>
           <div className="mt-20 space-y-28 lg:mt-28 lg:space-y-40">
             {showcase.map((entry, position) => (
-              <WorkCase key={entry.key} entry={entry} index={position + 1} reverse={position % 2 === 1} detailsHref={`/portfolio#${entry.key}`} />
+              <WorkCase key={entry.key} entry={entry} index={position + 1} reverse={position % 2 === 1} detailsHref="/portfolio#live-demos" />
             ))}
           </div>
           <div className="mt-28 lg:mt-36">
