@@ -66,9 +66,9 @@ export async function PortfolioPage() {
           <div className={`${CONTAINER} py-24 lg:py-32`}>
             <SectionHeading
               id="work-demos-title"
-              eyebrow="Live demo stores"
+              eyebrow="Live demos"
               title="Explore by category."
-              lede="Choose an industry to see the demo stores we run for it, then open one live: browse, search, add to cart and walk through checkout."
+              lede="Choose a category to see every live demo we run for it, pick one for the details, then open it live: browse, search, add to cart and walk through checkout."
             />
             <div data-reveal className="mt-14">
               <WorkDemoBrowser categories={categories} />
