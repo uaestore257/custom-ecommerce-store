@@ -40,7 +40,7 @@ async function makeProduct(storeId: string, categoryId: string, overrides: Recor
     name: `Item ${uid()}`,
     sku: `SKU-${uid()}`.toUpperCase(),
     categoryId,
-    description: "",
+    description: "A product used by the shelves tests.",
     price: "10.00",
     compareAtPrice: "",
     imageUrl: "",

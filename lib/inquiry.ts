@@ -12,6 +12,7 @@
 // re-validates against the database — see that file's comment on
 // submitInquiry() for the full trust-boundary explanation.
 // ---------------------------------------------------------------
+import { messagesFor, type ValidationMessages } from "./storefront-i18n";
 import { isEmail } from "./validation";
 
 export type InquiryFieldErrors = Partial<Record<"name" | "email" | "subject" | "message", string>>;
@@ -39,11 +40,12 @@ function str(input: Record<string, unknown>, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function tooLong(value: string, max: number) {
-  return value.length > max ? `Keep this under ${max} characters.` : undefined;
-}
-
-export function validateInquiry(input: unknown): { values: CleanInquiry; errors: InquiryFieldErrors } {
+/** `messages`: the shopper's UI language (lib/storefront-i18n.ts); the server validates in English. */
+export function validateInquiry(
+  input: unknown,
+  messages: ValidationMessages = messagesFor("en").validation,
+): { values: CleanInquiry; errors: InquiryFieldErrors } {
+  const tooLong = (value: string, max: number) => (value.length > max ? messages.tooLong(max) : undefined);
   const raw = record(input);
   const values: CleanInquiry = {
     name: str(raw, "name"),
@@ -53,12 +55,12 @@ export function validateInquiry(input: unknown): { values: CleanInquiry; errors:
   };
   const errors: InquiryFieldErrors = {
     name:
-      values.name.length < 2 ? "Please enter your name." : tooLong(values.name, INQUIRY_LIMITS.name),
-    email: !isEmail(values.email) ? "Please enter a valid email address." : tooLong(values.email, INQUIRY_LIMITS.email),
+      values.name.length < 2 ? messages.name : tooLong(values.name, INQUIRY_LIMITS.name),
+    email: !isEmail(values.email) ? messages.email : tooLong(values.email, INQUIRY_LIMITS.email),
     subject: tooLong(values.subject, INQUIRY_LIMITS.subject),
     message:
       values.message.length < 10
-        ? "Please write at least 10 characters."
+        ? messages.messageTooShort
         : tooLong(values.message, INQUIRY_LIMITS.message),
   };
   return { values, errors };

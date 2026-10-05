@@ -7,6 +7,7 @@ import { storeFormatLocale } from "@/lib/standards";
 import { normalizeRequestHostname } from "@/lib/store-domains";
 import { isStoreIdCookieValue, STOREFRONT_STORE_COOKIE } from "@/lib/storefront-cookie";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost, matchStoreHost, storeHostConfig } from "@/lib/store-host";
+import { messagesFor, storefrontMessages, type StorefrontMessages } from "@/lib/storefront-i18n";
 import { getTemplateDefinition, resolveTemplateKey } from "@/lib/templates/registry";
 import { normalizeThemeConfig } from "@/lib/templates/theme";
 import type {
@@ -528,6 +529,12 @@ export const getRequestStorefront = cache(async (): Promise<StorefrontContext | 
   const storeId = await getRequestStoreId();
   return storeId ? getStorefrontContext(getDb(), storeId) : null;
 });
+
+/** Shared interface labels in this request's store's UI language (English when no store is shown), e.g. for page titles. */
+export async function getRequestStorefrontMessages(): Promise<StorefrontMessages> {
+  const context = await getRequestStorefront();
+  return context ? storefrontMessages(context.store) : messagesFor("en");
+}
 
 /** One product of this request's store by URL segment (shared by the product page and its metadata). */
 export const getRequestStorefrontProductBySlug = cache(async (slug: string) => {

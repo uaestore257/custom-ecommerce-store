@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { PlatformContactDisclosure, type PlatformContact } from "@/components/PlatformContactDisclosure";
+import { storefrontMessages } from "@/lib/storefront-i18n";
 import { themeCssVariables } from "@/lib/templates/theme";
 import type { StorefrontContext } from "@/lib/storefront-types";
 import type { StorefrontTemplate } from "@/templates/types";
@@ -49,7 +50,7 @@ export function StorefrontRoot({
         {isAdminHost && <PreviewBar storeName={store.name} templateName={template.definition.manifest.name} contact={agencyContact} />}
         {store.isDemo && (
           <p className="bg-foreground px-4 py-1.5 text-center text-xs text-background">
-            Demonstration store — products and orders here are for showcasing the {template.definition.manifest.name} template.
+            {storefrontMessages(store).demoNotice(template.definition.manifest.name)}
           </p>
         )}
         <Shell {...context}>{children}</Shell>

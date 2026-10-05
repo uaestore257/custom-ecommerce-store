@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { PolicyView } from "@/components/storefront/PolicyView";
+import { getRequestStorefrontMessages } from "@/lib/server/storefront/catalog";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { storefrontPageMetadata } from "@/lib/server/storefront/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
+  const policy = (await getRequestStorefrontMessages()).policies.pages.terms;
   return storefrontPageMetadata({
-    title: "Terms and conditions",
-    description: "Terms and conditions for using this storefront.",
+    title: policy.title,
+    description: policy.description,
     path: "/terms",
   });
 }

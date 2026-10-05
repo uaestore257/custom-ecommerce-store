@@ -5,7 +5,7 @@ import { AboutPage as BusinessAboutPage } from "@/components/platform/site/pages
 import { getAgencyProfile } from "@/lib/server/agency";
 import { getPlatformName } from "@/lib/server/platform-brand";
 import { platformSitePageMetadata } from "@/lib/server/platform/site-metadata";
-import { getRequestStorefront } from "@/lib/server/storefront/catalog";
+import { getRequestStorefront, getRequestStorefrontMessages } from "@/lib/server/storefront/catalog";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
 import { isPlatformBusinessHost, isStorefrontPathPreviewHost } from "@/lib/store-host";
@@ -25,9 +25,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const context = await getPublicStorefrontSeoContext();
   if (!context) return { title: "About", robots: { index: false, follow: false } };
   const storefront = await getRequestStorefront();
+  const { meta } = await getRequestStorefrontMessages();
   return storefrontPageMetadata({
-    title: `About ${context.store.name}`,
-    description: storefront?.store.aboutText || `Learn about ${context.store.name}.`,
+    title: meta.about(context.store.name),
+    description: storefront?.store.aboutText || meta.aboutDescription(context.store.name),
     path: "/about",
   });
 }

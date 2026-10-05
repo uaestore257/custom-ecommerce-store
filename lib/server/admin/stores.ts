@@ -310,7 +310,7 @@ export async function createAdminStore(
         storeId: created.id,
         targetType: "store",
         targetId: created.id,
-        metadata: { status: values.status },
+        metadata: { status: values.status, templateKey: values.templateKey },
       });
       return created;
     });
@@ -331,6 +331,7 @@ async function createStoreRecords(tx: Prisma.TransactionClient, v: CleanStoreBas
       slug: v.slug,
       businessType: v.businessType,
       status: v.status,
+      templateKey: v.templateKey,
       countryCode: v.countryCode,
       baseCurrency: v.baseCurrency,
       timezone: v.timezone,

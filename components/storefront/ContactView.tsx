@@ -9,6 +9,8 @@ import {
   sfInputClass as inputClass,
   SfNotice as Notice,
 } from "@/components/storefront/primitives";
+import { useStorefrontMessages } from "@/lib/storefront";
+import { leftToRightValueDir } from "@/lib/storefront-i18n";
 import type { StorefrontStore } from "@/lib/storefront-types";
 import { validateInquiry, type InquiryFieldErrors } from "@/lib/inquiry";
 import { submitInquiryAction } from "@/app/(storefront)/actions";
@@ -29,6 +31,10 @@ export function ContactView({ store }: { store: StorefrontStore }) {
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState("");
   const [isPending, startTransition] = useTransition();
+  const m = useStorefrontMessages();
+  const t = m.contact;
+  // Email addresses and phone numbers read left to right in every interface language.
+  const ltrField = leftToRightValueDir(store);
   function update(key: keyof ContactForm, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
@@ -37,7 +43,7 @@ export function ContactView({ store }: { store: StorefrontStore }) {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const { errors: fieldErrors } = validateInquiry(form);
+    const { errors: fieldErrors } = validateInquiry(form, m.validation);
     setErrors(fieldErrors);
     setServerError("");
     const firstError = Object.keys(fieldErrors).find((key) => fieldErrors[key as keyof InquiryFieldErrors]);
@@ -59,39 +65,39 @@ export function ContactView({ store }: { store: StorefrontStore }) {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-12 md:py-16">
-      <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-4xl">Contact {store.name}</h1>
+      <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-4xl">{t.title(store.name)}</h1>
       <p className="mt-3 max-w-xl text-muted-foreground">
-        Questions about a product, delivery or an order? Get in touch.
+        {t.intro}
       </p>
 
       <div className="mt-10 grid gap-10 md:grid-cols-[2fr_3fr]">
         <ul className="space-y-4">
           {store.contactEmail && (
-            <ContactItem icon={Mail} label="Email">
-              <a href={`mailto:${store.contactEmail}`} className="hover:text-accent hover:underline">
+            <ContactItem icon={Mail} label={t.email}>
+              <a href={`mailto:${store.contactEmail}`} dir={ltrField} className="hover:text-accent hover:underline">
                 {store.contactEmail}
               </a>
             </ContactItem>
           )}
           {store.contactPhone && (
-            <ContactItem icon={Phone} label="Phone">
-              <a href={`tel:${store.contactPhone.replace(/\s/g, "")}`} className="hover:text-accent hover:underline">
+            <ContactItem icon={Phone} label={t.phone}>
+              <a href={`tel:${store.contactPhone.replace(/\s/g, "")}`} dir={ltrField} className="hover:text-accent hover:underline">
                 {store.contactPhone}
               </a>
             </ContactItem>
           )}
           {store.contactAddress && (
-            <ContactItem icon={MapPin} label="Address">{store.contactAddress}</ContactItem>
+            <ContactItem icon={MapPin} label={t.address}>{store.contactAddress}</ContactItem>
           )}
           {!store.contactEmail && !store.contactPhone && !store.contactAddress && (
-            <li className="text-sm text-muted-foreground">Contact details have not been added yet.</li>
+            <li className="text-sm text-muted-foreground">{m.noContactDetails}</li>
           )}
         </ul>
 
         <div className="rounded-card border border-border bg-surface p-4 sm:p-6">
           {submitted && (
             <Notice tone="success" className="mb-6">
-              Thanks! Your message has been sent to the store.
+              {t.sent}
             </Notice>
           )}
           {serverError && (
@@ -100,7 +106,7 @@ export function ContactView({ store }: { store: StorefrontStore }) {
             </Notice>
           )}
           <form onSubmit={handleSubmit} noValidate className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name" htmlFor="contact-name" required error={errors.name}>
+            <Field label={t.name} htmlFor="contact-name" required error={errors.name}>
               <input
                 {...errorProps("contact-name", errors.name)}
                 autoComplete="name"
@@ -109,17 +115,18 @@ export function ContactView({ store }: { store: StorefrontStore }) {
                 className={inputClass(!!errors.name)}
               />
             </Field>
-            <Field label="Email" htmlFor="contact-email" required error={errors.email}>
+            <Field label={t.email} htmlFor="contact-email" required error={errors.email}>
               <input
                 {...errorProps("contact-email", errors.email)}
                 type="email"
+                dir={ltrField}
                 autoComplete="email"
                 value={form.email}
                 onChange={(e) => update("email", e.target.value)}
                 className={inputClass(!!errors.email)}
               />
             </Field>
-            <Field label="Subject" htmlFor="contact-subject" className="sm:col-span-2">
+            <Field label={t.subject} htmlFor="contact-subject" className="sm:col-span-2">
               <input
                 id="contact-subject"
                 value={form.subject}
@@ -127,7 +134,7 @@ export function ContactView({ store }: { store: StorefrontStore }) {
                 className={inputClass()}
               />
             </Field>
-            <Field label="Message" htmlFor="contact-message" required error={errors.message} className="sm:col-span-2">
+            <Field label={t.message} htmlFor="contact-message" required error={errors.message} className="sm:col-span-2">
               <textarea
                 {...errorProps("contact-message", errors.message)}
                 rows={5}
@@ -138,7 +145,7 @@ export function ContactView({ store }: { store: StorefrontStore }) {
             </Field>
             <div className="sm:col-span-2">
               <button type="submit" disabled={isPending} className={sfButtonClass("primary")}>
-                {isPending ? "Sending…" : "Send message"}
+                {isPending ? t.sending : t.send}
               </button>
             </div>
           </form>

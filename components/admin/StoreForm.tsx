@@ -17,6 +17,7 @@ import {
   validateStoreSettings,
   type StoreReference,
 } from "@/lib/admin/validation";
+import { DEFAULT_TEMPLATE_KEY, getTemplateDefinition, TEMPLATE_KEYS } from "@/lib/templates/registry";
 import { isHexColor } from "@/lib/validation";
 
 type PaymentMethodId = (typeof PAYMENT_METHODS)[number]["id"];
@@ -36,6 +37,8 @@ interface StoreFormValues {
   languages: string[];
   slug: string;
   accentColor: string;
+  // Create-only: the storefront template (later changes happen on the Design page).
+  templateKey: string;
   // Edit-only fields
   logoUrl: string;
   paymentMethods: Record<PaymentMethodId, boolean>;
@@ -56,7 +59,7 @@ function initialValues(store?: AdminStoreDetail): StoreFormValues {
     return {
       name: "", businessType: "", status: "DRAFT", ownerName: "", ownerEmail: "", ownerPassword: "", ownerPasswordConfirm: "",
       countryCode: "", baseCurrency: "", timezone: "", defaultLanguage: "", languages: [],
-      slug: "", accentColor: "#0f766e",
+      slug: "", accentColor: "#0f766e", templateKey: DEFAULT_TEMPLATE_KEY,
       logoUrl: "", paymentMethods: methods,
       tagline: "", heroTitle: "", heroText: "", aboutText: "", contactEmail: "", contactPhone: "", contactAddress: "",
     };
@@ -67,7 +70,7 @@ function initialValues(store?: AdminStoreDetail): StoreFormValues {
     ownerName: store.ownerName, ownerEmail: store.ownerEmail, ownerPassword: "", ownerPasswordConfirm: "",
     countryCode: store.countryCode, baseCurrency: store.baseCurrency, timezone: store.timezone,
     defaultLanguage: store.defaultLanguage, languages: store.languages,
-    slug: store.slug, accentColor: store.accentColor ?? "#0f766e",
+    slug: store.slug, accentColor: store.accentColor ?? "#0f766e", templateKey: "",
     logoUrl: store.logoUrl ?? "",
     paymentMethods: methods, ...store.content,
     contactEmail: store.contactEmail, contactPhone: store.contactPhone, contactAddress: store.contactAddress,
@@ -260,6 +263,47 @@ export function StoreForm({
         </Section>
       )}
 
+      {!isEdit && (
+        <Section
+          title="Storefront template"
+          description="How the store's storefront looks. Presentation only — it can be changed at any time on the store's Design page without touching products, orders or settings."
+        >
+          <fieldset className="sm:col-span-2">
+            <legend className="sr-only">Storefront template</legend>
+            <div id="store-templateKey" tabIndex={-1} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {TEMPLATE_OPTIONS.map((template) => {
+                const active = values.templateKey === template.key;
+                return (
+                  <label
+                    key={template.key}
+                    className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-600 ${
+                      active ? "border-teal-600 bg-teal-50/60" : "border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="templateKey"
+                      value={template.key}
+                      checked={active}
+                      onChange={() => set("templateKey", template.key)}
+                      className="mt-1 h-4 w-4 shrink-0 accent-teal-700"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium text-slate-900">
+                        {template.name}
+                        {template.key === DEFAULT_TEMPLATE_KEY && <span className="ms-2 text-xs font-normal text-slate-500">Default</span>}
+                      </span>
+                      <span className="mt-0.5 block text-sm text-slate-600">{template.visualCategory}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {errors.templateKey && <p className="mt-1.5 text-sm text-red-600">{errors.templateKey}</p>}
+          </fieldset>
+        </Section>
+      )}
+
       <Section title="Country, currency & time" description="Each store has its own settings; nothing is assumed for you.">
         {select("countryCode", "Country / region", reference.countries.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })), {
           required: true,
@@ -435,6 +479,12 @@ export function StoreForm({
     </form>
   );
 }
+
+/** Every registered template, in registry order (lib/templates/registry.ts is the only source). */
+const TEMPLATE_OPTIONS = TEMPLATE_KEYS.map((key) => {
+  const { name, visualCategory } = getTemplateDefinition(key).manifest;
+  return { key, name, visualCategory };
+});
 
 function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (

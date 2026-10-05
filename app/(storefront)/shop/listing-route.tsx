@@ -4,6 +4,7 @@ import { getDb } from "@/lib/server/db";
 import { getRequestStorefront, getStorefrontProductListing } from "@/lib/server/storefront/catalog";
 import { requireStorefrontPage } from "@/lib/server/storefront/page";
 import { getPublicStorefrontSeoContext, storefrontPageMetadata } from "@/lib/server/storefront/seo";
+import { storefrontMessages } from "@/lib/storefront-i18n";
 import { buildBreadcrumbJsonLd, serializeJsonLd, storefrontCanonicalUrl } from "@/lib/storefront-seo";
 import type { StorefrontCategory, StorefrontContext } from "@/lib/storefront-types";
 import { categoryPath, listingHref, parseListingQuery } from "@/lib/storefront-urls";
@@ -26,9 +27,10 @@ export async function listingMetadata(categorySlug: string | null, searchParams:
   if (category === undefined) return { title: "Not found", robots: { index: false, follow: false } };
   const query = parseListingQuery(searchParams);
   const base = categoryPath(category);
+  const { meta } = storefrontMessages(context.store);
   const metadata = await storefrontPageMetadata({
-    title: category ? `${category.name} | ${seo.store.name}` : `Shop | ${seo.store.name}`,
-    description: category ? `Browse ${category.name} from ${seo.store.name}.` : `Browse all products from ${seo.store.name}.`,
+    title: category ? `${category.name} | ${seo.store.name}` : `${meta.shop} | ${seo.store.name}`,
+    description: category ? meta.browseCategory(category.name, seo.store.name) : meta.browseAll(seo.store.name),
     // Sort is a view of the same page; pagination is a distinct page.
     path: listingHref(base, { page: query.page }),
   });
