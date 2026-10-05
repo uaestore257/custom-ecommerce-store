@@ -7,7 +7,7 @@ export function NewStoreView({ reference }: { reference: ReferenceOptions }) {
     <>
       <PageHeader
         title="Create a new client store"
-        description="The new store runs on the shared platform with the default storefront template (changeable on its Design page) and starts with its own empty product list and settings."
+        description="The new store runs on the shared platform with the storefront template you choose below (changeable on its Design page) and starts with its own empty product list and settings."
         breadcrumbs={[
           { label: "Agency Admin", href: "/admin" },
           { label: "Client stores", href: "/admin/stores" },

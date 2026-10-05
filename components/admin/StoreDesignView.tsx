@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Check, ExternalLink } from "lucide-react";
 import { setStoreDemoAction, updateStoreDesignAction } from "@/app/admin/actions";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { buttonClass, Card, Notice, PageHeader } from "@/components/ui";
 import type { AdminStoreDesign } from "@/lib/server/admin/design";
 import type { TemplateKey } from "@/lib/templates/registry";
@@ -44,6 +45,8 @@ export function StoreDesignView({
   const [theme, setTheme] = useState<Record<string, string>>({ ...design.theme });
   const [notice, setNotice] = useState<{ tone: "success" | "warning"; text: string } | null>(null);
   const [saving, startSaving] = useTransition();
+  const [confirming, setConfirming] = useState(false);
+  const current = templates.find((template) => template.key === design.templateKey);
   const selected = templates.find((template) => template.key === templateKey) ?? templates[0];
   const changed = templateKey !== design.templateKey || JSON.stringify(theme) !== JSON.stringify(design.theme);
 
@@ -62,7 +65,14 @@ export function StoreDesignView({
     setNotice(null);
   }
 
+  /** A template change is confirmed first; option changes within the current template save directly. */
+  function requestSave() {
+    if (templateKey !== design.templateKey) setConfirming(true);
+    else save();
+  }
+
   function save() {
+    setConfirming(false);
     setNotice(null);
     startSaving(async () => {
       const result = await updateStoreDesignAction(storeId, { templateKey, theme });
@@ -97,6 +107,10 @@ export function StoreDesignView({
           <span role="status">{notice.text}</span>
         </Notice>
       )}
+
+      <p className="mb-4 text-sm text-slate-700">
+        Current template: <strong className="font-semibold text-slate-900">{current?.manifest.name ?? design.templateKey}</strong>
+      </p>
 
       <fieldset disabled={readOnly || saving} className="space-y-8">
         <legend className="sr-only">Template</legend>
@@ -194,12 +208,28 @@ export function StoreDesignView({
         )}
 
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={save} disabled={!changed || readOnly || saving} className={buttonClass("primary")}>
+          <button type="button" onClick={requestSave} disabled={!changed || readOnly || saving} className={buttonClass("primary")}>
             {saving ? "Saving…" : "Save design"}
           </button>
           {changed && !saving && <p className="text-sm text-slate-500">Unsaved changes</p>}
         </div>
       </fieldset>
+
+      <ConfirmDialog
+        open={confirming}
+        title={`Switch to ${selected.manifest.name}?`}
+        confirmLabel={saving ? "Switching…" : `Switch to ${selected.manifest.name}`}
+        onCancel={() => setConfirming(false)}
+        onConfirm={save}
+      >
+        <p>
+          Changing the template changes the Store&apos;s presentation only. Your products, orders, customers, inventory, payments and
+          other Store data remain preserved.
+        </p>
+        <p className="mt-2">
+          {current?.manifest.name ?? "The current template"} → {selected.manifest.name}. You can switch back at any time.
+        </p>
+      </ConfirmDialog>
 
       {platform && <DemoStoreCard storeId={storeId} isDemo={design.isDemo} />}
     </>

@@ -4,16 +4,18 @@ import type { CSSProperties } from "react";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import type { TemplateShowcaseEntry } from "@/lib/platform/showcase";
 import { getTemplateShowcase } from "@/lib/server/platform/showcase";
+import { getWorkCategories } from "@/lib/server/platform/work";
 import { cartDescription } from "@/lib/templates/vocabulary";
 import { ClosingCta } from "../ClosingCta";
-import { ArrowLink, CONTAINER, Eyebrow, SplitWords, StudioMain } from "../primitives";
+import { ArrowLink, CONTAINER, Eyebrow, SectionHeading, SplitWords, StudioMain } from "../primitives";
 import { focusRing } from "../styles";
 import { SHOWCASE_MEDIA } from "../work/showcase-media";
 import { caseIdentity, WorkCase } from "../work/WorkCase";
+import { WorkDemoBrowser } from "../work/WorkDemoBrowser";
 
 /** /portfolio — "Work": the live demo stores first, the details after. */
 export async function PortfolioPage() {
-  const showcase = await getTemplateShowcase();
+  const [showcase, categories] = await Promise.all([getTemplateShowcase(), getWorkCategories()]);
 
   return (
     <StudioMain>
@@ -58,6 +60,22 @@ export async function PortfolioPage() {
           </ul>
         </div>
       </section>
+
+      {categories.length > 0 && (
+        <section aria-labelledby="work-demos-title" id="live-demos" className="scroll-mt-28 border-t border-border">
+          <div className={`${CONTAINER} py-24 lg:py-32`}>
+            <SectionHeading
+              id="work-demos-title"
+              eyebrow="Live demo stores"
+              title="Explore by category."
+              lede="Choose an industry to see the demo stores we run for it, then open one live: browse, search, add to cart and walk through checkout."
+            />
+            <div data-reveal className="mt-14">
+              <WorkDemoBrowser categories={categories} />
+            </div>
+          </div>
+        </section>
+      )}
 
       {showcase.map((entry, position) => (
         <section key={entry.key} aria-label={`${caseIdentity(entry).storeName} case`} className="border-t border-border">

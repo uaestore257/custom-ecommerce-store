@@ -9,6 +9,7 @@ import { MoneyError, toMinorUnits } from "@/lib/money";
 import { isCountryCode, isCurrencyCode, isE164Phone, isLanguageTag, isTimeZone } from "@/lib/standards";
 import { isEmail, isHexColor, isHttpUrl, isSlug } from "@/lib/validation";
 import { passwordProblem } from "@/lib/auth/password-policy";
+import { DEFAULT_TEMPLATE_KEY, isTemplateKey, type TemplateKey } from "@/lib/templates/registry";
 import type { DbProductStatus, DbStoreStatus } from "./types";
 
 export type Errors = Record<string, string>;
@@ -112,6 +113,8 @@ export interface CleanStoreOwner {
 /** Everything needed to create a store. */
 export interface CleanStoreBase extends CleanStoreProfile, CleanStoreOwner {
   status: DbStoreStatus;
+  /** The storefront template the new store starts with (registry key; presentation only). */
+  templateKey: TemplateKey;
 }
 
 /** Payment settings are the only store settings a Store Owner may change. */
@@ -171,7 +174,11 @@ export function validateStoreBase(input: unknown, ref: StoreReference) {
   const status = str(raw, "status") as DbStoreStatus;
   const errors: Errors = { ...profile.errors, ...owner.errors };
   if (!STORE_STATUS_VALUES.includes(status)) errors.status = "Choose a valid status.";
-  const values: CleanStoreBase = { ...profile.values, ...owner.values, status };
+  // Not sent (older clients) → the registry default; anything else must be a registered template.
+  const templateInput = raw.templateKey === undefined || raw.templateKey === "" ? DEFAULT_TEMPLATE_KEY : raw.templateKey;
+  if (!isTemplateKey(templateInput)) errors.templateKey = "Choose an available template.";
+  const templateKey = isTemplateKey(templateInput) ? templateInput : DEFAULT_TEMPLATE_KEY;
+  const values: CleanStoreBase = { ...profile.values, ...owner.values, status, templateKey };
   return { values, errors: clean(errors) };
 }
 
