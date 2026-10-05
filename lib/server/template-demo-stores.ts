@@ -101,7 +101,7 @@ function orderPrefix(slug: string) {
     .slice(0, 4) || "DM";
 }
 
-async function createDemoStore(db: PrismaClient, template: TemplateKey, spec: DemoStoreSpec, reference: Reference) {
+async function createDemoStore(db: PrismaClient, template: TemplateKey, spec: DemoStoreSpec, reference: Reference, actorUserId: string | null) {
   await db.$transaction(async (tx) => {
     const store = await tx.store.create({
       data: {
@@ -176,6 +176,7 @@ async function createDemoStore(db: PrismaClient, template: TemplateKey, spec: De
     });
     await recordAudit(tx, {
       action: "store.demo_provision",
+      actorUserId,
       storeId: store.id,
       targetType: "store",
       targetId: store.id,
@@ -187,7 +188,12 @@ async function createDemoStore(db: PrismaClient, template: TemplateKey, spec: De
 /** Creates every missing template demo store; see the rules at the top of this file. */
 export async function provisionTemplateDemoStores(
   db: PrismaClient,
-  options: { dryRun?: boolean; specs?: Readonly<Record<TemplateKey, DemoStoreSpec>> } = {},
+  options: {
+    dryRun?: boolean;
+    specs?: Readonly<Record<TemplateKey, DemoStoreSpec>>;
+    /** The platform owner who asked (admin button); null from the command line. */
+    actorUserId?: string | null;
+  } = {},
 ): Promise<DemoProvisionResult[]> {
   const specs = options.specs ?? TEMPLATE_DEMO_STORES;
   const results: DemoProvisionResult[] = [];
@@ -219,7 +225,7 @@ export async function provisionTemplateDemoStores(
       results.push({ template, slug: spec.slug, outcome: "would-create", detail: `${spec.products.length} products` });
       continue;
     }
-    await createDemoStore(db, template, spec, reference);
+    await createDemoStore(db, template, spec, reference, options.actorUserId ?? null);
     results.push({ template, slug: spec.slug, outcome: "created", detail: `${spec.products.length} products` });
   }
   return results;

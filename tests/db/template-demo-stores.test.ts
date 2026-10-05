@@ -9,7 +9,7 @@ import { getStorefrontContext } from "../../lib/server/storefront/catalog";
 import { provisionTemplateDemoStores } from "../../lib/server/template-demo-stores";
 import { TEMPLATE_DEMO_STORES, type DemoStoreSpec } from "../../lib/template-demo-stores";
 import type { TemplateKey } from "../../lib/templates/registry";
-import { testDb, uid } from "./helpers";
+import { testActor, testDb, uid } from "./helpers";
 
 const db = testDb();
 after(() => db.$disconnect());
@@ -33,7 +33,8 @@ test("a dry run writes nothing; a real run creates each missing demo store once,
 
   // Archive whatever demos other tests left for the four new templates, so this run decides alone.
   await db.store.updateMany({ where: { isDemo: true, templateKey: { in: ["kinetic", "maison", "market", "noor"] }, archivedAt: null }, data: { archivedAt: new Date() } });
-  const created = await provisionTemplateDemoStores(db, { specs });
+  const actor = await testActor(db);
+  const created = await provisionTemplateDemoStores(db, { specs, actorUserId: actor.userId });
   assert.deepEqual(outcome(created), {
     classic: "template-has-demo",
     atelier: "template-has-demo",
@@ -53,7 +54,7 @@ test("a dry run writes nothing; a real run creates each missing demo store once,
     const context = (await getStorefrontContext(db, store.id))!;
     assert.equal(context.store.templateKey, key);
     assert.deepEqual(context.store.paymentMethods, ["cash_on_delivery"], "no online payment on a demo store");
-    assert.ok(await db.auditEvent.findFirst({ where: { action: "store.demo_provision", storeId: store.id } }));
+    assert.ok(await db.auditEvent.findFirst({ where: { action: "store.demo_provision", storeId: store.id, actorUserId: actor.userId } }), "audited with who asked");
   }
   const noor = (await getStorefrontContext(db, (await db.store.findUniqueOrThrow({ where: { slug: specs.noor.slug } })).id))!;
   assert.equal(noor.store.language, "ar");

@@ -1,6 +1,7 @@
 // One demonstration store per registered template (lib/template-demo-stores.ts):
 // complete, valid by the admin's own product rules, and free of claims.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { hasErrors, validateProduct } from "../../lib/admin/validation";
 import { STORE_TYPES } from "../../lib/config";
@@ -74,4 +75,13 @@ test("demo copy makes no certification, guarantee or superlative claims", () => 
   for (const claim of ["certified", "guarantee", "best ", "#1", "100%", "organic", "authentic", "award", "مضمون", "ضمان", "الأفضل", "أصلي", "طبيعي"]) {
     assert.ok(!text.includes(claim), claim);
   }
+});
+
+test("the admin button runs only for the platform owner and records who pressed it", () => {
+  const actions = readFileSync(new URL("../../app/admin/actions.ts", import.meta.url), "utf8");
+  const body = actions.slice(actions.indexOf("export async function provisionTemplateDemoStoresAction"));
+  assert.match(body.slice(0, 400), /asPlatformOwner\("provisionTemplateDemoStores"/);
+  assert.match(body.slice(0, 400), /actorUserId: owner\.userId/);
+  const page = readFileSync(new URL("../../app/admin/template/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /requireAdminPage\(\)/, "the Templates page itself is platform-owner only");
 });
