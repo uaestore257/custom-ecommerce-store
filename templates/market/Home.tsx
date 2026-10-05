@@ -62,7 +62,7 @@ export function MarketHome({ store, categories, featured, shelves }: TemplateHom
               See all {category.productCount} <ChevronRight className="h-4 w-4 rtl:rotate-180" aria-hidden />
             </Link>
           </div>
-          <ul className="-mx-3 mt-3 flex snap-x scroll-px-3 gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] sm:-mx-5 sm:scroll-px-5 sm:gap-3 sm:px-5 lg:-mx-8 lg:scroll-px-8 lg:px-8">
+          <ul className="relative -mx-3 mt-3 flex snap-x scroll-px-3 gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] sm:-mx-5 sm:scroll-px-5 sm:gap-3 sm:px-5 lg:-mx-8 lg:scroll-px-8 lg:px-8">
             {products.map((product) => (
               <li key={product.id} className="w-[44%] shrink-0 snap-start sm:w-48">
                 <MarketProductCard product={product} store={store} />

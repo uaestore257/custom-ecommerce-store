@@ -285,6 +285,27 @@ Production migrations use only the separate, explicitly confirmed
 test commands require typing `DROP <database>` after the exact target and
 data-loss warning are displayed.
 
+### Template demo stores
+
+The public Work page lists live demo stores, one per storefront template
+(`lib/template-demo-stores.ts`). They are created by an additive,
+re-runnable command that never updates or deletes anything and never
+touches a client store:
+
+```bash
+# 1. Dry run: prints the target database and what would be created.
+npm run db:provision-template-demos
+# 2. Create the missing demo stores (type the database name shown above).
+npm run db:provision-template-demos -- --confirm <database name>
+```
+
+Run it with the target `DATABASE_URL` after migrations are applied. A
+template that already has a demo store, or a slug already used by any store,
+is skipped and reported. Demo stores are `isDemo`, have no owner account,
+accept cash on delivery only, show a demonstration notice and are never
+indexed. Each store's subdomain (e.g. `pulse-audio.<root domain>`) must be
+routed by the storefront wildcard for its "Ask for a walkthrough" link to open.
+
 ### Rollback
 
 Keep the previous known-good application build available for deployment.

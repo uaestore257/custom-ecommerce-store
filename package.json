@@ -21,6 +21,7 @@
     "db:seed": "node scripts/db-command.mjs seed",
     "db:reference-data": "tsx --conditions=react-server scripts/reference-data.ts",
     "db:provision-demo-owners": "tsx --conditions=react-server scripts/provision-demo-owners.ts",
+    "db:provision-template-demos": "tsx --conditions=react-server scripts/provision-template-demos.ts",
     "db:reset": "node scripts/db-command.mjs reset",
     "db:studio": "prisma studio",
     "platform:create-owner": "tsx --conditions=react-server scripts/platform-owner.ts create",

@@ -68,7 +68,7 @@ export function MarketProduct({ store, product, category, related }: TemplatePro
       {related.length > 0 && (
         <section aria-labelledby="market-related" className="pt-8">
           <h2 id="market-related" className={marketSectionTitle}>More from {category?.name ?? store.name}</h2>
-          <ul className="-mx-3 mt-3 flex snap-x scroll-px-3 gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0">
+          <ul className="relative -mx-3 mt-3 flex snap-x scroll-px-3 gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] sm:mx-0 sm:scroll-px-0 sm:px-0">
             {related.map((item) => (
               <li key={item.id} className="w-[44%] shrink-0 snap-start sm:w-48">
                 <MarketProductCard product={item} store={store} />
