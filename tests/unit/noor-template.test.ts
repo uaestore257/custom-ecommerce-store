@@ -22,11 +22,11 @@ function contrast(a: string, b: string) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-test("noor is registered with editorial copy but not showcased (no demo store or media yet)", () => {
+test("noor is registered with editorial copy and is showcased", () => {
   assert.ok(isTemplateKey("noor"));
   assert.equal(noor.manifest.key, "noor");
-  assert.equal(isShowcasedTemplate("noor"), false);
-  assert.ok(!(SHOWCASE_ORDER as readonly string[]).includes("noor"));
+  assert.equal(isShowcasedTemplate("noor"), true);
+  assert.ok((SHOWCASE_ORDER as readonly string[]).includes("noor"));
   assert.ok(TEMPLATE_EDITORIAL.noor.signatures.length >= 2);
 });
 

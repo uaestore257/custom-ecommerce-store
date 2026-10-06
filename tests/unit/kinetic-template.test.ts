@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isShowcasedTemplate, TEMPLATE_EDITORIAL } from "../../lib/platform/showcase";
+import { isShowcasedTemplate, SHOWCASE_ORDER, TEMPLATE_EDITORIAL } from "../../lib/platform/showcase";
 import { getTemplateDefinition, isTemplateKey, resolveTemplateKey } from "../../lib/templates/registry";
 import { normalizeThemeConfig, readableForeground, resolveControlTokens, themeCssVariables, validateThemeConfigInput } from "../../lib/templates/theme";
 
@@ -18,11 +18,12 @@ function contrast(a: string, b: string) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-test("kinetic is registered and resolves, but is not showcased until it has a demo store and screenshots", () => {
+test("kinetic is registered, resolves, and is showcased", () => {
   assert.ok(isTemplateKey("kinetic"));
   assert.equal(resolveTemplateKey("kinetic"), "kinetic");
   assert.equal(kinetic.manifest.key, "kinetic");
-  assert.equal(isShowcasedTemplate("kinetic"), false);
+  assert.equal(isShowcasedTemplate("kinetic"), true);
+  assert.ok((SHOWCASE_ORDER as readonly string[]).includes("kinetic"));
   assert.ok(TEMPLATE_EDITORIAL.kinetic.signatures.length >= 2);
 });
 
