@@ -168,7 +168,7 @@ test("design input is validated against the registry and only changes presentati
     storeId: storeB,
   });
   assert.ok(saved.ok, JSON.stringify(saved));
-  assert.deepEqual(saved.data, { templateKey: "atelier", theme: { palette: "stone", hero: "split" }, isDemo: false });
+  assert.deepEqual(saved.data, { templateKey: "atelier", theme: { palette: "stone", hero: "split" }, isDemo: false, workServiceSlug: null });
   const after = await db.store.findUniqueOrThrow({ where: { id: store } });
   assert.equal(after.templateKey, "atelier");
   assert.deepEqual(after.themeConfig, { palette: "stone", hero: "split" });

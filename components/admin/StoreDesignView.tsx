@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Check, ExternalLink } from "lucide-react";
-import { setStoreDemoAction, updateStoreDesignAction } from "@/app/admin/actions";
+import { updateStoreDesignAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { buttonClass, Card, Notice, PageHeader } from "@/components/ui";
+import { StoreDemoControls } from "./StoreDemoControls";
 import type { AdminStoreDesign } from "@/lib/server/admin/design";
 import type { TemplateKey } from "@/lib/templates/registry";
 import type { TemplateManifest, ThemeChoice } from "@/lib/templates/types";
@@ -231,40 +232,9 @@ export function StoreDesignView({
         </p>
       </ConfirmDialog>
 
-      {platform && <DemoStoreCard storeId={storeId} isDemo={design.isDemo} />}
+      {platform && (
+        <StoreDemoControls storeId={storeId} isDemo={design.isDemo} workServiceSlug={design.workServiceSlug} />
+      )}
     </>
-  );
-}
-
-/** Platform owner only: a demo store is a normal store that showcases a template and is never indexed. */
-function DemoStoreCard({ storeId, isDemo }: { storeId: string; isDemo: boolean }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState("");
-  return (
-    <Card className="mt-10 p-5 sm:p-6">
-      <h2 className="text-lg font-semibold">Template demo store</h2>
-      <p className="mt-1 text-sm text-slate-600">
-        {isDemo
-          ? "This store is a live demo of its template: it is linked from the template library, shows a demonstration notice, and is hidden from search engines."
-          : "Mark this store as a live demo of its template. It stays a normal store; it is linked from the template library and hidden from search engines."}
-      </p>
-      {error && <Notice tone="warning" className="mt-3">{error}</Notice>}
-      <button
-        type="button"
-        disabled={pending}
-        className={`${buttonClass("secondary")} mt-4`}
-        onClick={() =>
-          startTransition(async () => {
-            setError("");
-            const result = await setStoreDemoAction(storeId, !isDemo);
-            if (result.ok) router.refresh();
-            else setError(result.error);
-          })
-        }
-      >
-        {pending ? "Saving…" : isDemo ? "Stop using as a demo" : "Use as a template demo"}
-      </button>
-    </Card>
   );
 }

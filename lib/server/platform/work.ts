@@ -1,7 +1,13 @@
 import "server-only";
 import { cache } from "react";
 import { isShowcasedTemplate, TEMPLATE_EDITORIAL } from "@/lib/platform/showcase";
-import { STORE_DEMO_SERVICE_SLUG, storeIndustryLabel, workCategories, type WorkCategory, type WorkDemo } from "@/lib/platform/work";
+import {
+  resolveWorkServiceSlug,
+  storeIndustryLabel,
+  workCategories,
+  type WorkCategory,
+  type WorkDemo,
+} from "@/lib/platform/work";
 import type { Client } from "@/lib/server/admin/common";
 import { getDb } from "@/lib/server/db";
 import { storefrontPreviewUrlForSlug, storeHostConfig } from "@/lib/store-host";
@@ -31,6 +37,7 @@ export async function loadWorkDemoStores(client: Client, urlForSlug: (slug: stri
       name: true,
       slug: true,
       businessType: true,
+      workServiceSlug: true,
       templateKey: true,
       defaultLanguage: true,
       _count: { select: { products: { where: { status: "ACTIVE" } } } },
@@ -59,10 +66,13 @@ export async function loadWorkDemoStores(client: Client, urlForSlug: (slug: stri
     if (!url || !isTemplateKey(store.templateKey)) return [];
     const key = store.templateKey;
     const editorial = TEMPLATE_EDITORIAL[key];
+    const serviceSlug = resolveWorkServiceSlug(store.workServiceSlug);
+    if (!serviceSlug) return [];
     return [
       {
         name: store.name,
         industry: storeIndustryLabel(store.businessType),
+        serviceSlug,
         templateKey: key,
         templateName: getTemplateDefinition(key).manifest.name,
         tagline: tagline.get(store.id) ?? null,
@@ -84,7 +94,13 @@ export const getWorkCategories = cache(async (): Promise<WorkCategory[]> => {
     const config = storeHostConfig();
     const baseUrl = process.env.BETTER_AUTH_URL ?? "";
     const stores = await loadWorkDemoStores(getDb(), (slug) => storefrontPreviewUrlForSlug(slug, baseUrl, config));
-    return workCategories({ [STORE_DEMO_SERVICE_SLUG]: stores });
+    const byService: Record<string, WorkDemo[]> = {};
+    for (const demo of stores) {
+      const bucket = byService[demo.serviceSlug] ?? [];
+      bucket.push(demo);
+      byService[demo.serviceSlug] = bucket;
+    }
+    return workCategories(byService);
   } catch (error) {
     console.error("Work: demo store lookup failed", error);
     return [];

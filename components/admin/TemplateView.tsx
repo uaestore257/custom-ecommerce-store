@@ -8,7 +8,7 @@ import { TemplateDemoStoresCard } from "./TemplateDemoStoresCard";
 export interface TemplateLibraryEntry {
   manifest: TemplateManifest;
   storeCount: number;
-  demos: { name: string; url: string }[];
+  demos: { id: string; name: string; slug: string; url: string | null }[];
 }
 
 const yesNo = (value: boolean) => (value ? "Yes" : "No");
@@ -19,7 +19,13 @@ const yesNo = (value: boolean) => (value ? "Yes" : "No");
  * and its live demo stores. Store owners choose a template on their
  * store's Design page.
  */
-export function TemplateView({ templates }: { templates: TemplateLibraryEntry[] }) {
+export function TemplateView({
+  templates,
+  demoStores,
+}: {
+  templates: TemplateLibraryEntry[];
+  demoStores: { id: string; name: string; templateKey: string }[];
+}) {
   return (
     <>
       <PageHeader
@@ -36,6 +42,7 @@ export function TemplateView({ templates }: { templates: TemplateLibraryEntry[] 
       <TemplateDemoStoresCard
         templateNames={Object.fromEntries(templates.map(({ manifest }) => [manifest.key, manifest.name]))}
         withDemo={templates.filter(({ demos }) => demos.length > 0).length}
+        demoStores={demoStores.map(({ id, name, templateKey }) => ({ id, name, template: templateKey }))}
       />
 
       <ul className="grid gap-6 lg:grid-cols-2">
@@ -70,8 +77,8 @@ export function TemplateView({ templates }: { templates: TemplateLibraryEntry[] 
               <p className="mt-1 text-sm text-slate-700">{manifest.bestFor.join(", ")}</p>
 
               <div className="mt-5 border-t border-slate-200 pt-4 text-sm">
-                {demos.length > 0 ? (
-                  demos.map((demo) => (
+                {demos.some((demo) => demo.url) ? (
+                  demos.filter((demo): demo is typeof demo & { url: string } => demo.url !== null).map((demo) => (
                     <a key={demo.url} href={demo.url} target="_blank" rel="noreferrer" className="mr-4 inline-flex items-center gap-1 font-semibold text-teal-700 hover:underline">
                       Live demo: {demo.name} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                     </a>

@@ -1,5 +1,5 @@
 # Local PostgreSQL for development and tests (no cloud account needed).
-# Use a unique project name when you need an isolated volume.
+# One canonical local PostgreSQL instance; preserve its named volume.
 # Creates shop_dev and shop_test, matching .env.example.
 services:
   postgres:
@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: shop # local development only
       POSTGRES_DB: shop_dev
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./prisma/docker-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
