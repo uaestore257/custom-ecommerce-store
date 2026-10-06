@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   buildDemoStoreLinks,
@@ -10,6 +10,8 @@ import {
   studioCssVariables,
   TEMPLATE_EDITORIAL,
 } from "../../lib/platform/showcase";
+import { showcaseCaptureKeyForStore } from "../../lib/platform/showcase-capture";
+import { TEMPLATE_DEMO_STORES } from "../../lib/template-demo-stores";
 import { getTemplateDefinition, TEMPLATE_KEYS } from "../../lib/templates/registry";
 import { readableForeground, semanticCssVariables, themeCssVariables } from "../../lib/templates/theme";
 
@@ -95,6 +97,16 @@ test("showcased templates are registered, listed once, with case copy and screen
     for (const kind of ["desktop", "tall", "mobile"]) {
       assert.ok(existsSync(new URL(`../../public/showcase/${key}-${kind}.jpg`, import.meta.url)), `${key}-${kind}.jpg`);
     }
+  }
+});
+
+test("showcase screenshots are reserved for the demo-store slugs they were captured from", () => {
+  const captureScript = readFileSync(new URL("../../scripts/capture-showcase.mjs", import.meta.url), "utf8");
+  for (const key of SHOWCASE_ORDER) {
+    const slug = TEMPLATE_DEMO_STORES[key].slug;
+    assert.equal(showcaseCaptureKeyForStore(key, slug), key);
+    assert.equal(showcaseCaptureKeyForStore(key, `${slug}-another-store`), null);
+    assert.match(captureScript, new RegExp(`${key}: \\{ slug: "${slug}"`), `${key} capture uses its configured demo store`);
   }
 });
 
