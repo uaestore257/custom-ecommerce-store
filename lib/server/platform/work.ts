@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import { isShowcasedTemplate, TEMPLATE_EDITORIAL } from "@/lib/platform/showcase";
+import { TEMPLATE_EDITORIAL } from "@/lib/platform/showcase";
+import { showcaseCaptureKeyForStore } from "@/lib/platform/showcase-capture";
 import {
   resolveWorkServiceSlug,
   storeIndustryLabel,
@@ -45,14 +46,6 @@ export async function loadWorkDemoStores(client: Client, urlForSlug: (slug: stri
     },
   });
 
-  // The showcase screenshots (public/showcase) were captured from each
-  // showcased template's FIRST demo store — the same one the case studies
-  // link to (listTemplateDemoStores order) — so only that store may use them.
-  const capturedStore = new Map<TemplateKey, string>();
-  for (const store of stores) {
-    if (isTemplateKey(store.templateKey) && !capturedStore.has(store.templateKey)) capturedStore.set(store.templateKey, store.id);
-  }
-
   const live = stores.filter((store) => store._count.products > 0 && isTemplateKey(store.templateKey));
   if (live.length === 0) return [];
 
@@ -81,7 +74,7 @@ export async function loadWorkDemoStores(client: Client, urlForSlug: (slug: stri
         headline: editorial.headline,
         signatures: editorial.signatures.map((signature) => signature.title),
         url,
-        screenshots: isShowcasedTemplate(key) && capturedStore.get(key) === store.id ? key : null,
+        screenshots: showcaseCaptureKeyForStore(key, store.slug),
       },
     ];
   });

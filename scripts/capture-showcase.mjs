@@ -19,8 +19,8 @@ const { chromium } = require("playwright");
 const base = (process.argv[2] ?? "localhost:3000").replace(/\/+$/, "");
 // Tall captures stop before the sample products, which have no photographs yet.
 const STORES = {
-  atelier: { slug: "nest-and-oak-demo", name: "Nest & Oak Home", tall: 1380 },
-  classic: { slug: "threadline-demo", name: "Threadline Boutique", tall: 1130 },
+  atelier: { slug: "nest-and-oak", name: "Nest & Oak Home", tall: 1380 },
+  classic: { slug: "threadline", name: "Threadline Boutique", tall: 1130 },
   kinetic: { slug: "pulse-audio", name: "Pulse Audio", tall: 1380 },
   maison: { slug: "maison-lumiere", name: "Maison Lumière", tall: 1380 },
   market: { slug: "daily-basket", name: "Daily Basket", tall: 1380 },
