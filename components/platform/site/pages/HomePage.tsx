@@ -7,15 +7,12 @@ import { PlatformTeaser } from "../home/PlatformTeaser";
 import { ServiceMarquee } from "../home/ServiceMarquee";
 import { ServicesExplorer } from "../home/ServicesExplorer";
 import { WhyUs } from "../home/WhyUs";
-import { ArrowLink, CONTAINER, SectionHeading, StudioMain } from "../primitives";
+import { CONTAINER, SectionHeading, StudioMain } from "../primitives";
 import { ProcessLine } from "../ProcessLine";
-import { NextStoreCard } from "../work/NextStoreCard";
-import { WorkCase } from "../work/WorkCase";
 
 /**
- * The homepage, in the order a client decides: see the work, see what we
- * build, see why us, then (briefly) what it runs on, how it happens and
- * how to start.
+ * The homepage presents the agency, its services, reasons to work together,
+ * the platform underneath, and how to get started.
  */
 export async function HomePage() {
   const [showcase, agency] = await Promise.all([getTemplateShowcase(), getAgencyProfile()]);
@@ -26,33 +23,10 @@ export async function HomePage() {
       {lead && <Hero tagline={agency.tagline} lead={lead} second={second} />}
       <ServiceMarquee />
 
-      <section aria-labelledby="work-title">
-        <div className={`${CONTAINER} py-24 lg:py-36`}>
-          <div className="flex flex-wrap items-end justify-between gap-8">
-            <SectionHeading
-              index="01"
-              eyebrow="Selected work"
-              id="work-title"
-              title="Live stores, not mock-ups."
-              lede="Every store below is running on our platform right now. Open one, browse the collection, add to the cart and walk through checkout."
-            />
-            <ArrowLink href="/portfolio">All work</ArrowLink>
-          </div>
-          <div className="mt-20 space-y-28 lg:mt-28 lg:space-y-40">
-            {showcase.map((entry, position) => (
-              <WorkCase key={entry.key} entry={entry} index={position + 1} reverse={position % 2 === 1} detailsHref="/portfolio#live-demos" />
-            ))}
-          </div>
-          <div className="mt-28 lg:mt-36">
-            <NextStoreCard />
-          </div>
-        </div>
-      </section>
-
       <section aria-labelledby="build-title" className="border-t border-border">
         <div className={`${CONTAINER} py-24 lg:py-36`}>
           <SectionHeading
-            index="02"
+            index="01"
             eyebrow="What we build"
             id="build-title"
             title="Everything your business needs online."
@@ -69,7 +43,7 @@ export async function HomePage() {
 
       <section aria-labelledby="process-title">
         <div className={`${CONTAINER} py-24 lg:py-36`}>
-          <SectionHeading index="05" eyebrow="Process" id="process-title" title="From first call to a store that grows." />
+          <SectionHeading index="04" eyebrow="Process" id="process-title" title="From first call to a store that grows." />
           <div className="mt-16 lg:mt-20">
             <ProcessLine />
           </div>

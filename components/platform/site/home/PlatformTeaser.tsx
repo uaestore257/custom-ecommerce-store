@@ -17,7 +17,7 @@ export function PlatformTeaser() {
     <Tone tone="ink" aria-labelledby="platform-teaser-title" className="relative overflow-hidden">
       <div className={`${CONTAINER} grid gap-14 py-24 lg:grid-cols-12 lg:py-32`}>
         <div data-reveal className="lg:col-span-5">
-          <Eyebrow index="04">The platform</Eyebrow>
+          <Eyebrow index="03">The platform</Eyebrow>
           <h2 id="platform-teaser-title" className="mt-6 text-balance font-heading text-5xl leading-[1.02] tracking-tight sm:text-6xl rtl:tracking-normal">
             Built on our own production commerce platform.
           </h2>

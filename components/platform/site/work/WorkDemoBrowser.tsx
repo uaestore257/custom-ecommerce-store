@@ -1,34 +1,53 @@
 "use client";
 
-import Image from "next/image";
-import { useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { ArrowRight } from "lucide-react";
-import type { WorkCategory, WorkDemo } from "@/lib/platform/work";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import type { WorkCategory } from "@/lib/platform/work";
 import { focusRing } from "../styles";
-import { BrowserShot, PhoneShot } from "./DeviceFrames";
-import { SHOWCASE_MEDIA } from "./showcase-media";
-
-const EYEBROW = "font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground rtl:tracking-normal";
+import { DemoStoreShowcase } from "./DemoStoreShowcase";
 
 /**
  * Work's live demos: one tab per Services category that has a demo (WAI-ARIA
- * tabs: arrow keys, mirrored in RTL, Home/End). A category lists ALL its
- * demos; choosing one opens its short details and the "View Live" link.
+ * tabs: arrow keys, mirrored in RTL, Home/End). Every demo in the selected
+ * category uses the shared editorial showcase presentation.
  * Categories arrive already filtered on the server: a category is only here
  * when it has a demo.
  */
 export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) {
   const [active, setActive] = useState(categories[0]?.slug);
-  const [chosen, setChosen] = useState<string | null>(null);
   const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const details = useRef<HTMLHeadingElement>(null);
-  if (categories.length === 0) return null;
   const current = categories.find((category) => category.slug === active) ?? categories[0];
-  const demo = current.demos.find((candidate) => candidate.url === chosen) ?? null;
+
+  useEffect(() => {
+    const panel = document.getElementById(`work-panel-${current?.slug}`);
+    const elements = Array.from(panel?.querySelectorAll<HTMLElement>("[data-reveal]:not([data-shown])") ?? []);
+    if (elements.length === 0) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) {
+      elements.forEach((element) => element.setAttribute("data-shown", ""));
+      return;
+    }
+    const viewport = window.innerHeight;
+    for (const element of elements) {
+      const rect = element.getBoundingClientRect();
+      if (rect.top < viewport && rect.bottom > 0) element.setAttribute("data-shown", "");
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.setAttribute("data-shown", "");
+          observer.unobserve(entry.target);
+        }
+      },
+      { rootMargin: "0px 0px -8% 0px", threshold: 0.12 },
+    );
+    for (const element of elements) if (!element.hasAttribute("data-shown")) observer.observe(element);
+    return () => observer.disconnect();
+  }, [current?.slug]);
+
+  if (categories.length === 0) return null;
 
   function selectCategory(slug: string) {
     setActive(slug);
-    setChosen(null);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -43,16 +62,6 @@ export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) 
     const slug = categories[next].slug;
     selectCategory(slug);
     tabs.current[slug]?.focus();
-  }
-
-  function choose(url: string) {
-    setChosen(url);
-    // Bring the details into view and move focus there (after they render).
-    requestAnimationFrame(() => {
-      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      details.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
-      details.current?.focus({ preventScroll: true });
-    });
   }
 
   return (
@@ -88,131 +97,16 @@ export function WorkDemoBrowser({ categories }: { categories: WorkCategory[] }) 
         })}
       </div>
 
-      <div role="tabpanel" id={`work-panel-${current.slug}`} aria-label={current.title} className="mt-10">
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {current.demos.map((item) => (
-            <li key={item.url}>
-              <DemoCard demo={item} selected={item.url === chosen} onChoose={() => choose(item.url)} />
-            </li>
-          ))}
-        </ul>
-
-        {demo && (
-          <section id="work-demo-details" aria-labelledby="work-demo-details-title" className="mt-16 scroll-mt-28 border-t border-border pt-16">
-            <DemoDetails demo={demo} index={current.demos.indexOf(demo) + 1} headingRef={details} />
-          </section>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** One demo in a category's list; choosing it opens its short details. */
-function DemoCard({ demo, selected, onChoose }: { demo: WorkDemo; selected: boolean; onChoose: () => void }) {
-  const media = demo.screenshots ? SHOWCASE_MEDIA[demo.screenshots] : null;
-  return (
-    <button
-      type="button"
-      onClick={onChoose}
-      aria-expanded={selected}
-      aria-controls="work-demo-details"
-      className={`group flex h-full w-full flex-col border bg-surface text-start transition-colors duration-500 ${focusRing} ${
-        selected ? "border-accent" : "border-border hover:border-accent/60"
-      }`}
-    >
-      {media ? (
-        <span className="relative block aspect-[16/10] w-full overflow-hidden bg-white">
-          <Image
-            src={media.desktop}
-            alt=""
-            sizes="(min-width: 1024px) 30vw, (min-width: 640px) 48vw, 100vw"
-            placeholder="blur"
-            className="h-full w-full object-cover object-top transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+      <div role="tabpanel" id={`work-panel-${current.slug}`} aria-label={current.title} className="mt-20 space-y-28 lg:mt-28 lg:space-y-40">
+        {current.demos.map((demo, index) => (
+          <DemoStoreShowcase
+            key={demo.url}
+            demo={demo}
+            index={index + 1}
+            reverse={index % 2 === 1}
+            priority={index === 0}
           />
-        </span>
-      ) : (
-        <span aria-hidden className="flex aspect-[16/10] w-full flex-col justify-end bg-muted p-6">
-          <span className="truncate font-heading text-4xl leading-tight text-foreground/90">{demo.name}</span>
-        </span>
-      )}
-      <span className="flex w-full items-end justify-between gap-4 p-6">
-        <span className="min-w-0">
-          <span className={`block ${EYEBROW}`}>
-            {[demo.industry, `${demo.templateName} template`].filter(Boolean).join(" · ")}
-          </span>
-          <span className="mt-3 block truncate font-heading text-3xl">{demo.name}</span>
-        </span>
-        <ArrowRight
-          className={`mb-2 h-5 w-5 shrink-0 text-accent transition-transform duration-500 rtl:rotate-180 ${selected ? "rotate-90 rtl:rotate-90" : "group-hover:translate-x-1"}`}
-          aria-hidden
-        />
-      </span>
-    </button>
-  );
-}
-
-/** A demo's short details, with the way into the live store. */
-function DemoDetails({ demo, index, headingRef }: { demo: WorkDemo; index: number; headingRef: RefObject<HTMLHeadingElement | null> }) {
-  const media = demo.screenshots ? SHOWCASE_MEDIA[demo.screenshots] : null;
-  let host = demo.name;
-  try {
-    host = new URL(demo.url).host;
-  } catch {
-    // keep the store name
-  }
-  return (
-    <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-16">
-      <div className="relative pb-14 pe-6 sm:pe-12 lg:col-span-7">
-        {media ? (
-          <>
-            <BrowserShot image={media.tall} alt={`${demo.name} homepage, built on the ${demo.templateName} template`} host={host} />
-            <div className="absolute bottom-0 end-0 w-[30%] max-w-[13rem]">
-              <PhoneShot image={media.mobile} alt={`${demo.name} on a phone`} />
-            </div>
-          </>
-        ) : (
-          <div aria-hidden className="flex aspect-[16/10] flex-col justify-between border border-border bg-muted p-8">
-            <span className={EYEBROW}>{host}</span>
-            <span className="font-heading text-5xl leading-tight text-foreground/90 sm:text-6xl">{demo.name}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="lg:col-span-5">
-        <p className={`flex items-center gap-4 ${EYEBROW}`}>
-          <span className="text-accent">{String(index).padStart(2, "0")}</span>
-          <span aria-hidden className="h-px w-8 bg-border" />
-          {demo.industry ?? `${demo.templateName} template`}
-        </p>
-        <h3
-          ref={headingRef}
-          id="work-demo-details-title"
-          tabIndex={-1}
-          className="mt-6 text-balance font-heading text-5xl leading-[0.98] tracking-tight focus:outline-none sm:text-6xl xl:text-7xl rtl:tracking-normal"
-        >
-          {demo.name}
-        </h3>
-        <p className="mt-6 max-w-md text-pretty text-lg leading-relaxed text-foreground/80">{demo.tagline ?? demo.headline}</p>
-        {demo.tagline && <p className="mt-3 max-w-md text-pretty text-base leading-relaxed text-muted-foreground">{demo.headline}</p>}
-        <ul className="mt-8 border-t border-border">
-          {demo.signatures.map((signature) => (
-            <li key={signature} className="flex items-baseline gap-4 border-b border-border py-3.5 text-sm">
-              <span aria-hidden className="h-1.5 w-1.5 shrink-0 translate-y-[-2px] bg-accent" />
-              {signature}
-            </li>
-          ))}
-        </ul>
-        <p className={`mt-6 ${EYEBROW}`}>{demo.templateName} template · Live demo store</p>
-        <a
-          href={demo.url}
-          target="_blank"
-          rel="noopener"
-          aria-label={`View Live: open the live ${demo.name} demo store (opens in a new tab)`}
-          className={`group mt-8 inline-flex min-h-12 items-center justify-center gap-3 rounded-md bg-accent px-6 text-sm font-medium text-accent-foreground transition-[filter,transform] duration-300 hover:brightness-110 active:scale-[0.98] ${focusRing}`}
-        >
-          View Live
-          <ArrowRight className="h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 rtl:rotate-180 rtl:group-hover:-translate-x-1" aria-hidden />
-        </a>
+        ))}
       </div>
     </div>
   );

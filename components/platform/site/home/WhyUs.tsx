@@ -17,7 +17,7 @@ export function WhyUs() {
   return (
     <Tone tone="paper" aria-labelledby="why-title">
       <div className={`${CONTAINER} py-24 lg:py-36`}>
-        <SectionHeading index="03" eyebrow="Why work with us" id="why-title" title="Beautiful outside. Serious inside." />
+        <SectionHeading index="02" eyebrow="Why work with us" id="why-title" title="Beautiful outside. Serious inside." />
         <ul className="mt-16 grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
           {REASONS.map((reason, index) => (
             <li
