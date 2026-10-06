@@ -46,10 +46,11 @@ test("Services keeps its categories, order and items (Work only reads them)", ()
 
 // ---------- Work: the Services categories that have a live demo ----------
 
-const demo = (name: string, serviceSlug = "ecommerce"): WorkDemo => ({
+const demo = (name: string, serviceSlug = "ecommerce", workOrder: number | null = null): WorkDemo => ({
   name,
   industry: "Furniture",
   serviceSlug,
+  workOrder,
   templateKey: "classic",
   templateName: "Classic",
   tagline: null,
@@ -57,6 +58,13 @@ const demo = (name: string, serviceSlug = "ecommerce"): WorkDemo => ({
   signatures: ["One", "Two"],
   url: `https://${name.toLowerCase()}.example/`,
   screenshots: null,
+});
+
+test("Work demos sort by explicit display order, with ties and blank values stable", () => {
+  const category = workCategories({
+    ecommerce: [demo("Unnumbered"), demo("Second", "ecommerce", 2), demo("First", "ecommerce", 1), demo("First tie", "ecommerce", 1)],
+  })[0];
+  assert.deepEqual(category.demos.map((item) => item.name), ["First", "First tie", "Second", "Unnumbered"]);
 });
 
 test("Work's categories ARE the Services categories, in Services order, shown only when they have a demo", () => {
@@ -116,6 +124,7 @@ test("the Work page reads demos through the server allow-list, never a store id 
   assert.match(loader, /status: "ACTIVE"/);
   assert.match(loader, /archivedAt: null/);
   assert.match(loader, /workServiceSlug: true/);
+  assert.match(loader, /workOrder: true/);
   assert.match(loader, /resolveWorkServiceSlug\(store\.workServiceSlug\)/);
   assert.doesNotMatch(loader, /resolveWorkServiceSlug\(store\.businessType/);
   assert.ok(!/searchParams|headers\(|cookies\(/.test(loader), "no request input decides which stores are listed");
@@ -153,9 +162,17 @@ test("platform Work-category controls use canonical Services categories and are 
   assert.match(admin, /setStoreWorkServiceCategoryAction/);
   assert.match(action, /asPlatformOwner\("setStoreWorkServiceCategory"/);
   assert.match(permissions, /setStoreWorkServiceCategoryAction: "platform-owner"/);
+  assert.match(admin, /Work display order/);
+  assert.match(admin, /setStoreWorkOrderAction/);
+  assert.match(action, /asPlatformOwner\("setStoreWorkOrder"/);
+  assert.match(permissions, /setStoreWorkOrderAction: "platform-owner"/);
   const overview = read("components/admin/StoreOverviewView.tsx");
   assert.match(overview, /<StoreDemoControls/);
   assert.match(overview, /layout="inline"/, "the platform control is adjacent to Preview storefront on Manage");
+  const suspension = read("components/admin/StorePlatformControls.tsx");
+  assert.match(suspension, /Suspend store/);
+  assert.match(suspension, /Delete store/);
+  assert.match(suspension, /archiveStoreAction/, "the Delete store option uses reversible archive behavior");
 });
 
 // ---------- New store: template choice ----------

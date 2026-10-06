@@ -367,6 +367,8 @@ model Store {
   isDemo      Boolean @default(false)
   /// Explicit public Work category slug; validated against SERVICE_CATEGORIES in the application.
   workServiceSlug String? @db.VarChar(40)
+  /// Optional display order within the assigned public Work category (lower first).
+  workOrder       Int?
 
   // Branding and contact
   logoUrl      String?

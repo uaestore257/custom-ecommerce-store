@@ -35,6 +35,7 @@ export type AuditAction =
   | "store.design_update"
   | "store.demo_flag"
   | "store.work_service_category"
+  | "store.work_order"
   | "store.demo_provision"
   | "order.status_change"
   | "order.cancel"

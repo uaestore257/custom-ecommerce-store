@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
-import { Ban, PlayCircle, UserRound } from "lucide-react";
-import { setStoreOwnerAction, setStoreStatusAction } from "@/app/admin/actions";
+import { Archive, Ban, PlayCircle, UserRound } from "lucide-react";
+import { archiveStoreAction, setStoreOwnerAction, setStoreStatusAction } from "@/app/admin/actions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { buttonClass, Card, errorProps, Field, inputClass } from "@/components/ui";
@@ -115,6 +115,7 @@ export function StoreOwnerCard({ store }: { store: AdminStoreDetail }) {
 export function StoreSuspensionCard({ store }: { store: AdminStoreDetail }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const suspended = store.status === "SUSPENDED";
@@ -140,17 +141,23 @@ export function StoreSuspensionCard({ store }: { store: AdminStoreDetail }) {
           : "Suspending blocks the store without deleting anything: products, settings, owners and orders are kept."}
       </p>
       {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
-      {suspended ? (
-        <button type="button" disabled={pending} className={`${buttonClass("primary")} mt-4`} onClick={() => change("ACTIVE")}>
-          <PlayCircle className="h-4 w-4" aria-hidden />
-          {pending ? "Reactivating…" : "Reactivate store"}
+      <div className="mt-4 flex flex-wrap gap-3">
+        {suspended ? (
+          <button type="button" disabled={pending} className={buttonClass("primary")} onClick={() => change("ACTIVE")}>
+            <PlayCircle className="h-4 w-4" aria-hidden />
+            {pending ? "Reactivating…" : "Reactivate store"}
+          </button>
+        ) : (
+          <button type="button" disabled={pending} className={buttonClass("secondary")} onClick={() => setConfirming(true)}>
+            <Ban className="h-4 w-4" aria-hidden />
+            Suspend store
+          </button>
+        )}
+        <button type="button" disabled={pending} className={buttonClass("danger")} onClick={() => setConfirmingArchive(true)}>
+          <Archive className="h-4 w-4" aria-hidden />
+          Delete store
         </button>
-      ) : (
-        <button type="button" disabled={pending} className={`${buttonClass("secondary")} mt-4`} onClick={() => setConfirming(true)}>
-          <Ban className="h-4 w-4" aria-hidden />
-          Suspend store
-        </button>
-      )}
+      </div>
       <ConfirmDialog
         open={confirming}
         title={`Suspend ${store.name}?`}
@@ -160,6 +167,23 @@ export function StoreSuspensionCard({ store }: { store: AdminStoreDetail }) {
         onConfirm={() => change("SUSPENDED")}
       >
         The store is blocked but nothing is deleted. You can reactivate it here at any time.
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirmingArchive}
+        title={`Delete ${store.name}?`}
+        confirmLabel={pending ? "Archiving…" : "Delete store"}
+        danger
+        onCancel={() => setConfirmingArchive(false)}
+        onConfirm={() =>
+          startTransition(async () => {
+            const result = await archiveStoreAction(store.id);
+            setConfirmingArchive(false);
+            if (result.ok) router.push("/admin/stores");
+            else setError(result.error);
+          })
+        }
+      >
+        This safely archives the store; it does not permanently delete anything. The store and its data can be restored from the archived stores list.
       </ConfirmDialog>
     </Card>
   );

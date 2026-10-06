@@ -23,6 +23,8 @@ export interface WorkDemo {
   industry: string | null;
   /** Canonical Services category slug for the public Work tab. */
   serviceSlug: string;
+  /** Optional display order within the category; lower numbers appear first. */
+  workOrder: number | null;
   templateKey: TemplateKey;
   templateName: string;
   /** The store's own tagline, in its default language. */
@@ -74,6 +76,11 @@ export function storeIndustryLabel(businessType: string | null | undefined): str
 export function workCategories(demos: DemosByService, services: readonly ServiceCategory[] = SERVICE_CATEGORIES): WorkCategory[] {
   return services.flatMap((category) => {
     const list = Object.hasOwn(demos, category.slug) ? (demos[category.slug] ?? []) : [];
-    return list.length > 0 ? [{ slug: category.slug, title: category.title, demos: list }] : [];
+    const ordered = [...list].sort((left, right) => {
+      if (left.workOrder === null) return right.workOrder === null ? 0 : 1;
+      if (right.workOrder === null) return -1;
+      return left.workOrder - right.workOrder;
+    });
+    return ordered.length > 0 ? [{ slug: category.slug, title: category.title, demos: ordered }] : [];
   });
 }

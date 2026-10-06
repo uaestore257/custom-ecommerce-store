@@ -119,6 +119,7 @@ export async function getAdminStoreDetail(client: Client, storeId: string): Prom
     ...toSummary({ ...store, _count: { products: store._count.products } }, labels),
     isDemo: store.isDemo,
     workServiceSlug: store.workServiceSlug,
+    workOrder: store.workOrder,
     timezone: store.timezone,
     defaultLanguage: store.defaultLanguage,
     languages: store.languages.map((l) => l.languageCode),

@@ -84,6 +84,7 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   updateStoreDesignAction: () => actions.updateStoreDesignAction(t.storeId, { templateKey: "atelier", theme: { palette: "charcoal" } }),
   setStoreDemoAction: () => actions.setStoreDemoAction(t.storeId, true),
   setStoreWorkServiceCategoryAction: () => actions.setStoreWorkServiceCategoryAction(t.storeId, "websites"),
+  setStoreWorkOrderAction: () => actions.setStoreWorkOrderAction(t.storeId, 2),
   provisionTemplateDemoStoresAction: () => actions.provisionTemplateDemoStoresAction(),
   updateAgencySettingsAction: () => actions.updateAgencySettingsAction({ platformName: "Hijacked agency", contactEmail: "attacker@example.com" }),
   createProductAction: () => actions.createProductAction(t.storeId, { name: "Injected", sku: `INJ-${uid()}` }),

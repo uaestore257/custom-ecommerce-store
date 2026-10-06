@@ -39,6 +39,7 @@ export const ACTION_PERMISSIONS = {
   updateStoreDesignAction: "store-owner",
   setStoreDemoAction: "platform-owner",
   setStoreWorkServiceCategoryAction: "platform-owner",
+  setStoreWorkOrderAction: "platform-owner",
   provisionTemplateDemoStoresAction: "platform-owner",
   // Agency settings: the public agency website's profile (platform data).
   updateAgencySettingsAction: "platform-owner",

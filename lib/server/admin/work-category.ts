@@ -41,3 +41,37 @@ export async function setStoreWorkServiceCategory(
     return { ok: true, data: { workServiceSlug }, message: "Work category saved." };
   });
 }
+
+/** Set or clear this store's explicit display order within its Work category. */
+export async function setStoreWorkOrder(
+  actor: PlatformOwner,
+  client: PrismaClient,
+  storeId: string,
+  value: unknown,
+): Promise<ActionResult<{ workOrder: number | null }>> {
+  const workOrder = value === null ? null : value;
+  if (workOrder !== null && (typeof workOrder !== "number" || !Number.isInteger(workOrder) || workOrder < 1 || workOrder > 9999)) {
+    return {
+      ok: false,
+      error: "Choose a whole number from 1 to 9999.",
+      fieldErrors: { workOrder: "Enter a whole number from 1 to 9999." },
+    };
+  }
+
+  return client.$transaction(async (tx) => {
+    const updated = await tx.store.updateMany({
+      where: { id: storeId, archivedAt: null },
+      data: { workOrder },
+    });
+    if (updated.count !== 1) return { ok: false, error: "This store does not exist or has been archived." };
+    await recordAudit(tx, {
+      action: "store.work_order",
+      actorUserId: actor.userId,
+      storeId,
+      targetType: "store",
+      targetId: storeId,
+      metadata: { workOrder },
+    });
+    return { ok: true, data: { workOrder }, message: "Work display order saved." };
+  });
+}
