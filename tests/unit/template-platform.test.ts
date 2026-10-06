@@ -123,13 +123,26 @@ test("the Work page reads demos through the server allow-list, never a store id 
   for (const privateField of ["contactEmail", "contactPhone", "orders", "customers", "memberships", "paymentAccounts", "paymentMethods"]) {
     assert.ok(!select.includes(privateField), `${privateField} is never read`);
   }
+  const homepage = read("components/platform/site/pages/HomePage.tsx");
+  assert.match(homepage, /getTemplateShowcase/, "the homepage loads demo stores for the Hero");
+  assert.match(homepage, /<Hero tagline=\{agency\.tagline\} lead=\{lead\} second=\{second\}/, "the homepage Hero receives real demo-store entries");
+  assert.doesNotMatch(homepage, /WorkCase|NextStoreCard|Live stores, not mock-ups/, "the homepage does not render the former full-page demo-store gallery");
+  const hero = read("components/platform/site/home/Hero.tsx");
+  for (const pattern of [/SHOWCASE_MEDIA/, /TemplateShowcaseEntry/, /BrowserShot/, /PhoneShot/, /Live demo stores/]) {
+    assert.match(hero, pattern, "the homepage Hero displays the real desktop and mobile demo-store captures");
+  }
+
   const browser = read("components/platform/site/work/WorkDemoBrowser.tsx");
   assert.match(browser, /useState\(categories\[0\]\?\.slug\)/, "initial selection is the first available Services category");
   assert.match(browser, /current\.demos\.map/, "only demos from the selected category are rendered");
-  for (const pattern of [/role="tablist"/, /role="tab"/, /aria-selected/, /role="tabpanel"/, /aria-expanded/, /View Live/, /opens in a new tab/]) {
+  for (const pattern of [/role="tablist"/, /role="tab"/, /aria-selected/, /role="tabpanel"/, /<DemoStoreShowcase/]) {
     assert.match(browser, pattern);
   }
-  assert.match(browser, /href=\{demo\.url\}/, "View Live opens the live demo store itself");
+  assert.doesNotMatch(browser, /function DemoCard|function DemoDetails/, "Work does not render its former generic cards or separate details panel");
+  const presentation = read("components/platform/site/work/DemoStoreShowcase.tsx");
+  for (const pattern of [/BrowserShot/, /PhoneShot/, /SHOWCASE_MEDIA/, /data-tilt/, /ExternalButtonLink/, /demo\.url/]) {
+    assert.match(presentation, pattern, "Work reuses the polished screenshot, motion and live-store presentation");
+  }
 });
 
 test("platform Work-category controls use canonical Services categories and are platform-owner only", () => {

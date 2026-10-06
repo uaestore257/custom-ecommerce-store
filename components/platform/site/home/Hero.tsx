@@ -3,16 +3,15 @@ import type { TemplateShowcaseEntry } from "@/lib/platform/showcase";
 import { ButtonLink, CONTAINER, Eyebrow, SplitWords } from "../primitives";
 import { BrowserShot, PhoneShot } from "../work/DeviceFrames";
 import { SHOWCASE_MEDIA } from "../work/showcase-media";
-import { caseIdentity } from "../work/WorkCase";
 
 /**
- * The homepage's first viewport: the promise, two calls to action and the
- * work itself — the flagship demo store on desktop with a second store on
- * a phone, tilting gently under the pointer over an ambient glow.
+ * The homepage's first viewport: the agency promise and calls to action,
+ * with a real demo-store capture on desktop and a second store on a phone.
  */
 export function Hero({ tagline, lead, second }: { tagline: string; lead: TemplateShowcaseEntry; second?: TemplateShowcaseEntry }) {
-  const leadIdentity = caseIdentity(lead);
-  const secondIdentity = second ? caseIdentity(second) : null;
+  const leadName = lead.demo?.storeName ?? `${lead.manifest.name} demo store`;
+  const leadHost = lead.demo ? new URL(lead.demo.home).host : leadName;
+  const secondName = second?.demo?.storeName ?? (second ? `${second.manifest.name} demo store` : null);
 
   return (
     <section aria-labelledby="hero-title" className="relative isolate overflow-hidden">
@@ -48,17 +47,17 @@ export function Hero({ tagline, lead, second }: { tagline: string; lead: Templat
             <div className="studio-tilt-layer" style={{ "--depth": "8px" } as CSSProperties}>
               <BrowserShot
                 image={SHOWCASE_MEDIA[lead.key].desktop}
-                alt={`${leadIdentity.storeName}, a live demo store built on the ${lead.manifest.name} template`}
-                host={leadIdentity.host ?? leadIdentity.storeName}
+                alt={`${leadName}, a live demo store built on the ${lead.manifest.name} template`}
+                host={leadHost}
                 priority
                 sizes="(min-width: 1024px) 46vw, 92vw"
               />
             </div>
-            {second && secondIdentity && (
+            {second && secondName && (
               <div className="studio-tilt-layer absolute bottom-0 end-0 w-[30%] max-w-[12.5rem]" style={{ "--depth": "26px" } as CSSProperties}>
                 <PhoneShot
                   image={SHOWCASE_MEDIA[second.key].mobile}
-                  alt={`${secondIdentity.storeName} on a phone, built on the ${second.manifest.name} template`}
+                  alt={`${secondName} on a phone, built on the ${second.manifest.name} template`}
                   priority
                   sizes="(min-width: 1024px) 13vw, 30vw"
                 />
@@ -69,8 +68,8 @@ export function Hero({ tagline, lead, second }: { tagline: string; lead: Templat
                 <span aria-hidden className="me-2 inline-block h-1.5 w-1.5 translate-y-[-2px] rounded-full bg-accent" />
                 Live demo stores
               </span>
-              <span>{leadIdentity.storeName}</span>
-              {secondIdentity && <span>{secondIdentity.storeName}</span>}
+              <span>{leadName}</span>
+              {secondName && <span>{secondName}</span>}
             </figcaption>
           </figure>
         </div>
