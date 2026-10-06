@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { setStoreDemoAction, setStoreWorkServiceCategoryAction } from "@/app/admin/actions";
+import { setStoreDemoAction, setStoreWorkOrderAction, setStoreWorkServiceCategoryAction } from "@/app/admin/actions";
 import { buttonClass, Card, Notice } from "@/components/ui";
 import { SERVICE_CATEGORIES } from "@/lib/platform/services";
 
@@ -10,16 +10,19 @@ export function StoreDemoControls({
   storeId,
   isDemo,
   workServiceSlug,
+  workOrder,
   layout = "card",
 }: {
   storeId: string;
   isDemo: boolean;
   workServiceSlug: string | null;
+  workOrder: number | null;
   layout?: "card" | "inline";
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [order, setOrder] = useState(workOrder === null ? "" : String(workOrder));
   function toggleDemo() {
     startTransition(async () => {
       setError("");
@@ -33,6 +36,17 @@ export function StoreDemoControls({
     startTransition(async () => {
       setError("");
       const result = await setStoreWorkServiceCategoryAction(storeId, value || null);
+      if (result.ok) router.refresh();
+      else setError(result.error);
+    });
+  }
+
+  function saveOrder() {
+    const nextOrder = order.trim() === "" ? null : Number(order);
+    if (nextOrder === workOrder) return;
+    startTransition(async () => {
+      setError("");
+      const result = await setStoreWorkOrderAction(storeId, nextOrder);
       if (result.ok) router.refresh();
       else setError(result.error);
     });
@@ -58,6 +72,31 @@ export function StoreDemoControls({
         </select>
         <span className="mt-1 block font-normal text-slate-600">
           Only a demo store with an eligible storefront appears under its explicitly assigned Services category.
+        </span>
+      </label>
+      <label className={layout === "inline" ? "min-w-32 text-sm font-medium text-slate-900" : "mt-4 block max-w-32 text-sm font-medium text-slate-900"}>
+        Work display order
+        <input
+          type="number"
+          min={1}
+          max={9999}
+          step={1}
+          inputMode="numeric"
+          value={order}
+          disabled={pending}
+          onChange={(event) => setOrder(event.target.value)}
+          onBlur={saveOrder}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+          className="mt-1 block min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+          aria-label="Work display order"
+        />
+        <span className="mt-1 block font-normal text-slate-600">
+          Lower numbers appear first within the assigned category. Blank numbers follow numbered stores.
         </span>
       </label>
     </>

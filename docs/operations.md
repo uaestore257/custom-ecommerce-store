@@ -306,6 +306,12 @@ accept cash on delivery only, show a demonstration notice and are never
 indexed. Each store's subdomain (e.g. `pulse-audio.<root domain>`) must be
 routed by the storefront wildcard for its "Ask for a walkthrough" link to open.
 
+On the platform-owner store controls, assign a Work service category and an
+optional Work display order. Lower order numbers appear first within that
+category; equal or blank orders retain their creation order, with blank orders
+after numbered stores. The admin's "Delete store" option archives the store
+reversibly; it does not permanently delete tenant data.
+
 ### Rollback
 
 Keep the previous known-good application build available for deployment.

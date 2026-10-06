@@ -21,6 +21,7 @@ export interface AdminStoreDesign {
   theme: ThemeSelection;
   isDemo: boolean;
   workServiceSlug: string | null;
+  workOrder: number | null;
 }
 
 /** Demo stores per template, for "View live demo" links (public, ACTIVE only). */
@@ -29,7 +30,7 @@ export type TemplateDemoStores = Partial<Record<TemplateKey, { id: string; name:
 export async function getAdminStoreDesign(client: Client, storeId: string): Promise<AdminStoreDesign | null> {
   const store = await client.store.findFirst({
     where: { id: storeId, archivedAt: null },
-    select: { templateKey: true, themeConfig: true, isDemo: true, workServiceSlug: true },
+    select: { templateKey: true, themeConfig: true, isDemo: true, workServiceSlug: true, workOrder: true },
   });
   if (!store) return null;
   const templateKey = resolveTemplateKey(store.templateKey);
@@ -38,6 +39,7 @@ export async function getAdminStoreDesign(client: Client, storeId: string): Prom
     theme: normalizeThemeConfig(getTemplateDefinition(templateKey), store.themeConfig),
     isDemo: store.isDemo,
     workServiceSlug: store.workServiceSlug,
+    workOrder: store.workOrder,
   };
 }
 
@@ -94,7 +96,7 @@ export async function updateStoreDesign(
   return client.$transaction(async (tx) => {
     const before = await tx.store.findFirst({
       where: { id: storeId, archivedAt: null },
-      select: { templateKey: true, isDemo: true, workServiceSlug: true },
+      select: { templateKey: true, isDemo: true, workServiceSlug: true, workOrder: true },
     });
     if (!before) return { ok: false, error: "This store does not exist or has been archived." };
     await tx.store.update({ where: { id: storeId }, data: { templateKey, themeConfig: { ...theme.value } } });
@@ -112,7 +114,7 @@ export async function updateStoreDesign(
     });
     return {
       ok: true,
-      data: { templateKey, theme: theme.value, isDemo: before.isDemo, workServiceSlug: before.workServiceSlug },
+      data: { templateKey, theme: theme.value, isDemo: before.isDemo, workServiceSlug: before.workServiceSlug, workOrder: before.workOrder },
       message: "Design saved.",
     };
   });

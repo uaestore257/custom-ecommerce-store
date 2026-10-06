@@ -67,6 +67,7 @@ export function StoreOverviewView({
                 storeId={store.id}
                 isDemo={store.isDemo}
                 workServiceSlug={store.workServiceSlug}
+                workOrder={store.workOrder}
                 layout="inline"
               />
             )}

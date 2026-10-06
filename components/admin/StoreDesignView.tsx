@@ -233,7 +233,12 @@ export function StoreDesignView({
       </ConfirmDialog>
 
       {platform && (
-        <StoreDemoControls storeId={storeId} isDemo={design.isDemo} workServiceSlug={design.workServiceSlug} />
+        <StoreDemoControls
+          storeId={storeId}
+          isDemo={design.isDemo}
+          workServiceSlug={design.workServiceSlug}
+          workOrder={design.workOrder}
+        />
       )}
     </>
   );
