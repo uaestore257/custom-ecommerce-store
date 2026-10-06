@@ -3,7 +3,6 @@ import type { WorkDemo } from "@/lib/platform/work";
 import { ExternalButtonLink, Eyebrow } from "../primitives";
 import { focusRing } from "../styles";
 import { BrowserShot, PhoneShot } from "./DeviceFrames";
-import { SHOWCASE_MEDIA } from "./showcase-media";
 
 /**
  * The canonical editorial presentation for one real demo store. Work supplies
@@ -22,7 +21,12 @@ export function DemoStoreShowcase({
   headingLevel?: "h2" | "h3";
   priority?: boolean;
 }) {
-  const media = demo.screenshots ? SHOWCASE_MEDIA[demo.screenshots] : null;
+  const media = demo.screenshots
+    ? {
+        tall: `/showcase/${demo.screenshots}-tall.jpg`,
+        mobile: `/showcase/${demo.screenshots}-mobile.jpg`,
+      }
+    : null;
   const Heading = headingLevel;
   const id = `work-${demo.serviceSlug}-${index}`;
   const host = new URL(demo.url).host;

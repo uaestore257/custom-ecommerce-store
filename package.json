@@ -29,7 +29,7 @@
     "test:unit": "tsx --conditions=react-server --test tests/unit/*.test.ts",
     "test:setup": "node --test tests/unit/setup.test.mjs",
     "test:db": "node scripts/db-command.mjs test",
-    "capture-showcase": "node scripts/capture-showcase.mjs"
+    "capture-showcase": "node --conditions=react-server --import tsx scripts/capture-showcase.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

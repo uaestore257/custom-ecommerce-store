@@ -11,8 +11,9 @@ import {
   TEMPLATE_EDITORIAL,
 } from "../../lib/platform/showcase";
 import { showcaseCaptureKeyForStore } from "../../lib/platform/showcase-capture";
+import SHOWCASE_CAPTURE_TEMPLATES from "../../lib/platform/showcase-capture-manifest.json";
 import { TEMPLATE_DEMO_STORES } from "../../lib/template-demo-stores";
-import { getTemplateDefinition, TEMPLATE_KEYS } from "../../lib/templates/registry";
+import { getTemplateDefinition, isTemplateKey, TEMPLATE_KEYS } from "../../lib/templates/registry";
 import { readableForeground, semanticCssVariables, themeCssVariables } from "../../lib/templates/theme";
 
 test("every registered template has portfolio copy, showcased or not", () => {
@@ -100,13 +101,26 @@ test("showcased templates are registered, listed once, with case copy and screen
   }
 });
 
-test("showcase screenshots are reserved for the demo-store slugs they were captured from", () => {
+test("showcase screenshots are registered only for stores with real captures", () => {
   const captureScript = readFileSync(new URL("../../scripts/capture-showcase.mjs", import.meta.url), "utf8");
   for (const key of SHOWCASE_ORDER) {
     const slug = TEMPLATE_DEMO_STORES[key].slug;
     assert.equal(showcaseCaptureKeyForStore(key, slug), key);
     assert.equal(showcaseCaptureKeyForStore(key, `${slug}-another-store`), null);
-    assert.match(captureScript, new RegExp(`${key}: \\{ slug: "${slug}"`), `${key} capture uses its configured demo store`);
+  }
+  assert.equal(showcaseCaptureKeyForStore("atelier", "not_a_valid_slug"), null);
+  assert.match(captureScript, /db\.store\.findMany/);
+  assert.match(captureScript, /isDemo: true, status: "ACTIVE", archivedAt: null/);
+  assert.match(captureScript, /join\(out, `\$\{key\}-\$\{kind\}\.jpg`\)/);
+  assert.match(captureScript, /showcase-capture-manifest\.json/);
+  for (const [slug, templateKey] of Object.entries(SHOWCASE_CAPTURE_TEMPLATES)) {
+    assert.ok(isTemplateKey(templateKey), `${slug} has a registered template`);
+    if (!isTemplateKey(templateKey)) continue;
+    const expectedKey = TEMPLATE_DEMO_STORES[templateKey].slug === slug ? templateKey : slug;
+    assert.equal(showcaseCaptureKeyForStore(templateKey, slug), expectedKey, slug);
+    for (const kind of ["desktop", "tall", "mobile"]) {
+      assert.ok(existsSync(new URL(`../../public/showcase/${slug}-${kind}.jpg`, import.meta.url)), `${slug}-${kind}.jpg`);
+    }
   }
 });
 

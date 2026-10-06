@@ -17,7 +17,7 @@ export function BrowserShot({
   sizes = "(min-width: 1024px) 58vw, 100vw",
   className = "",
 }: {
-  image: StaticImageData;
+  image: StaticImageData | string;
   alt: string;
   host?: string;
   priority?: boolean;
@@ -37,7 +37,16 @@ export function BrowserShot({
         )}
       </div>
       <div className="studio-pan relative aspect-[16/10] overflow-hidden bg-white">
-        <Image src={image} alt={alt} sizes={sizes} priority={priority} placeholder="blur" className="block h-auto w-full" />
+        <Image
+          src={image}
+          alt={alt}
+          width={typeof image === "string" ? 1440 : undefined}
+          height={typeof image === "string" ? 1380 : undefined}
+          sizes={sizes}
+          priority={priority}
+          placeholder={typeof image === "string" ? "empty" : "blur"}
+          className="block h-auto w-full"
+        />
       </div>
     </div>
   );
@@ -51,7 +60,7 @@ export function PhoneShot({
   sizes = "(min-width: 1024px) 16vw, 40vw",
   className = "",
 }: {
-  image: StaticImageData;
+  image: StaticImageData | string;
   alt: string;
   priority?: boolean;
   sizes?: string;
@@ -60,7 +69,16 @@ export function PhoneShot({
   return (
     <div className={`rounded-[2rem] border border-white/15 bg-[#0b0a09] p-1.5 shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)] ${className}`}>
       <div className="relative aspect-[390/800] overflow-hidden rounded-[1.6rem] bg-white">
-        <Image src={image} alt={alt} sizes={sizes} priority={priority} placeholder="blur" className="block h-auto w-full" />
+        <Image
+          src={image}
+          alt={alt}
+          width={typeof image === "string" ? 390 : undefined}
+          height={typeof image === "string" ? 844 : undefined}
+          sizes={sizes}
+          priority={priority}
+          placeholder={typeof image === "string" ? "empty" : "blur"}
+          className="block h-auto w-full"
+        />
       </div>
     </div>
   );
