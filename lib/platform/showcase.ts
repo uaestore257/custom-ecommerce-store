@@ -138,7 +138,7 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
     headline: "A bold, product-led store that sells from the first screen.",
     personality: "Energetic, direct and built for the thumb.",
     idealFor:
-      "Brands with a focused range — electronics and audio, skincare, supplements, drinks, sportswear — where the product is the hero and the path from first look to checkout should be short.",
+      "Brands with a focused range — electronics and audio, skincare, supplements, drinks, sportswear — where the product is the hero and the path from first look to checkout should be short.[...]",
     signatures: [
       {
         title: "A hero that sells",
@@ -159,7 +159,7 @@ export const TEMPLATE_EDITORIAL: Readonly<Record<TemplateKey, TemplateEditorial>
     headline: "A couture house online, where the photograph does the talking.",
     personality: "Monochrome, editorial and unhurried.",
     idealFor:
-      "Luxury and modest fashion, fragrance, jewellery, watches and leather goods — houses whose campaigns carry the brand, and whose store should feel like the flagship rather than a catalogue.",
+      "Luxury and modest fashion, fragrance, jewellery, watches and leather goods — houses whose campaigns carry the brand, and whose store should feel like the flagship rather than a catalogue[...]",
     signatures: [
       {
         title: "A full-screen campaign",
