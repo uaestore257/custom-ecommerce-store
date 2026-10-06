@@ -20,11 +20,11 @@ function contrast(a: string, b: string) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-test("market is registered with editorial copy but not showcased (no demo store or screenshots yet)", () => {
+test("market is registered with editorial copy and is showcased", () => {
   assert.ok(isTemplateKey("market"));
   assert.equal(resolveTemplateKey("market"), "market");
-  assert.equal(isShowcasedTemplate("market"), false);
-  assert.ok(!(SHOWCASE_ORDER as readonly string[]).includes("market"));
+  assert.equal(isShowcasedTemplate("market"), true);
+  assert.ok((SHOWCASE_ORDER as readonly string[]).includes("market"));
   assert.ok(TEMPLATE_EDITORIAL.market.signatures.length >= 2);
 });
 
