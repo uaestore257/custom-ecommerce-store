@@ -16,7 +16,9 @@ export function MaisonListing({ store, categories, listing }: TemplateListingPro
     <main className={`${MAISON_CONTAINER} py-14 lg:py-20`}>
       <header className="text-center">
         <p className={`${maisonLabel} text-muted-foreground`}>{listing.category ? "Collection" : store.name}</p>
-        <h1 className="mt-4 font-heading text-5xl uppercase tracking-[0.08em] lg:text-7xl rtl:tracking-normal">{listing.category?.name ?? "The collection"}</h1>
+        <h1 className="mt-4 font-heading text-[clamp(2.125rem,10vw,3rem)] uppercase tracking-[0.06em] sm:text-5xl sm:tracking-[0.08em] lg:text-7xl rtl:tracking-normal">
+          {listing.category?.name ?? "The collection"}
+        </h1>
       </header>
 
       <div className="mt-14 flex flex-col gap-6 border-y border-border py-5 lg:flex-row lg:items-center lg:justify-between">
