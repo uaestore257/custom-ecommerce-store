@@ -149,7 +149,7 @@ test("the Work page reads demos through the server allow-list, never a store id 
   }
   assert.doesNotMatch(browser, /function DemoCard|function DemoDetails/, "Work does not render its former generic cards or separate details panel");
   const presentation = read("components/platform/site/work/DemoStoreShowcase.tsx");
-  for (const pattern of [/BrowserShot/, /PhoneShot/, /SHOWCASE_MEDIA/, /data-tilt/, /ExternalButtonLink/, /demo\.url/]) {
+  for (const pattern of [/BrowserShot/, /PhoneShot/, /showcase\/\$\{demo\.screenshots\}-tall\.jpg/, /data-tilt/, /ExternalButtonLink/, /demo\.url/]) {
     assert.match(presentation, pattern, "Work reuses the polished screenshot, motion and live-store presentation");
   }
 });

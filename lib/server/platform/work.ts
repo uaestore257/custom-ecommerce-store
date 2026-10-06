@@ -12,7 +12,7 @@ import {
 import type { Client } from "@/lib/server/admin/common";
 import { getDb } from "@/lib/server/db";
 import { storefrontPreviewUrlForSlug, storeHostConfig } from "@/lib/store-host";
-import { getTemplateDefinition, isTemplateKey, type TemplateKey } from "@/lib/templates/registry";
+import { getTemplateDefinition, isTemplateKey } from "@/lib/templates/registry";
 
 /** Upper bound on demo stores read for the public Work page. */
 export const MAX_WORK_DEMOS = 48;
@@ -62,6 +62,7 @@ export async function loadWorkDemoStores(client: Client, urlForSlug: (slug: stri
     const editorial = TEMPLATE_EDITORIAL[key];
     const serviceSlug = resolveWorkServiceSlug(store.workServiceSlug);
     if (!serviceSlug) return [];
+    const captureKey = showcaseCaptureKeyForStore(key, store.slug);
     return [
       {
         name: store.name,
@@ -74,7 +75,7 @@ export async function loadWorkDemoStores(client: Client, urlForSlug: (slug: stri
         headline: editorial.headline,
         signatures: editorial.signatures.map((signature) => signature.title),
         url,
-        screenshots: showcaseCaptureKeyForStore(key, store.slug),
+        screenshots: captureKey,
       },
     ];
   });

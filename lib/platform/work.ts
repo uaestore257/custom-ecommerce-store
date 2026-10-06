@@ -1,5 +1,5 @@
 import { STORE_TYPES } from "@/lib/config";
-import type { ShowcasedTemplateKey } from "@/lib/platform/showcase";
+import type { ShowcaseCaptureKey } from "@/lib/platform/showcase-capture";
 import type { TemplateKey } from "@/lib/templates/registry";
 import { SERVICE_CATEGORIES, type ServiceCategory } from "./services";
 
@@ -36,11 +36,10 @@ export interface WorkDemo {
   /** The live demo's homepage, from the tenant-aware host resolver. */
   url: string;
   /**
-   * Set when real screenshots of THIS store exist: it is the showcased
-   * template's first demo store, the one public/showcase was captured from
-   * (scripts/capture-showcase.mjs). Otherwise null — never another store's images.
+   * Set only when a real capture of THIS store is present under public/showcase.
+   * Otherwise null — a different store's screenshots are never reused.
    */
-  screenshots: ShowcasedTemplateKey | null;
+  screenshots: ShowcaseCaptureKey | null;
 }
 
 /** Live demos per Services category slug. */

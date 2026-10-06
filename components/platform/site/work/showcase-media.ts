@@ -21,11 +21,8 @@ import noorTall from "@/public/showcase/noor-tall.jpg";
 
 // ---------------------------------------------------------------
 // Screenshots of the REAL demo storefronts, rendered by the real
-// templates and captured with scripts/capture-showcase.mjs (re-run it after
-// changing a template or the demo content). Keyed by the SHOWCASED
-// templates (SHOWCASE_ORDER): a registered template needs screenshots only
-// once it is presented as work, and a showcased one without them is a type
-// error.
+// templates and captured with scripts/capture-showcase.mjs. Template images
+// are used on the agency home page; Work uses real, per-store captures by slug.
 // ---------------------------------------------------------------
 
 export interface ShowcaseMedia {
