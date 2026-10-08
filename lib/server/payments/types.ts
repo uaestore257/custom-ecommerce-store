@@ -19,6 +19,8 @@ export interface PaymentCredentialContext {
   provider: PaymentProviderId;
   storeId: string;
   providerAccountId: string;
+  mode?: "TEST" | "LIVE";
+  connectedAccountId?: string;
 }
 
 export interface ResolvedPaymentCredentials extends PaymentCredentialContext {
@@ -32,17 +34,14 @@ export interface PaymentCredentialResolver {
 
 /** Adapter boundary for a real external secret manager; never persist returned values. */
 export interface PaymentSecretStore {
-  resolve(
-    secretRef: string,
-    provider: PaymentProviderId,
-    storeId: string,
-  ): Promise<Readonly<Record<string, string>> | null>;
+  resolve(context: PaymentCredentialContext): Promise<Readonly<Record<string, string>> | null>;
 }
 
 export interface ProviderCheckoutInput {
   storeId: string;
   providerAccountId: string;
   transactionId: string;
+  checkoutAttempt: number;
   orderId: string;
   orderNumber: string;
   amountMinor: bigint;
@@ -58,10 +57,18 @@ export interface ProviderCheckoutSession {
     | { kind: "post"; action: string; fields: Record<string, string> };
 }
 
+export interface ProviderRefundEvidence {
+  providerRefundId: string;
+  amountMinor: bigint;
+  currency: string;
+}
+
 export interface VerifiedPaymentEvent {
   eventId: string;
   eventType: string;
   paymentTransactionId: string;
+  storeId?: string;
+  orderId?: string;
   transactionReference: string;
   amountMinor: bigint;
   currency: string;
@@ -86,6 +93,17 @@ export interface PaymentProviderAdapter {
     credentials: ResolvedPaymentCredentials,
     accountId: string,
   ): Promise<VerifiedPaymentEvent | null>;
+  recoverCheckout?(
+    input: ProviderCheckoutInput,
+    providerReference: string,
+    credentials: ResolvedPaymentCredentials,
+  ): Promise<ProviderCheckoutSession | "expired" | "missing" | "complete" | null>;
+  verifyRefund?(
+    input: ProviderCheckoutInput,
+    providerReference: string,
+    refundId: string,
+    credentials: ResolvedPaymentCredentials,
+  ): Promise<ProviderRefundEvidence | null>;
 }
 
 export type PendingPaymentProviderId = Exclude<PaymentProviderId, ConfigurablePaymentProviderId>;

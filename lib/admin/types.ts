@@ -69,7 +69,9 @@ export interface AdminStorePaymentSettings {
   };
   stripe: {
     accountId: string;
+    mode: "TEST" | "LIVE";
     hasCredentialReference: boolean;
+    liveCheckoutEnabled: boolean;
     enabled: boolean;
     available: boolean;
   };
@@ -132,7 +134,7 @@ export interface AdminProduct {
 }
 
 export type DbOrderStatus = "PENDING" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
-export type DbPaymentStatus = "UNPAID" | "PAID";
+export type DbPaymentStatus = "UNPAID" | "PAID" | "PARTIALLY_REFUNDED" | "REFUNDED";
 export type DbInquiryStatus = "NEW" | "READ" | "ARCHIVED";
 
 /** One contact message in the admin's inbox for a store (from the database). */
@@ -169,6 +171,10 @@ export interface AdminOrderSummary {
 export interface AdminOrderDetail extends AdminOrderSummary {
   fulfillmentMethod: "DELIVERY" | "PICKUP";
   paymentTransactionReference: string;
+  paymentTransactionStatus: string | null;
+  paymentTransactionFailureCode: string | null;
+  stripeRefundRecordAvailable: boolean;
+  refunds: { providerRefundId: string; amountDisplay: string; createdAt: string }[];
   address: {
     recipientName: string;
     line1: string;

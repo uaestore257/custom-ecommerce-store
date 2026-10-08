@@ -22,6 +22,7 @@ const returnInput: ProviderCheckoutInput = {
   storeId: "store-a",
   providerAccountId: "acct-jazzcash",
   transactionId: "txn-store-a",
+  checkoutAttempt: 0,
   orderId: "order-a",
   orderNumber: "A-100",
   amountMinor: 2995n,

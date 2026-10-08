@@ -41,7 +41,12 @@ export function StorePaymentSettingsForm({
   const router = useRouter();
   const [methods, setMethods] = useState(() => initialMethods(store));
   const [bank, setBank] = useState<BankFields>(store.bankTransfer);
-  const [stripe, setStripe] = useState({ enabled: store.stripe.enabled, accountId: store.stripe.accountId, secretRef: "" });
+  const [stripe, setStripe] = useState({
+    enabled: store.stripe.enabled,
+    accountId: store.stripe.accountId,
+    mode: store.stripe.mode,
+    secretRef: "",
+  });
   const [jazzcash, setJazzcash] = useState({
     enabled: store.jazzcash.enabled,
     merchantId: store.jazzcash.merchantId,
@@ -120,17 +125,31 @@ export function StorePaymentSettingsForm({
       </Card>
 
       <Card className="p-5 sm:p-6">
-        <h2 className="text-lg font-semibold">Stripe Connect — test mode</h2>
+        <h2 className="text-lg font-semibold">Stripe Connect</h2>
         <p className="mt-1 text-sm text-slate-600">
           UAE stores can use Stripe Checkout with a connected account. Charges are created on that connected account; payout details remain with that store&apos;s Stripe account.
         </p>
         {!store.stripe.available && (
           <Notice tone="warning" className="mt-4">
-            Stripe Checkout remains unavailable until this store&apos;s test credentials resolve through a server-side secret manager. No credentials are stored in the database or sent to the browser.
+            {stripe.mode === "LIVE" && !store.stripe.liveCheckoutEnabled
+              ? "LIVE Stripe checkout is held disabled by deployment configuration. It stays unavailable until implementation verification and an explicit operations enablement."
+              : `Stripe Checkout remains unavailable until this store's ${stripe.mode.toLowerCase()} credentials resolve through the server-side secret store.`}{" "}
+            No credentials are stored in the database or sent to the browser.
           </Notice>
         )}
         <fieldset disabled={readOnly || pending} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <legend className="sr-only">Stripe test configuration</legend>
+          <legend className="sr-only">Stripe configuration</legend>
+          <Field label="Payment mode" htmlFor="stripe-mode">
+            <select
+              id="stripe-mode"
+              value={stripe.mode}
+              onChange={(event) => setStripe((value) => ({ ...value, mode: event.target.value === "LIVE" ? "LIVE" : "TEST" }))}
+              className={inputClass()}
+            >
+              <option value="TEST">TEST</option>
+              <option value="LIVE">LIVE</option>
+            </select>
+          </Field>
           <Field label="Connected account ID" htmlFor="stripe-account-id">
             <input
               id="stripe-account-id"
@@ -141,7 +160,7 @@ export function StorePaymentSettingsForm({
               placeholder="acct_…"
             />
           </Field>
-          <Field label="Test credential reference" htmlFor="stripe-secret-reference">
+          <Field label={`${stripe.mode} credential reference`} htmlFor="stripe-secret-reference">
             <input
               id="stripe-secret-reference"
               value={stripe.secretRef}
@@ -162,10 +181,10 @@ export function StorePaymentSettingsForm({
               checked={stripe.enabled}
               onChange={(event) => setStripe((value) => ({ ...value, enabled: event.target.checked }))}
             />
-            <span>Enable Stripe Checkout for this store when its test credentials are available.</span>
+            <span>Enable Stripe Checkout for this store when its {stripe.mode} credentials are available.</span>
           </label>
           <p className="text-xs text-slate-500 sm:col-span-2">
-            Enter only an opaque secret-manager reference, never an API key or webhook secret. Live mode is not supported in this phase.
+            Enter only an opaque reference to server-side secrets, never an API key or webhook secret. LIVE is available only when its live API key and signed-webhook secret both validate for this store and connected account.
           </p>
         </fieldset>
       </Card>

@@ -75,14 +75,18 @@ enum PaymentMode {
 enum PaymentStatus {
   UNPAID
   PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
 }
 
 enum PaymentTransactionStatus {
   PENDING
   SUCCEEDED
+  PARTIALLY_REFUNDED
   FAILED
   CANCELLED
   REFUNDED
+  RECONCILIATION
 }
 
 enum InquiryStatus {
@@ -208,6 +212,7 @@ model User {
   sessions    Session[]
   accounts    Account[]
   auditEvents AuditEvent[]
+  paymentRefunds PaymentRefund[]
 }
 
 // Better Auth core tables (better-auth 1.7.6). Field names and types follow
@@ -415,7 +420,8 @@ model Store {
   paymentTransactions PaymentTransaction[]
   paymentWebhookEvents PaymentWebhookEvent[]
   auditEvents     AuditEvent[]
-  inquiries       Inquiry[]
+  paymentRefunds PaymentRefund[]
+  inquiries    Inquiry[]
 
   // Lets prices reference (storeId, currency) so they must be in the
   // store's base currency. Changing baseCurrency is blocked while prices exist.
@@ -673,6 +679,7 @@ model Order {
   customer    Customer?   @relation(fields: [customerId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
   items       OrderItem[]
   paymentTransactions PaymentTransaction[]
+  paymentRefunds PaymentRefund[]
 
   @@unique([storeId, number])
   @@unique([id, storeId, currency])
@@ -810,6 +817,7 @@ model PaymentProviderAccount {
   methods StorePaymentMethod[]
   transactions PaymentTransaction[]
   webhookEvents PaymentWebhookEvent[]
+  refunds PaymentRefund[]
 
   @@unique([id, storeId])
 }
@@ -844,6 +852,8 @@ model PaymentTransaction {
   providerReference String?                  @db.VarChar(255)
   failureCode       String?                  @db.VarChar(80)
   settledAt         DateTime?
+  checkoutAttempt   Int                      @default(0)
+  checkoutAttemptStartedAt DateTime?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
@@ -852,6 +862,7 @@ model PaymentTransaction {
   currencyRef     Currency               @relation(fields: [currency], references: [code])
   providerAccount PaymentProviderAccount? @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
   webhookEvents  PaymentWebhookEvent[]
+  refunds        PaymentRefund[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([id, storeId])
@@ -877,4 +888,30 @@ model PaymentWebhookEvent {
 
   @@unique([providerAccountId, eventId])
   @@index([storeId, createdAt])
+}
+
+/// A refund is recorded only after a Stripe Dashboard refund is verified
+/// server-to-server against the connected account and original payment.
+model PaymentRefund {
+  id                  String   @id @default(cuid())
+  storeId             String
+  orderId             String
+  transactionId       String
+  providerAccountId   String
+  actorUserId         String
+  stripeRefundId      String   @db.VarChar(255)
+  amountMinor         BigInt
+  currency            String   @db.Char(3)
+  reason              String   @db.VarChar(500)
+  createdAt           DateTime @default(now())
+
+  store           Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order                 @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Restrict, onUpdate: Restrict)
+  transaction     PaymentTransaction   @relation(fields: [transactionId, storeId], references: [id, storeId], onDelete: Restrict, onUpdate: Restrict)
+  providerAccount PaymentProviderAccount @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: Restrict, onUpdate: Restrict)
+  actor           User                  @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([providerAccountId, stripeRefundId])
+  @@index([storeId, orderId, createdAt])
+  @@index([transactionId, createdAt])
 }

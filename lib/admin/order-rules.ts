@@ -14,7 +14,7 @@ import type { DbOrderStatus, DbPaymentStatus } from "./types";
 // ---------------------------------------------------------------
 
 export const ORDER_STATUS_VALUES: readonly DbOrderStatus[] = ["PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
-export const PAYMENT_STATUS_VALUES: readonly DbPaymentStatus[] = ["UNPAID", "PAID"];
+export const PAYMENT_STATUS_VALUES: readonly DbPaymentStatus[] = ["UNPAID", "PAID", "PARTIALLY_REFUNDED", "REFUNDED"];
 
 const NEXT_STATUS: Record<DbOrderStatus, DbOrderStatus | null> = {
   PENDING: "PROCESSING",
@@ -44,7 +44,7 @@ export function nextOrderStatus(status: DbOrderStatus): DbOrderStatus | null {
 export function cancelProblem(status: DbOrderStatus, paymentStatus: DbPaymentStatus): string | null {
   if (status === "CANCELLED") return "This order is already cancelled.";
   if (status !== "PENDING" && status !== "PROCESSING") return "Only pending or processing orders can be cancelled.";
-  if (paymentStatus === "PAID") return "This order is marked as paid. Refund the customer, mark it unpaid, then cancel it.";
+  if (paymentStatus !== "UNPAID") return "Only unpaid orders can be cancelled. Resolve any payment or refund first.";
   return null;
 }
 

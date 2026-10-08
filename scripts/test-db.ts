@@ -92,8 +92,19 @@ function localCli(pkg: string) {
   const { bin } = JSON.parse(readFileSync(join("node_modules", pkg, "package.json"), "utf8"));
   return join("node_modules", pkg, typeof bin === "string" ? bin : bin[pkg]);
 }
+function withLocalBinPath(env = process.env) {
+  const binDir = join(process.cwd(), "node_modules", ".bin");
+  const delimiter = process.platform === "win32" ? ";" : ":";
+  const values = [binDir, env.PATH, env.Path].filter(Boolean) as string[];
+  return {
+    ...env,
+    PATH: values.join(delimiter),
+    ...(process.platform === "win32" ? { Path: values.join(delimiter) } : {}),
+  };
+}
+
 const run = (pkg: string, args: string[], env = process.env) =>
-  execFileSync(process.execPath, [localCli(pkg), ...args], { stdio: "inherit", env });
+  execFileSync(process.execPath, [localCli(pkg), ...args], { stdio: "inherit", env: withLocalBinPath(env) });
 
 async function main() {
   if (process.env.NODE_ENV === "production") {

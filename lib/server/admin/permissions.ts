@@ -57,5 +57,6 @@ export const ACTION_PERMISSIONS = {
   setOrderStatusAction: "store-owner",
   cancelOrderAction: "store-owner",
   setOrderPaymentAction: "store-owner",
+  recordStripeRefundAction: "store-owner",
   setInquiryStatusAction: "store-owner",
 } as const satisfies Record<string, ActionPermission>;

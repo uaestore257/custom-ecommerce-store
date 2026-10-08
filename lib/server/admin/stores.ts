@@ -21,7 +21,7 @@ import {
 } from "@/lib/admin/validation";
 import type { StoreType } from "@/lib/types";
 import { isProviderMarketSupported } from "@/lib/payments/rules";
-import { paymentCredentialsAvailable, runtimePaymentCredentialResolver } from "../payments/credentials";
+import { liveStripeCheckoutEnabled, paymentCredentialsAvailable, runtimePaymentCredentialResolver } from "../payments/credentials";
 import { validateOwnerPaymentSettings } from "@/lib/payments/validation";
 import { recordAudit } from "../audit";
 import { getAuth } from "../auth/auth";
@@ -159,6 +159,7 @@ export async function getAdminStorePaymentSettings(
       paymentMethods: { orderBy: { position: "asc" }, select: { method: true, enabled: true } },
       paymentAccounts: {
         where: { provider: { in: ["bank_transfer", "stripe_connect", "jazzcash"] } },
+        orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
         select: { id: true, provider: true, mode: true, enabled: true, publicConfig: true, secretRef: true },
       },
     },
@@ -193,14 +194,16 @@ export async function getAdminStorePaymentSettings(
     stripeAccount &&
       secretRef &&
       stripeAccount.enabled &&
-      stripeAccount.mode === "TEST" &&
-      stripeMethod?.enabled &&
+    (stripeAccount.mode !== "LIVE" || liveStripeCheckoutEnabled()) &&
+    stripeMethod?.enabled &&
       isProviderMarketSupported("stripe_connect", store.countryCode, store.baseCurrency) &&
       (await paymentCredentialsAvailable(runtimePaymentCredentialResolver, {
         secretRef,
         provider: "stripe_connect",
         storeId: store.id,
         providerAccountId: stripeAccount.id,
+        mode: stripeAccount.mode,
+        connectedAccountId: typeof stripeConfig.accountId === "string" ? stripeConfig.accountId : undefined,
       })),
   );
   const text = (value: unknown) => (typeof value === "string" ? value : "");
@@ -228,7 +231,9 @@ export async function getAdminStorePaymentSettings(
     },
     stripe: {
       accountId: text(stripeConfig.accountId),
+      mode: stripeAccount?.mode === "LIVE" ? "LIVE" : "TEST",
       hasCredentialReference: Boolean(secretRef),
+      liveCheckoutEnabled: liveStripeCheckoutEnabled(),
       enabled: stripeMethod?.enabled ?? false,
       available,
     },
@@ -471,6 +476,7 @@ export async function updateStoreOwnerSettings(
       baseCurrency: true,
       paymentAccounts: {
         where: { provider: { in: ["stripe_connect", "jazzcash"] } },
+        orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
         select: { provider: true, secretRef: true },
       },
     },
@@ -511,7 +517,49 @@ export async function updateStoreOwnerSettings(
   const { values, errors } = validateOwnerPaymentSettings(settingsInput, existing.countryCode, existing.baseCurrency, storeId);
   if (hasErrors(errors)) return fail(INVALID, errors);
 
-  await client.$transaction(async (tx) => {
+  const updateBlocked = await client.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id" = ${storeId} FOR UPDATE`;
+    const currentStripe = await tx.paymentProviderAccount.findFirst({
+      where: { storeId, provider: "stripe_connect" },
+      orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
+      select: { id: true, mode: true, secretRef: true, publicConfig: true },
+    });
+    const currentStripeConfig =
+      currentStripe?.publicConfig && typeof currentStripe.publicConfig === "object" && !Array.isArray(currentStripe.publicConfig)
+        ? (currentStripe.publicConfig as Record<string, unknown>)
+        : {};
+    const stripeConfigurationChanged = Boolean(
+      currentStripe &&
+        (currentStripe.mode !== values.stripe.mode ||
+          currentStripe.secretRef !== (values.stripe.secretRef || null) ||
+          currentStripeConfig.accountId !== (values.stripe.accountId || null)),
+    );
+    let rotateStripe = false;
+    if (stripeConfigurationChanged && currentStripe) {
+      const hasOpenPayment = await tx.paymentTransaction.findFirst({
+        where: {
+          storeId,
+          providerAccountId: currentStripe.id,
+          status: { in: ["PENDING", "CANCELLED", "RECONCILIATION"] },
+        },
+        select: { id: true },
+      });
+      if (hasOpenPayment) {
+        return true;
+      }
+      const hasPaymentHistory = await tx.paymentTransaction.findFirst({
+        where: { storeId, providerAccountId: currentStripe.id },
+        select: { id: true },
+      });
+      rotateStripe = Boolean(hasPaymentHistory);
+      if (rotateStripe) {
+        await tx.paymentProviderAccount.update({
+          where: { id: currentStripe.id },
+          data: { enabled: false },
+        });
+      }
+    }
+
     const existingBank = await tx.paymentProviderAccount.findFirst({
       where: { storeId, provider: "bank_transfer" },
       select: { id: true },
@@ -545,20 +593,16 @@ export async function updateStoreOwnerSettings(
       });
     }
 
-    const currentStripe = await tx.paymentProviderAccount.findFirst({
-      where: { storeId, provider: "stripe_connect" },
-      select: { id: true, secretRef: true },
-    });
     const secretRef = values.stripe.secretRef || currentStripe?.secretRef || null;
     const stripeRequested = Boolean(values.stripe.accountId && secretRef);
     let stripeAccountId: string | null = null;
     if (stripeRequested) {
-      if (currentStripe) {
+      if (currentStripe && !rotateStripe) {
         const account = await tx.paymentProviderAccount.update({
           where: { id: currentStripe.id },
           data: {
             displayName: "Stripe Connect",
-            mode: "TEST",
+            mode: values.stripe.mode,
             enabled: true,
             publicConfig: { accountId: values.stripe.accountId },
             secretRef,
@@ -572,7 +616,7 @@ export async function updateStoreOwnerSettings(
             storeId,
             provider: "stripe_connect",
             displayName: "Stripe Connect",
-            mode: "TEST",
+            mode: values.stripe.mode,
             enabled: true,
             publicConfig: { accountId: values.stripe.accountId },
             secretRef,
@@ -584,7 +628,7 @@ export async function updateStoreOwnerSettings(
     } else if (currentStripe) {
       await tx.paymentProviderAccount.update({
         where: { id: currentStripe.id },
-        data: { enabled: false, mode: "TEST" },
+        data: { enabled: false },
       });
     }
 
@@ -598,7 +642,10 @@ export async function updateStoreOwnerSettings(
         provider: "stripe_connect",
         storeId,
         providerAccountId: stripeAccountId,
-        }));
+        mode: values.stripe.mode,
+        connectedAccountId: values.stripe.accountId,
+        })) &&
+      (values.stripe.mode !== "LIVE" || liveStripeCheckoutEnabled());
 
     const currentJazzcash = await tx.paymentProviderAccount.findFirst({
       where: { storeId, provider: "jazzcash" },
@@ -677,7 +724,11 @@ export async function updateStoreOwnerSettings(
       targetType: "store",
       targetId: storeId,
     });
+    return false;
   });
+  if (updateBlocked) {
+    return fail("Stripe mode, account, or credential reference cannot change while this account has unresolved payment attempts.");
+  }
   return ok({ id: storeId }, "Payment settings saved.");
 }
 
