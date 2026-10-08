@@ -40,6 +40,7 @@ export type AuditAction =
   | "order.status_change"
   | "order.cancel"
   | "order.payment_change"
+  | "payment.stripe_connect_account"
   | "payment.stripe_checkout_reconciliation"
   | "payment.stripe_refund_recorded"
   | "inquiry.status_change";

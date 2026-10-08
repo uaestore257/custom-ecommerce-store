@@ -507,6 +507,36 @@ export async function handleStripeWebhook(
   return result === "rejected" ? "invalid" : result === "duplicate" ? "duplicate" : "accepted";
 }
 
+export async function handleStripeConnectWebhook(
+  client: PrismaClient,
+  rawBody: string,
+  headers: Headers,
+  resolver: PaymentCredentialResolver = runtimePaymentCredentialResolver,
+): Promise<"accepted" | "duplicate" | "invalid"> {
+  let event: { account?: unknown; livemode?: unknown };
+  try {
+    event = JSON.parse(rawBody) as { account?: unknown; livemode?: unknown };
+  } catch {
+    return "invalid";
+  }
+  if (
+    typeof event.account !== "string" ||
+    !/^acct_[A-Za-z0-9]+$/.test(event.account) ||
+    typeof event.livemode !== "boolean"
+  ) return "invalid";
+  const account = await client.paymentProviderAccount.findFirst({
+    where: {
+      provider: "stripe_connect",
+      stripeAccountId: event.account,
+      mode: event.livemode ? "LIVE" : "TEST",
+    },
+    select: { id: true },
+  });
+  return account
+    ? handleStripeWebhook(client, account.id, rawBody, headers, resolver)
+    : "invalid";
+}
+
 export async function recordManualStripeRefund(
   client: PrismaClient,
   storeId: string,

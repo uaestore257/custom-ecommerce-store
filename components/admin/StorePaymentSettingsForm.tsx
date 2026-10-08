@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
-import { updateOwnStoreSettingsAction } from "@/app/admin/actions";
+import { startStripeConnectAction, updateOwnStoreSettingsAction } from "@/app/admin/actions";
 import { buttonClass, Card, Field, inputClass, Notice } from "@/components/ui";
 import type { AdminStorePaymentSettings } from "@/lib/admin/types";
 
@@ -45,7 +45,6 @@ export function StorePaymentSettingsForm({
     enabled: store.stripe.enabled,
     accountId: store.stripe.accountId,
     mode: store.stripe.mode,
-    secretRef: "",
   });
   const [jazzcash, setJazzcash] = useState({
     enabled: store.jazzcash.enabled,
@@ -73,6 +72,18 @@ export function StorePaymentSettingsForm({
       }
       setSaved(true);
       router.refresh();
+    });
+  }
+
+  function connectStripe() {
+    setError(null);
+    startTransition(async () => {
+      const result = await startStripeConnectAction(stripe.mode);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      window.location.assign(result.data.url);
     });
   }
 
@@ -132,9 +143,11 @@ export function StorePaymentSettingsForm({
         {!store.stripe.available && (
           <Notice tone="warning" className="mt-4">
             {stripe.mode === "LIVE" && !store.stripe.liveCheckoutEnabled
-              ? "LIVE Stripe checkout is held disabled by deployment configuration. It stays unavailable until implementation verification and an explicit operations enablement."
-              : `Stripe Checkout remains unavailable until this store's ${stripe.mode.toLowerCase()} credentials resolve through the server-side secret store.`}{" "}
-            No credentials are stored in the database or sent to the browser.
+              ? "LIVE Stripe checkout is held disabled by deployment configuration. Connecting an account does not enable payments."
+              : !store.stripe.connectConfigured
+                ? `Stripe ${stripe.mode.toLowerCase()} Connect is not fully configured by the platform.`
+                : `Stripe ${stripe.mode.toLowerCase()} checkout is unavailable until the connected account and server-side credentials are ready.`}{" "}
+            Stripe credentials remain server-side and are never entered here.
           </Notice>
         )}
         <fieldset disabled={readOnly || pending} className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -150,30 +163,19 @@ export function StorePaymentSettingsForm({
               <option value="LIVE">LIVE</option>
             </select>
           </Field>
-          <Field label="Connected account ID" htmlFor="stripe-account-id">
-            <input
-              id="stripe-account-id"
-              value={stripe.accountId}
-              onChange={(event) => setStripe((value) => ({ ...value, accountId: event.target.value }))}
-              className={inputClass()}
-              autoComplete="off"
-              placeholder="acct_…"
-            />
-          </Field>
-          <Field label={`${stripe.mode} credential reference`} htmlFor="stripe-secret-reference">
-            <input
-              id="stripe-secret-reference"
-              value={stripe.secretRef}
-              onChange={(event) => setStripe((value) => ({ ...value, secretRef: event.target.value }))}
-              className={inputClass()}
-              autoComplete="off"
-              placeholder={
-                store.stripe.hasCredentialReference
-                  ? "Leave blank to keep existing reference"
-                  : `vault:${store.id}/stripe/account-key`
-              }
-            />
-          </Field>
+          <div className="flex flex-col justify-end">
+            <p className="text-sm font-medium">
+              {stripe.accountId ? `Connected account: ${stripe.accountId}` : "No Stripe account connected"}
+            </p>
+            <button
+              type="button"
+              className={`${buttonClass("secondary")} mt-2`}
+              disabled={readOnly || pending || !store.stripe.connectConfigured}
+              onClick={connectStripe}
+            >
+              {pending ? "Opening Stripe…" : stripe.accountId ? "Connect a different Stripe account" : "Connect Stripe"}
+            </button>
+          </div>
           <label className="flex items-start gap-3 text-sm sm:col-span-2">
             <input
               type="checkbox"
@@ -181,10 +183,10 @@ export function StorePaymentSettingsForm({
               checked={stripe.enabled}
               onChange={(event) => setStripe((value) => ({ ...value, enabled: event.target.checked }))}
             />
-            <span>Enable Stripe Checkout for this store when its {stripe.mode} credentials are available.</span>
+            <span>Enable Stripe Checkout for this store when its connected account is ready.</span>
           </label>
           <p className="text-xs text-slate-500 sm:col-span-2">
-            Enter only an opaque reference to server-side secrets, never an API key or webhook secret. LIVE is available only when its live API key and signed-webhook secret both validate for this store and connected account.
+            Account connection uses Stripe-hosted OAuth. Disconnect by disabling Stripe Checkout and saving; historical payment verification requires the platform to retain its server-side Stripe access.
           </p>
         </fieldset>
       </Card>

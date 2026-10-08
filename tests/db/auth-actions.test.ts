@@ -77,6 +77,7 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   createStoreAction: () => actions.createStoreAction(newStore()),
   updateStoreAction: () => actions.updateStoreAction(t.storeId, { name: "Hijacked", status: "ACTIVE" }),
   updateOwnStoreSettingsAction: () => actions.updateOwnStoreSettingsAction({}),
+  startStripeConnectAction: () => actions.startStripeConnectAction("TEST"),
   setStoreOwnerAction: () => actions.setStoreOwnerAction(t.storeId, { ownerName: "Crafted", ownerEmail: `crafted-owner-${uid()}@example.com` }),
   setStoreStatusAction: () => actions.setStoreStatusAction(t.storeId, "SUSPENDED"),
   archiveStoreAction: () => actions.archiveStoreAction(t.storeId),

@@ -22,6 +22,7 @@ import {
 import type { StoreType } from "@/lib/types";
 import { isProviderMarketSupported } from "@/lib/payments/rules";
 import { liveStripeCheckoutEnabled, paymentCredentialsAvailable, runtimePaymentCredentialResolver } from "../payments/credentials";
+import { stripeConnectEnvironmentReady } from "../payments/stripe-connect";
 import { validateOwnerPaymentSettings } from "@/lib/payments/validation";
 import { recordAudit } from "../audit";
 import { getAuth } from "../auth/auth";
@@ -234,6 +235,8 @@ export async function getAdminStorePaymentSettings(
       mode: stripeAccount?.mode === "LIVE" ? "LIVE" : "TEST",
       hasCredentialReference: Boolean(secretRef),
       liveCheckoutEnabled: liveStripeCheckoutEnabled(),
+      connectConfigured:
+        stripeConnectEnvironmentReady("TEST") || stripeConnectEnvironmentReady("LIVE"),
       enabled: stripeMethod?.enabled ?? false,
       available,
     },
@@ -477,7 +480,7 @@ export async function updateStoreOwnerSettings(
       paymentAccounts: {
         where: { provider: { in: ["stripe_connect", "jazzcash"] } },
         orderBy: [{ enabled: "desc" }, { createdAt: "desc" }],
-        select: { provider: true, secretRef: true },
+        select: { provider: true, mode: true, publicConfig: true, secretRef: true },
       },
     },
   });
@@ -493,18 +496,22 @@ export async function updateStoreOwnerSettings(
     inputRecord.jazzcash && typeof inputRecord.jazzcash === "object" && !Array.isArray(inputRecord.jazzcash)
       ? (inputRecord.jazzcash as Record<string, unknown>)
       : {};
-  const storedStripeReference =
-    existing.paymentAccounts.find((account) => account.provider === "stripe_connect")?.secretRef ?? "";
+  const storedStripeAccount = existing.paymentAccounts.find((account) => account.provider === "stripe_connect");
+  const storedStripeConfig =
+    storedStripeAccount?.publicConfig && typeof storedStripeAccount.publicConfig === "object" && !Array.isArray(storedStripeAccount.publicConfig)
+      ? storedStripeAccount.publicConfig as Record<string, unknown>
+      : {};
+  const storedStripeAccountId = typeof storedStripeConfig.accountId === "string" ? storedStripeConfig.accountId : "";
+  const storedStripeReference = storedStripeAccount?.secretRef ?? "";
   const storedJazzcashReference =
     existing.paymentAccounts.find((account) => account.provider === "jazzcash")?.secretRef ?? "";
   const settingsInput = {
     ...inputRecord,
     stripe: {
       ...stripeInput,
-      secretRef:
-        typeof stripeInput.secretRef === "string" && stripeInput.secretRef.trim()
-          ? stripeInput.secretRef
-          : storedStripeReference,
+      accountId: storedStripeAccountId,
+      mode: storedStripeAccount?.mode ?? stripeInput.mode,
+      secretRef: storedStripeReference,
     },
     jazzcash: {
       ...jazzcashInput,
@@ -602,6 +609,7 @@ export async function updateStoreOwnerSettings(
           where: { id: currentStripe.id },
           data: {
             displayName: "Stripe Connect",
+            stripeAccountId: values.stripe.accountId,
             mode: values.stripe.mode,
             enabled: true,
             publicConfig: { accountId: values.stripe.accountId },
@@ -615,6 +623,7 @@ export async function updateStoreOwnerSettings(
           data: {
             storeId,
             provider: "stripe_connect",
+            stripeAccountId: values.stripe.accountId,
             displayName: "Stripe Connect",
             mode: values.stripe.mode,
             enabled: true,

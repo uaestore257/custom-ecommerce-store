@@ -72,6 +72,7 @@ export interface AdminStorePaymentSettings {
     mode: "TEST" | "LIVE";
     hasCredentialReference: boolean;
     liveCheckoutEnabled: boolean;
+    connectConfigured: boolean;
     enabled: boolean;
     available: boolean;
   };

@@ -59,6 +59,14 @@ Other optional or feature-specific variable names:
 * `EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
   `SMTP_PASSWORD`, and `SMTP_SECURE` — required together only when enabling
   SMTP mail (see Email below).
+* Stripe Connect: `STRIPE_CONNECT_REDIRECT_URI`,
+  `STRIPE_TEST_CONNECT_CLIENT_ID`, `STRIPE_TEST_SECRET_KEY`, and
+  `STRIPE_TEST_WEBHOOK_SECRET` for TEST onboarding and payment processing.
+  LIVE setup uses the separate `STRIPE_LIVE_CONNECT_CLIENT_ID`,
+  `STRIPE_LIVE_SECRET_KEY`, and `STRIPE_LIVE_WEBHOOK_SECRET`; never set
+  `STRIPE_LIVE_CHECKOUT_ENABLED=true` without separate operator approval.
+  Stripe variable details and Dashboard/webhook setup are in
+  [Stripe Connect payment operations](./stripe-connect-payments.md).
 * `TEST_DATABASE_URL` — must not be configured in production.
 
 Keep all values, especially database URLs, authentication secrets, and SMTP
@@ -99,8 +107,8 @@ In Vercel, configure each environment independently:
 
 | Vercel environment | Required configuration |
 | --- | --- |
-| Production | Set `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN` to production values. Add the SMTP variables only after authenticated SMTP is provisioned. Do not set `DIRECT_URL` or `TEST_DATABASE_URL` on the application runtime. |
-| Preview | Use a separate Neon non-production branch/database for `DATABASE_URL` and a distinct `BETTER_AUTH_SECRET`; never reuse production database or authentication secrets. Set `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN` to stable preview hosts. Attach the storefront wildcard and confirm nested `admin.<slug>.<root>` routing/TLS before testing store-admin login. Per-deployment `*.vercel.app` URLs are not a substitute for stable hostnames in this host-based app. |
+| Production | Set `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN` to production values. Add the Stripe TEST variables only when preparing TEST Connect. Keep LIVE checkout gated off by default. Add the SMTP variables only after authenticated SMTP is provisioned. Do not set `DIRECT_URL` or `TEST_DATABASE_URL` on the application runtime. |
+| Preview | Use a separate Neon non-production branch/database for `DATABASE_URL` and a distinct `BETTER_AUTH_SECRET`; never reuse production database or authentication secrets. Use separate TEST-only Stripe Connect credentials and a preview callback/webhook URL if testing onboarding. Do not use LIVE Stripe secrets. Set `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN` to stable preview hosts. Attach the storefront wildcard and confirm nested `admin.<slug>.<root>` routing/TLS before testing store-admin login. Per-deployment `*.vercel.app` URLs are not a substitute for stable hostnames in this host-based app. |
 | Development | For `vercel dev`, use only an isolated development database and development auth values (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `ADMIN_HOST`, and `PLATFORM_ROOT_DOMAIN`). Ordinary local development may continue to use the private local `.env` and local PostgreSQL setup instead. Never pull production variables into local development. |
 
 `DIRECT_URL` is not needed by the Vercel application or its build: Prisma

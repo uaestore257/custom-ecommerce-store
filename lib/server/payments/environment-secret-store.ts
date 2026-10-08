@@ -28,29 +28,37 @@ export function createEnvironmentPaymentSecretStore(
     async resolve(context: PaymentCredentialContext) {
       if (context.provider !== "stripe_connect") return null;
       const raw = read(paymentSecretEnvironmentVariable(context.secretRef));
-      if (!raw || raw.length > 16_384 || !context.mode) return null;
-      if (!context.connectedAccountId) return null;
-      let candidate: unknown;
-      try {
-        candidate = JSON.parse(raw);
-      } catch {
-        return null;
+      if (raw && raw.length <= 16_384 && context.mode && context.connectedAccountId) {
+        let candidate: unknown;
+        try {
+          candidate = JSON.parse(raw);
+        } catch {
+          candidate = null;
+        }
+        if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+          const record = candidate as Partial<SecretRecord>;
+          if (
+            record.provider === context.provider &&
+            record.storeId === context.storeId &&
+            record.providerAccountId === context.providerAccountId &&
+            record.mode === context.mode &&
+            record.connectedAccountId === context.connectedAccountId &&
+            record.secrets &&
+            typeof record.secrets === "object" &&
+            !Array.isArray(record.secrets)
+          ) {
+            return record.secrets;
+          }
+        }
       }
-      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
-      const record = candidate as Partial<SecretRecord>;
-      if (
-        record.provider !== context.provider ||
-        record.storeId !== context.storeId ||
-        record.providerAccountId !== context.providerAccountId ||
-        record.mode !== context.mode ||
-        record.connectedAccountId !== context.connectedAccountId ||
-        !record.secrets ||
-        typeof record.secrets !== "object" ||
-        Array.isArray(record.secrets)
-      ) {
-        return null;
-      }
-      return record.secrets;
+      if (!context.mode || !context.connectedAccountId) return null;
+      const expectedReference = `vault:${context.storeId}/stripe/platform-${context.mode.toLowerCase()}`;
+      if (context.secretRef !== expectedReference) return null;
+      const prefix = context.mode === "LIVE" ? "STRIPE_LIVE" : "STRIPE_TEST";
+      const apiSecretKey = read(`${prefix}_SECRET_KEY`);
+      const webhookSigningSecret = read(`${prefix}_WEBHOOK_SECRET`);
+      if (!apiSecretKey || !webhookSigningSecret) return null;
+      return { apiSecretKey, webhookSigningSecret };
     },
   };
 }
