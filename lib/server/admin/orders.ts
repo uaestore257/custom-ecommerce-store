@@ -100,7 +100,17 @@ export async function getAdminOrder(client: Client, storeId: string, orderId: st
       paymentTransactions: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { providerReference: true },
+        select: {
+          providerReference: true,
+          status: true,
+          failureCode: true,
+          providerAccount: { select: { provider: true } },
+        },
+      },
+      paymentRefunds: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { stripeRefundId: true, amountMinor: true, currency: true, createdAt: true },
       },
     },
   });
@@ -114,6 +124,18 @@ export async function getAdminOrder(client: Client, storeId: string, orderId: st
     ...toSummary(order, store, locale),
     fulfillmentMethod,
     paymentTransactionReference: order.paymentTransactions[0]?.providerReference ?? "",
+    paymentTransactionStatus: order.paymentTransactions[0]?.status ?? null,
+    paymentTransactionFailureCode: order.paymentTransactions[0]?.failureCode ?? null,
+    stripeRefundRecordAvailable: Boolean(
+      order.paymentTransactions[0]?.providerAccount?.provider === "stripe_connect" &&
+        order.paymentTransactions[0]?.providerReference &&
+        ["SUCCEEDED", "PARTIALLY_REFUNDED", "RECONCILIATION"].includes(order.paymentTransactions[0].status),
+    ),
+    refunds: order.paymentRefunds.map((refund) => ({
+      providerRefundId: refund.stripeRefundId,
+      amountDisplay: money(refund.amountMinor),
+      createdAt: refund.createdAt.toISOString(),
+    })),
     address: {
       recipientName: text(address.recipientName),
       line1: text(address.line1),
@@ -201,6 +223,10 @@ export async function cancelAdminOrder(actor: StoreActor, client: PrismaClient, 
       data: { status: "CANCELLED" },
     });
     if (updated.count !== 1) return fail(CHANGED);
+    await tx.paymentTransaction.updateMany({
+      where: { orderId, storeId, status: "PENDING", providerAccount: { is: { provider: "stripe_connect" } } },
+      data: { status: "CANCELLED", failureCode: "order_cancelled" },
+    });
 
     const restock = !order.isDemo;
     if (restock) {
@@ -241,7 +267,13 @@ export async function setAdminOrderPayment(
   from: unknown,
   to: unknown,
 ) {
-  if (!isPaymentStatus(from) || !isPaymentStatus(to) || from === to) return fail("Choose a valid payment status.");
+  if (
+    !isPaymentStatus(from) ||
+    !isPaymentStatus(to) ||
+    (from !== "UNPAID" && from !== "PAID") ||
+    (to !== "UNPAID" && to !== "PAID") ||
+    from === to
+  ) return fail("Choose a valid payment status.");
   return client.$transaction(async (tx) => {
     const current = await currentOrder(tx, storeId, orderId);
     if (!current.found) return fail(current.error);

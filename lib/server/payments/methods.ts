@@ -1,6 +1,6 @@
 import "server-only";
 import { isProviderMarketSupported, paymentProviderForMethod } from "@/lib/payments/rules";
-import { paymentCredentialsAvailable, runtimePaymentCredentialResolver } from "./credentials";
+import { liveStripeCheckoutEnabled, paymentCredentialsAvailable, runtimePaymentCredentialResolver } from "./credentials";
 import { paymentProviderAdapter } from "./providers";
 import type { PaymentCredentialResolver, PaymentProviderAccountConfig } from "./types";
 import type { PaymentMethodId } from "@/lib/types";
@@ -17,7 +17,7 @@ export async function isOnlinePaymentMethodAvailable(
     !account ||
     account.storeId !== store.id ||
     account.provider !== provider ||
-    account.mode !== "TEST" ||
+    (provider === "jazzcash" && account.mode !== "TEST") ||
     !account.enabled ||
     !account.secretRef ||
     !paymentProviderAdapter(provider) ||
@@ -27,11 +27,19 @@ export async function isOnlinePaymentMethodAvailable(
   }
   // JazzCash's current browser-post flow includes the merchant password in its form payload.
   if (provider === "jazzcash") return false;
+  if (account.mode === "LIVE" && !liveStripeCheckoutEnabled()) return false;
+  const config =
+    account.publicConfig && typeof account.publicConfig === "object" && !Array.isArray(account.publicConfig)
+      ? (account.publicConfig as Record<string, unknown>)
+      : {};
+  if (typeof config.accountId !== "string") return false;
   return paymentCredentialsAvailable(resolver, {
     secretRef: account.secretRef,
     provider,
     storeId: store.id,
     providerAccountId: account.id,
+    mode: account.mode,
+    connectedAccountId: config.accountId,
   });
 }
 

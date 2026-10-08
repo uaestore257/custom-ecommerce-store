@@ -23,6 +23,7 @@ export interface CleanOwnerPaymentSettings {
   stripe: {
     enabled: boolean;
     accountId: string;
+    mode: "TEST" | "LIVE";
     secretRef: string;
   };
   jazzcash: {
@@ -53,6 +54,9 @@ export function validateOwnerPaymentSettings(input: unknown, country: string, cu
   const stripe = record(raw.stripe);
   const jazzcash = record(raw.jazzcash);
   const errors: Record<string, string> = {};
+  if (stripe.mode !== undefined && stripe.mode !== "TEST" && stripe.mode !== "LIVE") {
+    errors.stripeMode = "Choose TEST or LIVE mode.";
+  }
 
   const fields = {
     bankName: text(bank.bankName, 100),
@@ -88,6 +92,7 @@ export function validateOwnerPaymentSettings(input: unknown, country: string, cu
     stripe: {
       enabled: enabled(stripe.enabled),
       accountId: fields.stripeAccountId ?? "",
+      mode: stripe.mode === "LIVE" ? "LIVE" : "TEST",
       secretRef: fields.stripeSecretRef ?? "",
     },
     jazzcash: {
@@ -118,7 +123,7 @@ export function validateOwnerPaymentSettings(input: unknown, country: string, cu
     ) {
       errors.stripeSecretRef = "Enter an opaque secret-manager reference, not a credential.";
     }
-    if (!values.stripe.secretRef) errors.stripeSecretRef = "Enter the reference to this store's Stripe test credentials.";
+    if (!values.stripe.secretRef) errors.stripeSecretRef = `Enter the reference to this store's Stripe ${values.stripe.mode.toLowerCase()} credentials.`;
   } else if (values.stripe.accountId && !isStripeConnectedAccountId(values.stripe.accountId)) {
     errors.stripeAccountId = "Enter the connected Stripe account ID.";
   } else if (

@@ -9,11 +9,11 @@ import {
   type CleanCheckout,
   type PlacedOrder,
   type PlaceOrderResult,
-  type ProviderCheckoutRedirect,
 } from "@/lib/checkout";
 import { withinRateLimit } from "./rate-limit";
 import { storeScope } from "./store-scope";
 import {
+  liveStripeCheckoutEnabled,
   paymentCredentialsAvailable,
   runtimePaymentCredentialResolver,
 } from "./payments/credentials";
@@ -171,6 +171,29 @@ async function existingForKey(
   return { ok: true, order: toPlacedOrder(existing), duplicate: true };
 }
 
+async function resumeProviderCheckout(
+  client: PrismaClient,
+  storeId: string,
+  result: PlaceOrderResult,
+  resolver: PaymentCredentialResolver,
+): Promise<PlaceOrderResult> {
+  if (!result.ok || !result.order.paymentTransactionId) return result;
+  try {
+    const checkout = await createProviderCheckout(client, storeId, result.order.paymentTransactionId, resolver);
+    return checkout ? { ...result, checkout: checkout.session.redirect } : {
+      ok: false,
+      error: "Your order is saved, but checkout could not be started. Retry using the same checkout details.",
+      retrySameKey: true,
+    };
+  } catch {
+    return {
+      ok: false,
+      error: "Your order is saved, but checkout could not be started. Retry using the same checkout details.",
+      retrySameKey: true,
+    };
+  }
+}
+
 /**
  * Places a real order in `storeId`, which the CALLER resolved on the
  * server (never taken from the request).
@@ -206,10 +229,16 @@ export async function placeOrder(
   const values = validation.values;
   if (values.storeId !== publicStore.id) return refuse(ORDER_MESSAGES.otherStore);
   const fingerprint = requestFingerprint(values);
+  const checkoutProvider = paymentProviderForMethod(values.paymentMethod as PaymentMethodId);
+  const resolver = testHooks.paymentCredentialResolver ?? runtimePaymentCredentialResolver;
 
   // 4. A repeated submission returns the first order (fast path, no lock).
   const earlier = await existingForKey(client, publicStore.id, values.idempotencyKey, fingerprint);
-  if (earlier) return earlier;
+  if (earlier) {
+    return checkoutProvider
+      ? resumeProviderCheckout(client, publicStore.id, earlier, resolver)
+      : earlier;
+  }
 
   try {
     const outcome = await client.$transaction(async (tx) => {
@@ -238,8 +267,7 @@ export async function placeOrder(
       }
       const resolver = testHooks.paymentCredentialResolver ?? runtimePaymentCredentialResolver;
       let providerAccountId: string | null = null;
-      let provider: ReturnType<typeof paymentProviderForMethod> = null;
-      provider = paymentProviderForMethod(values.paymentMethod as PaymentMethodId);
+      const provider = checkoutProvider;
       if (provider) {
         const account = selectedMethod.providerAccountId
           ? await tx.paymentProviderAccount.findFirst({
@@ -248,9 +276,9 @@ export async function placeOrder(
                 storeId: store.id,
                 provider,
                 enabled: true,
-                mode: "TEST",
+                ...(provider === "stripe_connect" ? {} : { mode: "TEST" }),
               },
-              select: { id: true, secretRef: true },
+              select: { id: true, secretRef: true, mode: true, publicConfig: true },
             })
           : null;
         if (
@@ -261,11 +289,22 @@ export async function placeOrder(
         ) {
           throw new OrderRefused(ORDER_MESSAGES.paymentUnavailable);
         }
+        if (provider === "stripe_connect" && account.mode === "LIVE" && !liveStripeCheckoutEnabled()) {
+          throw new OrderRefused(ORDER_MESSAGES.paymentUnavailable);
+        }
+        const stripeConfig =
+          account?.publicConfig && typeof account.publicConfig === "object" && !Array.isArray(account.publicConfig)
+            ? (account.publicConfig as Record<string, unknown>)
+            : {};
         const configured = await paymentCredentialsAvailable(resolver, {
           secretRef: account.secretRef,
           provider,
           storeId: store.id,
           providerAccountId: account.id,
+          mode: account.mode,
+          ...(provider === "stripe_connect" && typeof stripeConfig.accountId === "string"
+            ? { connectedAccountId: stripeConfig.accountId }
+            : {}),
         });
         if (!configured) throw new OrderRefused(ORDER_MESSAGES.paymentCredentialsUnavailable);
         providerAccountId = account.id;
@@ -395,7 +434,7 @@ export async function placeOrder(
           lineTotalMinor: l.lineTotalMinor,
         })),
       });
-      const paymentTransaction = await tx.paymentTransaction.create({
+      await tx.paymentTransaction.create({
         data: {
           storeId: store.id,
           orderId: order.id,
@@ -408,29 +447,27 @@ export async function placeOrder(
         },
       });
 
-      let checkoutRedirect: ProviderCheckoutRedirect | undefined;
-      if (provider) {
-        const session = await createProviderCheckout(tx as PrismaClient, store.id, paymentTransaction.id, resolver);
-        if (!session) throw new OrderRefused(ORDER_MESSAGES.paymentCredentialsUnavailable);
-        checkoutRedirect = session.session.redirect;
-      }
-
       const created = await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
       await testHooks.beforeCommit?.();
       return {
         ok: true,
         order: toPlacedOrder(created),
         duplicate: false,
-        ...(checkoutRedirect ? { checkout: checkoutRedirect } : {}),
       } satisfies PlaceOrderResult;
     }, TX_OPTIONS);
-    return outcome;
+    return checkoutProvider
+      ? resumeProviderCheckout(client, publicStore.id, outcome, resolver)
+      : outcome;
   } catch (error) {
     if (error instanceof OrderRefused) return refuse(error.userMessage);
     // Final backstop: a duplicate that slipped past both checks.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const earlierOrder = await existingForKey(client, publicStore.id, values.idempotencyKey, fingerprint);
-      if (earlierOrder) return earlierOrder;
+      if (earlierOrder) {
+        return checkoutProvider
+          ? resumeProviderCheckout(client, publicStore.id, earlierOrder, resolver)
+          : earlierOrder;
+      }
     }
     // Lock wait / transaction timeout: nothing was saved; retrying with the same key is safe.
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2028" || error.code === "P2034")) {

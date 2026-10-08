@@ -97,6 +97,7 @@ const calls = (t: Target): Record<keyof typeof ACTION_PERMISSIONS, () => Promise
   setOrderStatusAction: () => actions.setOrderStatusAction(t.storeId, t.orderId, "PENDING", "PROCESSING"),
   cancelOrderAction: () => actions.cancelOrderAction(t.storeId, t.orderId, "PENDING"),
   setOrderPaymentAction: () => actions.setOrderPaymentAction(t.storeId, t.orderId, "UNPAID", "PAID"),
+  recordStripeRefundAction: () => actions.recordStripeRefundAction(t.storeId, t.orderId, "re_test"),
   setInquiryStatusAction: () => actions.setInquiryStatusAction(t.storeId, t.inquiryId, "NEW", "ARCHIVED"),
   updateStoreMemberRoleAction: () => actions.updateStoreMemberRoleAction(t.membershipId, "STAFF"),
   revokeStoreMemberAction: () => actions.revokeStoreMemberAction(t.membershipId),

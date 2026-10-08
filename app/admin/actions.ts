@@ -42,6 +42,7 @@ import {
 } from "@/lib/server/admin/categories";
 import { setAdminInquiryStatus } from "@/lib/server/admin/inquiries";
 import { cancelAdminOrder, setAdminOrderPayment, setAdminOrderStatus } from "@/lib/server/admin/orders";
+import { recordManualStripeRefund } from "@/lib/server/payments/service";
 import { createAdminProduct, deleteAdminProduct, updateAdminProduct } from "@/lib/server/admin/products";
 import {
   archiveAdminStore,
@@ -321,6 +322,14 @@ export async function cancelOrderAction(storeId: unknown, orderId: unknown, from
 export async function setOrderPaymentAction(storeId: unknown, orderId: unknown, from: unknown, to: unknown) {
   if (!isId(storeId) || !isId(orderId)) return badRequest;
   return asStoreWriter("setOrderPayment", storeId, "orders", ({ actor }) => setAdminOrderPayment(actor, getDb(), storeId, orderId, from, to));
+}
+
+export async function recordStripeRefundAction(storeId: unknown, orderId: unknown, refundId: unknown) {
+  if (!isId(storeId) || !isId(orderId)) return badRequest;
+  return asStoreWriter("recordStripeRefund", storeId, "orders", async ({ actor }) => {
+    const result = await recordManualStripeRefund(getDb(), storeId, orderId, actor.userId, refundId);
+    return result.ok ? { ok: true, data: undefined, message: result.message } : result;
+  });
 }
 
 // ---------- Contact messages (scoped to the route's store) ----------

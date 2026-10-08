@@ -25,15 +25,21 @@ export function configurePaymentSecretStore(secretStore: PaymentSecretStore | nu
   else delete runtime.__storeScopedPaymentSecretStore;
 }
 
+export function liveStripeCheckoutEnabled(): boolean {
+  return process.env.STRIPE_LIVE_CHECKOUT_ENABLED === "true";
+}
+
 function validProviderCredentialShape(
   provider: PaymentCredentialContext["provider"],
   secrets: Readonly<Record<string, string>>,
+  mode?: PaymentCredentialContext["mode"],
 ): boolean {
   if (!secrets || typeof secrets !== "object" || Array.isArray(secrets)) return false;
   if (Object.values(secrets).some((value) => typeof value !== "string" || !value.trim())) return false;
   if (provider === "stripe_connect") {
+    const keyPrefix = mode === "LIVE" ? "sk_live_" : "sk_test_";
     return Object.keys(secrets).every((key) => ["apiSecretKey", "webhookSigningSecret"].includes(key)) &&
-      secrets.apiSecretKey?.startsWith("sk_test_") === true &&
+      secrets.apiSecretKey?.startsWith(keyPrefix) === true &&
       secrets.webhookSigningSecret?.startsWith("whsec_") === true;
   }
   if (
@@ -58,11 +64,11 @@ export function createPaymentCredentialResolver(secretStore: PaymentSecretStore)
 
     let secrets: Readonly<Record<string, string>> | null;
     try {
-      secrets = await secretStore.resolve(context.secretRef, context.provider, context.storeId);
+      secrets = await secretStore.resolve(context);
     } catch {
       return null;
     }
-    if (!secrets || !validProviderCredentialShape(context.provider, secrets)) return null;
+    if (!secrets || !validProviderCredentialShape(context.provider, secrets, context.mode)) return null;
 
     return {
       ...context,
@@ -117,7 +123,9 @@ export async function resolvePaymentCredentials(
     resolved.provider !== context.provider ||
     resolved.storeId !== context.storeId ||
     resolved.providerAccountId !== context.providerAccountId ||
-    !validProviderCredentialShape(context.provider, resolved.secrets)
+    resolved.mode !== context.mode ||
+    resolved.connectedAccountId !== context.connectedAccountId ||
+    !validProviderCredentialShape(context.provider, resolved.secrets, context.mode)
   ) {
     return null;
   }

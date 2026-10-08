@@ -11,6 +11,10 @@ import {
   runtimePaymentCredentialResolver,
 } from "../../lib/server/payments/credentials";
 import { isOnlinePaymentMethodAvailable } from "../../lib/server/payments/methods";
+import {
+  createEnvironmentPaymentSecretStore,
+  paymentSecretEnvironmentVariable,
+} from "../../lib/server/payments/environment-secret-store";
 import type {
   PaymentCredentialContext,
   PaymentSecretStore,
@@ -18,11 +22,16 @@ import type {
 
 const stripeReference = "vault:store-a/stripe/account-123";
 const jazzcashReference = "vault:store-a/jazzcash/merchant-456";
+const liveStripeReference = "vault:store-a/stripe/live-account";
 
 const fixtures: Record<string, Readonly<Record<string, string>>> = {
   [stripeReference]: {
     apiSecretKey: "sk_test_fake_store_a_only",
     webhookSigningSecret: "whsec_fake_store_a_only",
+  },
+  [liveStripeReference]: {
+    apiSecretKey: "sk_live_fake_store_a_only",
+    webhookSigningSecret: "whsec_fake_store_a_live",
   },
   [jazzcashReference]: {
     merchantId: "FAKE-MERCHANT-A",
@@ -39,10 +48,10 @@ const fixtures: Record<string, Readonly<Record<string, string>>> = {
 };
 
 const fixtureSecretStore: PaymentSecretStore = {
-  async resolve(secretRef, provider, storeId) {
-    const expectedPath = `vault:${storeId}/${provider === "stripe_connect" ? "stripe" : provider}/`;
-    if (!secretRef.startsWith(expectedPath)) return null;
-    return fixtures[secretRef] ?? null;
+  async resolve(context) {
+    const expectedPath = `vault:${context.storeId}/${context.provider === "stripe_connect" ? "stripe" : context.provider}/`;
+    if (!context.secretRef.startsWith(expectedPath)) return null;
+    return fixtures[context.secretRef] ?? null;
   },
 };
 
@@ -51,6 +60,8 @@ const stripeContext: PaymentCredentialContext = {
   provider: "stripe_connect",
   storeId: "store-a",
   providerAccountId: "stripe-account-a",
+  mode: "TEST",
+  connectedAccountId: "acct_12345678",
 };
 
 const jazzcashContext: PaymentCredentialContext = {
@@ -58,6 +69,7 @@ const jazzcashContext: PaymentCredentialContext = {
   provider: "jazzcash",
   storeId: "store-a",
   providerAccountId: "jazzcash-account-a",
+  mode: "TEST",
 };
 
 test("external secret-store adapter resolves scoped fake Stripe and JazzCash credentials", async () => {
@@ -70,6 +82,44 @@ test("external secret-store adapter resolves scoped fake Stripe and JazzCash cre
   assert.equal(jazzcash?.secrets.merchantPassword, "fake-store-a-jazzcash-password");
   assert.equal(stripe?.provider, "stripe_connect");
   assert.equal(jazzcash?.provider, "jazzcash");
+});
+
+test("Stripe API credentials are strictly separated by TEST and LIVE mode", async () => {
+  const resolver = createPaymentCredentialResolver(fixtureSecretStore);
+  const liveContext: PaymentCredentialContext = {
+    ...stripeContext,
+    secretRef: liveStripeReference,
+    mode: "LIVE",
+  };
+  assert.equal((await resolver.resolve(stripeContext))?.secrets.apiSecretKey.startsWith("sk_test_"), true);
+  assert.equal((await resolver.resolve(liveContext))?.secrets.apiSecretKey.startsWith("sk_live_"), true);
+  assert.equal(await resolver.resolve({ ...stripeContext, mode: "LIVE" }), null);
+  assert.equal(await resolver.resolve({ ...liveContext, mode: "TEST" }), null);
+});
+
+test("environment secret records require exact provider, store, account, mode and Connect-account scope", async () => {
+  const context = { ...stripeContext, secretRef: "vault:store-a/stripe/live", mode: "LIVE" as const };
+  const record = JSON.stringify({
+      provider: "stripe_connect",
+      storeId: "store-a",
+      providerAccountId: "stripe-account-a",
+      mode: "LIVE",
+      connectedAccountId: "acct_12345678",
+      secrets: { apiSecretKey: "sk_live_fake", webhookSigningSecret: "whsec_fake" },
+    });
+  const store = createEnvironmentPaymentSecretStore((name) =>
+    name === paymentSecretEnvironmentVariable(context.secretRef) ? record : undefined,
+  );
+  const credentials = await createPaymentCredentialResolver(store).resolve(context);
+  assert.equal(credentials?.secrets.apiSecretKey, "sk_live_fake");
+  assert.equal(
+    await createPaymentCredentialResolver(store).resolve({ ...context, providerAccountId: "stripe-account-b" }),
+    null,
+  );
+  assert.equal(
+    await createPaymentCredentialResolver(store).resolve({ ...context, connectedAccountId: "acct_87654321" }),
+    null,
+  );
 });
 
 test("online Stripe availability uses only the matching store account and reference", async () => {
@@ -102,6 +152,45 @@ test("online Stripe availability uses only the matching store account and refere
     ),
     false,
   );
+});
+
+test("LIVE Stripe availability stays disabled unless deployment explicitly enables the live-checkout gate", async () => {
+  const previousFlag = process.env.STRIPE_LIVE_CHECKOUT_ENABLED;
+  delete process.env.STRIPE_LIVE_CHECKOUT_ENABLED;
+  const account = {
+    id: "stripe-account-a",
+    storeId: "store-a",
+    provider: "stripe_connect",
+    mode: "LIVE" as const,
+    enabled: true,
+    publicConfig: { accountId: "acct_12345678" },
+    secretRef: liveStripeReference,
+  };
+  try {
+    const resolver = createPaymentCredentialResolver(fixtureSecretStore);
+    assert.equal(
+      await isOnlinePaymentMethodAvailable(
+        "stripe_checkout",
+        account,
+        { id: "store-a", countryCode: "AE", currency: "AED" },
+        resolver,
+      ),
+      false,
+    );
+    process.env.STRIPE_LIVE_CHECKOUT_ENABLED = "true";
+    assert.equal(
+      await isOnlinePaymentMethodAvailable(
+        "stripe_checkout",
+        account,
+        { id: "store-a", countryCode: "AE", currency: "AED" },
+        resolver,
+      ),
+      true,
+    );
+  } finally {
+    if (previousFlag === undefined) delete process.env.STRIPE_LIVE_CHECKOUT_ENABLED;
+    else process.env.STRIPE_LIVE_CHECKOUT_ENABLED = previousFlag;
+  }
 });
 
 test("store A references cannot resolve against store B or another provider", async () => {

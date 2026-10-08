@@ -47,5 +47,7 @@ test("status values from the browser are checked exactly", () => {
   }
   assert.ok(isPaymentStatus("PAID"));
   assert.ok(isPaymentStatus("UNPAID"));
-  for (const value of ["paid", "REFUNDED", "", null, 0]) assert.equal(isPaymentStatus(value), false, JSON.stringify(value));
+  assert.ok(isPaymentStatus("PARTIALLY_REFUNDED"));
+  assert.ok(isPaymentStatus("REFUNDED"));
+  for (const value of ["paid", "", null, 0]) assert.equal(isPaymentStatus(value), false, JSON.stringify(value));
 });
