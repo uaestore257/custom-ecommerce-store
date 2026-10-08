@@ -122,6 +122,39 @@ test("environment secret records require exact provider, store, account, mode an
   );
 });
 
+test("OAuth-connected Stripe records resolve only canonical store/mode references to platform credentials", async () => {
+  const context: PaymentCredentialContext = {
+    ...stripeContext,
+    secretRef: "vault:store-a/stripe/platform-test",
+  };
+  const store = createEnvironmentPaymentSecretStore((name) => ({
+    STRIPE_TEST_SECRET_KEY: "sk_test_platform_fake",
+    STRIPE_TEST_WEBHOOK_SECRET: "whsec_platform_fake",
+  })[name]);
+  const resolver = createPaymentCredentialResolver(store);
+  const credentials = await resolver.resolve(context);
+  assert.equal(credentials?.storeId, "store-a");
+  assert.equal(credentials?.providerAccountId, "stripe-account-a");
+  assert.equal(credentials?.connectedAccountId, "acct_12345678");
+  assert.equal(credentials?.secrets.apiSecretKey, "sk_test_platform_fake");
+  assert.equal(
+    await resolver.resolve({
+      ...context,
+      storeId: "store-b",
+      secretRef: "vault:store-a/stripe/platform-test",
+    }),
+    null,
+  );
+  assert.equal(
+    await resolver.resolve({
+      ...context,
+      mode: "LIVE",
+      secretRef: "vault:store-a/stripe/platform-test",
+    }),
+    null,
+  );
+});
+
 test("online Stripe availability uses only the matching store account and reference", async () => {
   const account = {
     id: "stripe-account-a",

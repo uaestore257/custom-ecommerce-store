@@ -91,6 +91,7 @@ test("Stripe webhook verification requires the matching Connect account and bind
     id: "evt_live_1",
     type: "checkout.session.completed",
     account: "acct_12345678",
+    livemode: true,
     data: {
       object: {
         id: "cs_live_123",

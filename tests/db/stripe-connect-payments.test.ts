@@ -3,10 +3,11 @@ import { createHmac, randomUUID } from "node:crypto";
 import { after, test } from "node:test";
 import { createAdminCategory } from "../../lib/server/admin/categories";
 import { getAdminOrder } from "../../lib/server/admin/orders";
-import { createAdminStore, updateStoreOwnerSettings } from "../../lib/server/admin/stores";
+import { createAdminStore } from "../../lib/server/admin/stores";
 import { createAdminProduct } from "../../lib/server/admin/products";
 import { placeOrder } from "../../lib/server/orders";
-import { createProviderCheckout, handleStripeWebhook, recordManualStripeRefund } from "../../lib/server/payments/service";
+import { beginStripeConnectOAuth, completeStripeConnectOAuth } from "../../lib/server/payments/stripe-connect";
+import { createProviderCheckout, handleStripeConnectWebhook, handleStripeWebhook, recordManualStripeRefund } from "../../lib/server/payments/service";
 import type { PaymentCredentialResolver } from "../../lib/server/payments/types";
 import { testActor, testDb, uid } from "./helpers";
 
@@ -15,6 +16,7 @@ after(() => db.$disconnect());
 
 const accountId = "acct_12345678";
 const webhookSecret = "whsec_test_fake";
+const accountIdsByStore = new Map<string, string>();
 const resolver: PaymentCredentialResolver = {
   async isAvailable() {
     return true;
@@ -46,14 +48,17 @@ async function createPayment(orderStatus: "PENDING" | "CANCELLED" = "PENDING", t
   });
   assert.ok(created.ok, JSON.stringify(created));
   const storeId = created.data.id;
+  const connectedAccountId = `acct_${randomUUID().replaceAll("-", "")}`;
+  accountIdsByStore.set(storeId, connectedAccountId);
   const providerAccount = await db.paymentProviderAccount.create({
     data: {
       storeId,
       provider: "stripe_connect",
+      stripeAccountId: connectedAccountId,
       displayName: "Stripe test",
       mode: "TEST",
       enabled: true,
-      publicConfig: { accountId },
+      publicConfig: { accountId: connectedAccountId },
       secretRef: `vault:${storeId}/stripe/test`,
     },
   });
@@ -94,7 +99,7 @@ async function createPayment(orderStatus: "PENDING" | "CANCELLED" = "PENDING", t
       checkoutAttemptStartedAt: new Date(),
     },
   });
-  return { storeId, providerAccount, order, transaction, actorUserId: owner.userId };
+  return { storeId, providerAccount, order, transaction, actorUserId: owner.userId, connectedAccountId };
 }
 
 function signedEvent(
@@ -111,7 +116,8 @@ function signedEvent(
   const body = JSON.stringify({
     id: `evt_${randomUUID().replaceAll("-", "")}`,
     type: "checkout.session.completed",
-    account: data.account ?? accountId,
+    account: data.account ?? accountIdsByStore.get(data.storeId) ?? accountId,
+    livemode: false,
     data: {
       object: {
         id: data.sessionId ?? "cs_test_stored",
@@ -141,7 +147,7 @@ test("verified Stripe webhook settles once and replay is idempotent", async () =
     orderId: payment.order.id,
     amount: 1299,
   });
-  assert.equal(await handleStripeWebhook(db, payment.providerAccount.id, event.body, event.headers, resolver), "accepted");
+  assert.equal(await handleStripeConnectWebhook(db, event.body, event.headers, resolver), "accepted");
   assert.equal(await handleStripeWebhook(db, payment.providerAccount.id, event.body, event.headers, resolver), "duplicate");
   const [order, transaction] = await Promise.all([
     db.order.findUniqueOrThrow({ where: { id: payment.order.id } }),
@@ -149,6 +155,85 @@ test("verified Stripe webhook settles once and replay is idempotent", async () =
   ]);
   assert.equal(order.paymentStatus, "PAID");
   assert.equal(transaction.status, "SUCCEEDED");
+});
+
+test("Stripe Connect OAuth binds a one-time callback to its Store and leaves checkout disabled", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const envNames = [
+    "STRIPE_TEST_CONNECT_CLIENT_ID",
+    "STRIPE_TEST_SECRET_KEY",
+    "STRIPE_TEST_WEBHOOK_SECRET",
+    "STRIPE_CONNECT_REDIRECT_URI",
+  ] as const;
+  const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
+  process.env.STRIPE_TEST_CONNECT_CLIENT_ID = "ca_test_fake";
+  process.env.STRIPE_TEST_SECRET_KEY = "sk_test_platform_fake";
+  process.env.STRIPE_TEST_WEBHOOK_SECRET = webhookSecret;
+  process.env.STRIPE_CONNECT_REDIRECT_URI = "https://shop.example.test/api/stripe/connect/callback";
+  const connectedAccountId = `acct_${randomUUID().replaceAll("-", "")}`;
+  globalThis.fetch = (async () => Response.json({
+    stripe_user_id: connectedAccountId,
+    livemode: false,
+    scope: "read_write",
+  })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    for (const name of envNames) {
+      const value = originalEnv[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+
+  const actor = await testActor(db);
+  const created = await createAdminStore(actor, db, {
+    name: `Stripe Connect OAuth ${uid()}`,
+    slug: `stripe-connect-oauth-${uid()}`,
+    businessType: "retail",
+    status: "ACTIVE",
+    ownerName: "Connect Test Owner",
+    ownerEmail: `connect-${uid()}@example.com`,
+    ownerPassword: "a stripe connect test passphrase 2026",
+    countryCode: "AE",
+    baseCurrency: "AED",
+    timezone: "Asia/Dubai",
+    defaultLanguage: "en",
+    languages: ["en"],
+    accentColor: "#123456",
+  });
+  assert.ok(created.ok, JSON.stringify(created));
+  const membership = await db.storeMembership.findFirstOrThrow({
+    where: { storeId: created.data.id, role: "OWNER" },
+    select: { userId: true },
+  });
+  const start = await beginStripeConnectOAuth(db, created.data.id, membership.userId, "TEST");
+  assert.equal(start.ok, true);
+  if (!start.ok) return;
+  const authorization = new URL(start.url);
+  const state = authorization.searchParams.get("state");
+  assert.ok(state);
+  assert.equal(authorization.origin, "https://connect.stripe.com");
+  assert.equal(authorization.searchParams.get("redirect_uri"), process.env.STRIPE_CONNECT_REDIRECT_URI);
+
+  const completion = await completeStripeConnectOAuth(db, state, "fake-authorization-code");
+  assert.deepEqual(completion, { ok: true, storeSlug: (await db.store.findUniqueOrThrow({
+    where: { id: created.data.id },
+    select: { slug: true },
+  })).slug });
+  const account = await db.paymentProviderAccount.findFirstOrThrow({
+    where: { storeId: created.data.id, provider: "stripe_connect" },
+  });
+  assert.equal(account.stripeAccountId, connectedAccountId);
+  assert.equal(account.secretRef, `vault:${created.data.id}/stripe/platform-test`);
+  const method = await db.storePaymentMethod.findUniqueOrThrow({
+    where: { storeId_method: { storeId: created.data.id, method: "stripe_checkout" } },
+  });
+  assert.equal(method.enabled, false);
+  assert.equal(await completeStripeConnectOAuth(db, state, "fake-replayed-code").then((result) => result.ok), false);
+  assert.equal(
+    await db.paymentProviderAccount.count({ where: { stripeAccountId: connectedAccountId, storeId: { not: created.data.id } } }),
+    0,
+  );
 });
 
 test("Stripe webhooks reject wrong amount, currency, session and connected account without mutation", async () => {
@@ -730,32 +815,40 @@ test("manual Stripe refunds are recorded only after provider verification and tr
   }
 });
 
-test("pending payments block credential rotation while settled history rotates to a new provider-account record", async () => {
+test("pending payments block Stripe account rotation while settled history retains its original provider-account record", async (t) => {
   const payment = await createPayment();
-  const settings = {
-    paymentMethods: {
-      cash_on_delivery: false,
-      card_on_delivery: false,
-      bank_transfer: false,
-      cash_on_pickup: false,
-    },
-    bankTransfer: {},
-    stripe: {
-      enabled: true,
-      mode: "LIVE",
-      accountId: "acct_87654321",
-      secretRef: `vault:${payment.storeId}/stripe/rotated`,
-    },
-    jazzcash: { enabled: false, merchantId: "", secretRef: "" },
-  };
-  const blocked = await updateStoreOwnerSettings(
-    db,
-    payment.storeId,
-    payment.actorUserId,
-    settings,
-  );
+  const envNames = [
+    "STRIPE_LIVE_CONNECT_CLIENT_ID",
+    "STRIPE_LIVE_SECRET_KEY",
+    "STRIPE_CONNECT_REDIRECT_URI",
+  ] as const;
+  const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
+  const originalFetch = globalThis.fetch;
+  const rotatedAccountId = `acct_${randomUUID().replaceAll("-", "")}`;
+  process.env.STRIPE_LIVE_CONNECT_CLIENT_ID = "ca_live_fake";
+  process.env.STRIPE_LIVE_SECRET_KEY = "sk_live_platform_fake";
+  process.env.STRIPE_CONNECT_REDIRECT_URI = "https://shop.example.test/api/stripe/connect/callback";
+  globalThis.fetch = (async () => Response.json({
+    stripe_user_id: rotatedAccountId,
+    livemode: true,
+    scope: "read_write",
+  })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    for (const name of envNames) {
+      const value = originalEnv[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+
+  const storeOwner = await db.storeMembership.findFirstOrThrow({
+    where: { storeId: payment.storeId, role: "OWNER" },
+    select: { userId: true },
+  });
+  const blocked = await beginStripeConnectOAuth(db, payment.storeId, storeOwner.userId, "LIVE");
   assert.equal(blocked.ok, false);
-  if (!blocked.ok) assert.match(blocked.error, /unresolved payment attempts/i);
+  if (!blocked.ok) assert.match(blocked.error, /resolve existing Stripe payment attempts/i);
   const originalAccount = await db.paymentProviderAccount.findUniqueOrThrow({
     where: { id: payment.providerAccount.id },
   });
@@ -767,23 +860,24 @@ test("pending payments block credential rotation while settled history rotates t
     data: { status: "SUCCEEDED", settledAt: new Date() },
   });
   await db.order.update({ where: { id: payment.order.id }, data: { paymentStatus: "PAID" } });
-  const rotated = await updateStoreOwnerSettings(
-    db,
-    payment.storeId,
-    payment.actorUserId,
-    settings,
-  );
+  const start = await beginStripeConnectOAuth(db, payment.storeId, storeOwner.userId, "LIVE");
+  assert.equal(start.ok, true);
+  if (!start.ok) return;
+  const state = new URL(start.url).searchParams.get("state");
+  assert.ok(state);
+  const rotated = await completeStripeConnectOAuth(db, state, "fake-live-authorization-code");
   assert.equal(rotated.ok, true, JSON.stringify(rotated));
   const [oldAccount, newAccount, oldTransaction] = await Promise.all([
     db.paymentProviderAccount.findUniqueOrThrow({ where: { id: payment.providerAccount.id } }),
     db.paymentProviderAccount.findFirstOrThrow({
-      where: { storeId: payment.storeId, provider: "stripe_connect", id: { not: payment.providerAccount.id } },
+      where: { storeId: payment.storeId, provider: "stripe_connect", mode: "LIVE" },
     }),
     db.paymentTransaction.findUniqueOrThrow({ where: { id: payment.transaction.id } }),
   ]);
   assert.equal(oldAccount.enabled, false);
   assert.equal(oldAccount.secretRef, `vault:${payment.storeId}/stripe/test`);
   assert.equal(newAccount.mode, "LIVE");
-  assert.equal(newAccount.secretRef, `vault:${payment.storeId}/stripe/rotated`);
+  assert.equal(newAccount.stripeAccountId, rotatedAccountId);
+  assert.equal(newAccount.secretRef, `vault:${payment.storeId}/stripe/platform-live`);
   assert.equal(oldTransaction.providerAccountId, oldAccount.id);
 });

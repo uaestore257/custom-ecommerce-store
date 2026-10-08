@@ -43,6 +43,7 @@ import {
 import { setAdminInquiryStatus } from "@/lib/server/admin/inquiries";
 import { cancelAdminOrder, setAdminOrderPayment, setAdminOrderStatus } from "@/lib/server/admin/orders";
 import { recordManualStripeRefund } from "@/lib/server/payments/service";
+import { beginStripeConnectOAuth } from "@/lib/server/payments/stripe-connect";
 import { createAdminProduct, deleteAdminProduct, updateAdminProduct } from "@/lib/server/admin/products";
 import {
   archiveAdminStore,
@@ -174,6 +175,22 @@ export async function updateOwnStoreSettingsAction(input: unknown) {
       return viewer;
     },
     (viewer) => updateStoreOwnerSettings(getDb(), viewer.store.id, viewer.user.id, input),
+  );
+}
+
+export async function startStripeConnectAction(mode: unknown) {
+  return guarded(
+    "startStripeConnect",
+    async () => {
+      const viewer = await requireAdminViewer();
+      if (viewer.kind !== "store" || viewer.role !== "OWNER") throw new AccessDenied("forbidden");
+      if (viewer.access !== "write") throw new AccessDenied("read-only");
+      return viewer;
+    },
+    async (viewer) => {
+      const result = await beginStripeConnectOAuth(getDb(), viewer.store.id, viewer.user.id, mode);
+      return result.ok ? { ok: true, data: { url: result.url } } : result;
+    },
   );
 }
 

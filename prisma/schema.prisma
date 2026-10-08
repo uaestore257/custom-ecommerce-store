@@ -116,8 +116,8 @@ model Currency {
   name       String
   minorUnits Int
 
-  stores Store[]
-  orders Order[]
+  stores              Store[]
+  orders              Order[]
   paymentTransactions PaymentTransaction[]
 }
 
@@ -149,40 +149,40 @@ model PlatformSettings {
   updatedAt    DateTime @updatedAt
 
   // Identity
-  tagline         String? @db.VarChar(120)
-  description     String? @db.VarChar(400)
+  tagline        String? @db.VarChar(120)
+  description    String? @db.VarChar(400)
   /// Logo image URL (https:// or a site path such as /brand/logo.svg).
-  logoUrl         String? @db.VarChar(2048)
+  logoUrl        String? @db.VarChar(2048)
   /// The logo already contains the agency name: don't repeat the name beside it.
-  logoIsWordmark  Boolean @default(false)
+  logoIsWordmark Boolean @default(false)
   /// Square brand mark, used as the website icon.
-  brandMarkUrl    String? @db.VarChar(2048)
+  brandMarkUrl   String? @db.VarChar(2048)
 
   // About
-  aboutTitle      String? @db.VarChar(120)
-  aboutBody       String? @db.VarChar(4000)
+  aboutTitle String? @db.VarChar(120)
+  aboutBody  String? @db.VarChar(4000)
   /// [{ name, title, bio?, imageUrl? }] — founders and team.
-  team            Json    @default("[]")
+  team       Json    @default("[]")
 
   // Contact
-  phone           String? @db.VarChar(40)
-  whatsapp        String? @db.VarChar(40)
-  addressLine     String? @db.VarChar(200)
-  city            String? @db.VarChar(100)
-  region          String? @db.VarChar(100)
-  country         String? @db.VarChar(100)
-  postalCode      String? @db.VarChar(20)
-  businessHours   String? @db.VarChar(200)
+  phone         String? @db.VarChar(40)
+  whatsapp      String? @db.VarChar(40)
+  addressLine   String? @db.VarChar(200)
+  city          String? @db.VarChar(100)
+  region        String? @db.VarChar(100)
+  country       String? @db.VarChar(100)
+  postalCode    String? @db.VarChar(20)
+  businessHours String? @db.VarChar(200)
   /// Where project enquiries are addressed (falls back to contactEmail).
-  enquiryEmail    String? @db.VarChar(254)
+  enquiryEmail  String? @db.VarChar(254)
 
   // Social: [{ platform, url, label? }]
-  socialLinks     Json    @default("[]")
+  socialLinks Json @default("[]")
 
   // Website / SEO (the website name is always platformName)
-  seoTitle        String? @db.VarChar(120)
-  seoDescription  String? @db.VarChar(300)
-  ogImageUrl      String? @db.VarChar(2048)
+  seoTitle       String? @db.VarChar(120)
+  seoDescription String? @db.VarChar(300)
+  ogImageUrl     String? @db.VarChar(2048)
 }
 
 // ---------------------------------------------------------------------
@@ -207,12 +207,13 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  memberships StoreMembership[]
-  invitations StoreInvitation[] @relation("StoreInvitationSender")
-  sessions    Session[]
-  accounts    Account[]
-  auditEvents AuditEvent[]
-  paymentRefunds PaymentRefund[]
+  memberships              StoreMembership[]
+  invitations              StoreInvitation[]         @relation("StoreInvitationSender")
+  sessions                 Session[]
+  accounts                 Account[]
+  auditEvents              AuditEvent[]
+  paymentRefunds           PaymentRefund[]
+  stripeConnectOAuthStates StripeConnectOAuthState[]
 }
 
 // Better Auth core tables (better-auth 1.7.6). Field names and types follow
@@ -321,19 +322,19 @@ model StoreMembership {
 /// A single-use, store-scoped invitation. Only a hash of the bearer token
 /// is persisted; the raw token is delivered once and never returned to UI.
 model StoreInvitation {
-  id              String     @id @default(cuid())
+  id              String    @id @default(cuid())
   storeId         String
   invitedByUserId String
-  email           String     @db.VarChar(254)
+  email           String    @db.VarChar(254)
   role            StoreRole
-  tokenHash       String     @unique @db.Char(64)
+  tokenHash       String    @unique @db.Char(64)
   expiresAt       DateTime
   acceptedAt      DateTime?
   revokedAt       DateTime?
-  createdAt       DateTime   @default(now())
+  createdAt       DateTime  @default(now())
 
-  store      Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  invitedBy  User  @relation("StoreInvitationSender", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  store     Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invitedBy User  @relation("StoreInvitationSender", fields: [invitedByUserId], references: [id], onDelete: Cascade)
 
   @@index([storeId, createdAt])
   @@index([storeId, email])
@@ -365,11 +366,11 @@ model Store {
   // default template. themeConfig holds only that template's enumerated
   // option choices, normalized on every read (lib/templates/theme.ts):
   // never markup, component names or arbitrary CSS.
-  templateKey String  @default("classic") @db.VarChar(40)
-  themeConfig Json    @default("{}")
+  templateKey     String  @default("classic") @db.VarChar(40)
+  themeConfig     Json    @default("{}")
   /// A demonstration store (template showcase). Real tenant in every other
   /// respect; demo stores are never indexed by search engines.
-  isDemo      Boolean @default(false)
+  isDemo          Boolean @default(false)
   /// Explicit public Work category slug; validated against SERVICE_CATEGORIES in the application.
   workServiceSlug String? @db.VarChar(40)
   /// Optional display order within the assigned public Work category (lower first).
@@ -403,25 +404,26 @@ model Store {
   currency Currency @relation(fields: [baseCurrency], references: [code])
   language Language @relation("StoreDefaultLanguage", fields: [defaultLanguage], references: [code])
 
-  memberships     StoreMembership[]
-  invitations     StoreInvitation[]
-  domains         StoreDomain[]
-  languages       StoreLanguage[]
-  categories      Category[]
-  products        Product[]
-  variants        ProductVariant[]
-  customers       Customer[]
-  orders          Order[]
-  taxRules        TaxRule[]
-  shippingZones   ShippingZone[]
-  shippingRates   ShippingRate[]
-  paymentAccounts PaymentProviderAccount[]
-  paymentMethods  StorePaymentMethod[]
-  paymentTransactions PaymentTransaction[]
-  paymentWebhookEvents PaymentWebhookEvent[]
-  auditEvents     AuditEvent[]
-  paymentRefunds PaymentRefund[]
-  inquiries    Inquiry[]
+  memberships              StoreMembership[]
+  invitations              StoreInvitation[]
+  domains                  StoreDomain[]
+  languages                StoreLanguage[]
+  categories               Category[]
+  products                 Product[]
+  variants                 ProductVariant[]
+  customers                Customer[]
+  orders                   Order[]
+  taxRules                 TaxRule[]
+  shippingZones            ShippingZone[]
+  shippingRates            ShippingRate[]
+  paymentAccounts          PaymentProviderAccount[]
+  paymentMethods           StorePaymentMethod[]
+  paymentTransactions      PaymentTransaction[]
+  paymentWebhookEvents     PaymentWebhookEvent[]
+  auditEvents              AuditEvent[]
+  paymentRefunds           PaymentRefund[]
+  stripeConnectOAuthStates StripeConnectOAuthState[]
+  inquiries                Inquiry[]
 
   // Lets prices reference (storeId, currency) so they must be in the
   // store's base currency. Changing baseCurrency is blocked while prices exist.
@@ -442,10 +444,10 @@ model StoreDomain {
   updatedAt         DateTime          @updatedAt
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@index([storeId, status])
   // Database migration also enforces that only VERIFIED domains can be primary,
   // with at most one verified primary hostname per store.
+
+  @@index([storeId, status])
 }
 
 /// Languages a store offers. Content can only be written in these.
@@ -515,16 +517,16 @@ model CategoryTranslation {
 }
 
 model Product {
-  id         String        @id @default(cuid())
-  storeId    String
-  categoryId String?
-  status     ProductStatus @default(DRAFT)
-  featured   Boolean       @default(false)
-  deliveryFeeMinor BigInt  @default(0)
-  freeDelivery     Boolean @default(false)
-  pickupOnly       Boolean @default(false)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  storeId          String
+  categoryId       String?
+  status           ProductStatus @default(DRAFT)
+  featured         Boolean       @default(false)
+  deliveryFeeMinor BigInt        @default(0)
+  freeDelivery     Boolean       @default(false)
+  pickupOnly       Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   // Composite: the category must belong to the SAME store.
@@ -673,13 +675,13 @@ model Order {
 
   // Orders keep their own currency (not tied to the store's current base
   // currency) and are never deleted with a store by accident.
-  currencyRef Currency    @relation(fields: [currency], references: [code])
-  store       Store       @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  currencyRef         Currency             @relation(fields: [currency], references: [code])
+  store               Store                @relation(fields: [storeId], references: [id], onDelete: Restrict)
   // Composite: the customer must belong to the SAME store.
-  customer    Customer?   @relation(fields: [customerId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
-  items       OrderItem[]
+  customer            Customer?            @relation(fields: [customerId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
+  items               OrderItem[]
   paymentTransactions PaymentTransaction[]
-  paymentRefunds PaymentRefund[]
+  paymentRefunds      PaymentRefund[]
 
   @@unique([storeId, number])
   @@unique([id, storeId, currency])
@@ -802,24 +804,26 @@ model ShippingRate {
 /// A store's account with a payment provider. SECRETS ARE NEVER STORED
 /// HERE: secretRef points to a secret manager / environment variable.
 model PaymentProviderAccount {
-  id           String      @id @default(cuid())
-  storeId      String
-  provider     String // e.g. "stripe" — chosen later
-  displayName  String
-  mode         PaymentMode @default(TEST)
-  enabled      Boolean     @default(false)
-  publicConfig Json        @default("{}")
-  secretRef    String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  storeId         String
+  provider        String // e.g. "stripe" — chosen later
+  stripeAccountId String?     @db.VarChar(255)
+  displayName     String
+  mode            PaymentMode @default(TEST)
+  enabled         Boolean     @default(false)
+  publicConfig    Json        @default("{}")
+  secretRef       String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  store   Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  methods StorePaymentMethod[]
-  transactions PaymentTransaction[]
+  store         Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  methods       StorePaymentMethod[]
+  transactions  PaymentTransaction[]
   webhookEvents PaymentWebhookEvent[]
-  refunds PaymentRefund[]
+  refunds       PaymentRefund[]
 
   @@unique([id, storeId])
+  @@unique([stripeAccountId, mode])
 }
 
 model StorePaymentMethod {
@@ -840,29 +844,29 @@ model StorePaymentMethod {
 /// One store-scoped payment attempt. Provider secrets and callback payloads
 /// are never persisted here; provider references are non-secret identifiers.
 model PaymentTransaction {
-  id                String                   @id @default(cuid())
-  storeId           String
-  orderId           String
-  currency          String                   @db.Char(3)
-  providerAccountId String?
-  method            String
-  amountMinor       BigInt
-  status            PaymentTransactionStatus @default(PENDING)
-  idempotencyKey    String                   @db.VarChar(64)
-  providerReference String?                  @db.VarChar(255)
-  failureCode       String?                  @db.VarChar(80)
-  settledAt         DateTime?
-  checkoutAttempt   Int                      @default(0)
+  id                       String                   @id @default(cuid())
+  storeId                  String
+  orderId                  String
+  currency                 String                   @db.Char(3)
+  providerAccountId        String?
+  method                   String
+  amountMinor              BigInt
+  status                   PaymentTransactionStatus @default(PENDING)
+  idempotencyKey           String                   @db.VarChar(64)
+  providerReference        String?                  @db.VarChar(255)
+  failureCode              String?                  @db.VarChar(80)
+  settledAt                DateTime?
+  checkoutAttempt          Int                      @default(0)
   checkoutAttemptStartedAt DateTime?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 
-  store           Store                  @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order           Order                  @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Cascade, onUpdate: Restrict)
-  currencyRef     Currency               @relation(fields: [currency], references: [code])
+  store           Store                   @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order                   @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Cascade, onUpdate: Restrict)
+  currencyRef     Currency                @relation(fields: [currency], references: [code])
   providerAccount PaymentProviderAccount? @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: NoAction, onUpdate: Restrict)
-  webhookEvents  PaymentWebhookEvent[]
-  refunds        PaymentRefund[]
+  webhookEvents   PaymentWebhookEvent[]
+  refunds         PaymentRefund[]
 
   @@unique([storeId, idempotencyKey])
   @@unique([id, storeId])
@@ -873,43 +877,61 @@ model PaymentTransaction {
 /// A signed provider event is recorded only after it has been authenticated;
 /// the unique provider event ID makes retries idempotent without retaining raw payloads.
 model PaymentWebhookEvent {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   storeId           String
   providerAccountId String
   transactionId     String?
-  eventId           String   @db.VarChar(255)
-  eventType         String   @db.VarChar(120)
+  eventId           String    @db.VarChar(255)
+  eventType         String    @db.VarChar(120)
   processedAt       DateTime?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
-  store           Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  store           Store                  @relation(fields: [storeId], references: [id], onDelete: Restrict)
   providerAccount PaymentProviderAccount @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
-  transaction     PaymentTransaction? @relation(fields: [transactionId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
+  transaction     PaymentTransaction?    @relation(fields: [transactionId, storeId], references: [id, storeId], onDelete: Cascade, onUpdate: Restrict)
 
   @@unique([providerAccountId, eventId])
   @@index([storeId, createdAt])
 }
 
+/// Short-lived, single-use OAuth state binds a Stripe authorization to the
+/// Store Owner and store that initiated it. Only the state hash is retained.
+model StripeConnectOAuthState {
+  id          String      @id @default(cuid())
+  stateHash   String      @unique @db.Char(64)
+  storeId     String
+  actorUserId String
+  mode        PaymentMode
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime    @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  actor User  @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
 /// A refund is recorded only after a Stripe Dashboard refund is verified
 /// server-to-server against the connected account and original payment.
 model PaymentRefund {
-  id                  String   @id @default(cuid())
-  storeId             String
-  orderId             String
-  transactionId       String
-  providerAccountId   String
-  actorUserId         String
-  stripeRefundId      String   @db.VarChar(255)
-  amountMinor         BigInt
-  currency            String   @db.Char(3)
-  reason              String   @db.VarChar(500)
-  createdAt           DateTime @default(now())
+  id                String   @id @default(cuid())
+  storeId           String
+  orderId           String
+  transactionId     String
+  providerAccountId String
+  actorUserId       String
+  stripeRefundId    String   @db.VarChar(255)
+  amountMinor       BigInt
+  currency          String   @db.Char(3)
+  reason            String   @db.VarChar(500)
+  createdAt         DateTime @default(now())
 
-  store           Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order           Order                 @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Restrict, onUpdate: Restrict)
-  transaction     PaymentTransaction   @relation(fields: [transactionId, storeId], references: [id, storeId], onDelete: Restrict, onUpdate: Restrict)
+  store           Store                  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order                  @relation(fields: [orderId, storeId, currency], references: [id, storeId, currency], onDelete: Restrict, onUpdate: Restrict)
+  transaction     PaymentTransaction     @relation(fields: [transactionId, storeId], references: [id, storeId], onDelete: Restrict, onUpdate: Restrict)
   providerAccount PaymentProviderAccount @relation(fields: [providerAccountId, storeId], references: [id, storeId], onDelete: Restrict, onUpdate: Restrict)
-  actor           User                  @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  actor           User                   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@unique([providerAccountId, stripeRefundId])
   @@index([storeId, orderId, createdAt])

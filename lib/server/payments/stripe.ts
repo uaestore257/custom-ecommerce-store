@@ -87,6 +87,7 @@ interface StripeEvent {
   id: string;
   type: string;
   account?: string;
+  livemode?: boolean;
   data?: { object?: StripeSession };
 }
 
@@ -268,7 +269,7 @@ export const stripeConnectAdapter: PaymentProviderAdapter = {
     } catch {
       return null;
     }
-    if (event.account !== accountId || !event.data?.object) return null;
+    if (event.account !== accountId || event.livemode !== (mode === "LIVE") || !event.data?.object) return null;
     const supported = new Set([
       "checkout.session.completed",
       "checkout.session.async_payment_succeeded",
