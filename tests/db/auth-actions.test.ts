@@ -170,7 +170,7 @@ test("a forged or tampered cookie is treated as signed out", async () => {
 test("a Store Owner can call only actions for their own store and cannot call platform actions", async () => {
   const password = "an action-scoped store owner passphrase 2026";
   const user = await db.user.create({
-    data: { email: `scoped-owner-${uid()}@example.com`, name: "Scoped Owner" },
+    data: { email: `scoped-owner-${uid()}@example.com`, name: "Scoped Owner", emailVerified: true },
   });
 
   await db.storeMembership.create({ data: { userId: user.id, storeId: "store-a", role: "OWNER" } });
@@ -207,7 +207,7 @@ test("Store Owner team operations are scoped to the current store and cannot cha
   const password = "a team-scoped owner passphrase 2026";
   const store = await db.store.findUniqueOrThrow({ where: { id: "store-a" }, select: { slug: true } });
   const owner = await db.user.create({
-    data: { email: `team-owner-${uid()}@example.com`, name: "Team Owner" },
+    data: { email: `team-owner-${uid()}@example.com`, name: "Team Owner", emailVerified: true },
   });
   const ownerMembership = await db.storeMembership.create({
     data: { userId: owner.id, storeId: "store-a", role: "OWNER" },
@@ -435,10 +435,10 @@ test("Manager and Staff sessions stay store-scoped and respect their role limits
   const staffPassword = "a staff test passphrase 2026";
   const context = await getAuth().$context;
   const manager = await db.user.create({
-    data: { email: `manager-${uid()}@example.com`, name: "Test Manager" },
+    data: { email: `manager-${uid()}@example.com`, name: "Test Manager", emailVerified: true },
   });
   const staff = await db.user.create({
-    data: { email: `staff-${uid()}@example.com`, name: "Test Staff" },
+    data: { email: `staff-${uid()}@example.com`, name: "Test Staff", emailVerified: true },
   });
   const managedMember = await db.user.create({
     data: { email: `managed-${uid()}@example.com`, name: "Managed Member" },
@@ -559,6 +559,7 @@ test("Store Owner settings update only the owner store and ignore slug, role and
   let storeOwnerId = "";
 
   try {
+    await db.user.update({ where: { email: input.ownerEmail }, data: { emailVerified: true } });
     const cookie = await signIn(input.ownerEmail, input.ownerPassword, host);
     const owner = await db.user.findUniqueOrThrow({ where: { email: input.ownerEmail }, select: { id: true } });
     storeOwnerId = owner.id;
