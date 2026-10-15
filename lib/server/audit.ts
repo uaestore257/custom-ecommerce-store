@@ -12,6 +12,8 @@ export type AuditAction =
   | "auth.sign_in"
   | "auth.sign_in_failed"
   | "auth.sign_out"
+  | "auth.email_verified"
+  | "auth.password_reset"
   | "platform_owner.create"
   | "platform_owner.password_reset"
   | "platform.agency_settings_update"

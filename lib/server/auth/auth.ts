@@ -7,9 +7,10 @@ import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { adminHostOf } from "@/lib/admin/store-access";
 import { AUTH_COOKIE_PREFIX, normalizeHost } from "@/lib/auth/constants";
 import { clientIpFromHeader } from "@/lib/auth/trusted-ip";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password-policy";
+import { passwordProblem, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password-policy";
 import { recordAudit } from "@/lib/server/audit";
 import { getDb } from "@/lib/server/db";
+import { getMailer } from "@/lib/server/mailer";
 import { storeHostConfig } from "@/lib/store-host";
 import { readAuthEnv, type AuthEnv } from "./env";
 import { sessionAllowed } from "./store-access";
@@ -34,7 +35,18 @@ import { sessionAllowed } from "./store-access";
 export const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
 
 /** The only Better Auth endpoints served over HTTP (/api/auth/...). */
-export const ENABLED_PATHS = ["/sign-in/email", "/sign-out", "/get-session", "/ok", "/error"] as const;
+export const ENABLED_PATHS = [
+  "/sign-in/email",
+  "/sign-out",
+  "/get-session",
+  "/ok",
+  "/error",
+  "/request-password-reset",
+  "/reset-password",
+  "/reset-password/:token",
+  "/send-verification-email",
+  "/verify-email",
+] as const;
 
 /**
  * Every other endpoint of better-auth 1.7.6 is switched off. A test fails
@@ -52,21 +64,42 @@ export const DISABLED_PATHS = [
   "/list-accounts",
   "/list-sessions",
   "/refresh-token",
-  "/request-password-reset",
-  "/reset-password",
-  "/reset-password/:token",
   "/revoke-other-sessions",
   "/revoke-session",
   "/revoke-sessions",
-  "/send-verification-email",
   "/sign-in/social",
   "/sign-up/email",
   "/unlink-account",
   "/update-session",
   "/update-user",
-  "/verify-email",
   "/verify-password",
 ];
+
+async function sendAuthEmail(kind: "verification" | "password reset", to: string, url: string) {
+  const mailer = getMailer();
+  if (!mailer) {
+    console.error(`[email] The ${kind} email could not be sent because email delivery is not configured.`);
+    throw new Error("Email delivery is not configured.");
+  }
+  try {
+    await mailer.send({
+      to,
+      subject: kind === "verification" ? "Verify your Codex Store account" : "Reset your Codex Store password",
+      text: [
+        kind === "verification" ? "Verify your email address using the link below:" : "Reset your password using the link below:",
+        "",
+        url,
+        "",
+        kind === "verification"
+          ? "This link expires in one hour. If you did not request it, you can ignore this email."
+          : "This link expires in one hour. If you did not request a password reset, you can ignore this email.",
+      ].join("\n"),
+    });
+  } catch (error) {
+    console.error(`[email] Sending the ${kind} email failed (${error instanceof Error ? error.name : "error"}).`);
+    throw error;
+  }
+}
 
 /** Client IP from the one header the hosting proxy is trusted to set. */
 export function trustedClientIp(headers: Headers | undefined, env: AuthEnv) {
@@ -97,7 +130,26 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
       minPasswordLength: PASSWORD_MIN_LENGTH,
       maxPasswordLength: PASSWORD_MAX_LENGTH,
       autoSignIn: false,
+      requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => sendAuthEmail("password reset", user.email, url),
+      onPasswordReset: async ({ user }) => {
+        await recordAudit(db, { action: "auth.password_reset", actorUserId: user.id });
+      },
+    },
+
+    emailVerification: {
+      sendOnSignIn: true,
+      autoSignInAfterVerification: false,
+      expiresIn: 60 * 60,
+      sendVerificationEmail: async ({ user, url }) => sendAuthEmail("verification", user.email, url),
+      afterEmailVerification: async (user, request) => {
+        await recordAudit(db, {
+          action: "auth.email_verified",
+          actorUserId: user.id,
+          ipAddress: trustedClientIp(request?.headers, env),
+        });
+      },
     },
 
     session: {
@@ -118,6 +170,9 @@ export function createAuth(db: PrismaClient, env: AuthEnv = readAuthEnv()) {
       max: 100,
       customRules: {
         "/sign-in/email": { window: 60, max: 5 },
+        "/request-password-reset": { window: 60, max: 3 },
+        "/send-verification-email": { window: 60, max: 3 },
+        "/reset-password": { window: 60, max: 5 },
       },
     },
 
@@ -201,8 +256,50 @@ const AUTH_BASE_PATH = "/api/auth";
 export async function authHandler(request: Request, auth?: Auth): Promise<Response> {
   const { pathname } = new URL(request.url);
   const path = pathname.startsWith(AUTH_BASE_PATH) ? pathname.slice(AUTH_BASE_PATH.length) : "";
-  if (!(ENABLED_PATHS as readonly string[]).includes(path)) {
+  const allowed = ENABLED_PATHS.some((candidate) =>
+    candidate === "/reset-password/:token"
+      ? /^\/reset-password\/[^/]+$/.test(path)
+      : candidate === path,
+  );
+  if (!allowed) {
     return new Response("Not Found", { status: 404 });
   }
-  return (auth ?? getAuth()).handler(request);
+  if (path === "/reset-password" && request.method === "POST") {
+    try {
+      const body = await request.clone().json() as { newPassword?: unknown };
+      if (typeof body.newPassword === "string") {
+        const problem = passwordProblem(body.newPassword);
+        if (problem) {
+          return Response.json({ code: "INVALID_PASSWORD", message: problem }, { status: 400 });
+        }
+      }
+    } catch {
+      // Let Better Auth return its normal validation error for malformed JSON.
+    }
+  }
+  const response = await (auth ?? getAuth()).handler(request);
+  if (
+    path === "/sign-in/email" &&
+    (response.status === 401 || response.status === 403 || response.status >= 500)
+  ) {
+    if (response.status >= 500) {
+      console.error("[auth] A sign-in request failed at the server; account details are withheld.");
+    }
+    return Response.json(
+      { code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password" },
+      { status: 401, headers: { "cache-control": "no-store" } },
+    );
+  }
+  if (path === "/request-password-reset" || path === "/send-verification-email") {
+    if (response.status >= 500) {
+      console.error("[email] An authentication email request failed; address-specific details are withheld.");
+    }
+    if (response.status >= 200 && response.status < 300 || response.status >= 500) {
+      return Response.json(
+        { status: true, message: "If the address is eligible, an email may arrive. Contact support if it does not." },
+        { status: 200, headers: { "cache-control": "no-store" } },
+      );
+    }
+  }
+  return response;
 }

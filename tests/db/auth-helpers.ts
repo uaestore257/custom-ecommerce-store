@@ -25,9 +25,9 @@ export function setTestAuthEnv() {
 export async function ensurePlatformOwner() {
   const db = getDb();
   const existing = await db.user.findFirst({ where: { isPlatformOwner: true } });
-  if (existing) return existing;
+  if (existing) return db.user.update({ where: { id: existing.id }, data: { emailVerified: true } });
   const created = await createPlatformOwner(getAuth(), db, { email: OWNER_EMAIL, name: "Test Platform Owner", password: OWNER_PASSWORD });
-  return db.user.findUniqueOrThrow({ where: { id: created.id } });
+  return db.user.update({ where: { id: created.id }, data: { emailVerified: true } });
 }
 
 export async function authRequest(path: string, body: unknown, headers: Record<string, string> = {}) {

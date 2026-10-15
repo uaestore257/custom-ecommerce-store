@@ -57,8 +57,9 @@ Other optional or feature-specific variable names:
   sign-in refuses to start without it rather than putting every visitor in
   one shared rate-limit bucket.
 * `EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
-  `SMTP_PASSWORD`, and `SMTP_SECURE` — required together only when enabling
-  SMTP mail (see Email below).
+  `SMTP_PASSWORD`, and `SMTP_SECURE` — configure together before provisioning
+  production accounts (verification and password recovery require delivery);
+  also used for invitation and order email.
 * Stripe Connect: `STRIPE_CONNECT_REDIRECT_URI`,
   `STRIPE_TEST_CONNECT_CLIENT_ID`, `STRIPE_TEST_SECRET_KEY`, and
   `STRIPE_TEST_WEBHOOK_SECRET` for TEST onboarding and payment processing.
@@ -383,9 +384,11 @@ leave credentials empty. The app refuses unauthenticated SMTP to a
 non-loopback host. Production SMTP requires TLS plus a username and password.
 Set `EMAIL_PROVIDER=smtp`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
 `SMTP_PASSWORD`, and `SMTP_SECURE` through the local environment or host
-secret manager; never put provider credentials in source control. Add the
-provider's SPF/DKIM records for the sending domain. No provider credentials
-or mail sink are provisioned by this project.
+secret manager before enabling production accounts; verification and
+password recovery fail closed without working delivery. Never put provider
+credentials in source control. Add the provider's SPF/DKIM records for the
+sending domain. No provider credentials or mail sink are provisioned by this
+project.
 
 Invitation emails contain a 72-hour, single-use link. Tokens are stored only
 as hashes, are not logged, and are exchanged from the URL fragment for a
@@ -399,20 +402,18 @@ owner's email). Logs name only the order number and email kind.
 
 Do not enable online payments in production based only on the presence of
 provider settings. Provider onboarding, merchant approval, credentials, and
-any required compliance are external prerequisites. Payment secrets must be
-provided by a deployment-installed server-side `PaymentSecretStore`
-adapter; the application intentionally has no database- or environment-
-backed payment secret store.
+any required compliance are external prerequisites. The application installs
+its server-side environment-backed `PaymentSecretStore` adapter at Node
+startup; see [Stripe Connect payment operations](./stripe-connect-payments.md)
+for the TEST configuration and webhook requirements.
 
-The current implementation is not a production online-payment integration:
-Stripe checkout is restricted to test mode and remains unavailable until a
-compatible secret-store adapter and credentials are installed. JazzCash
-checkout remains unavailable because its current browser-post flow would
-expose the merchant password; do not bypass that guard. Easypaisa has no
-implemented merchant API/verification contract. Do not collect or enter
-real provider credentials until the relevant server-side integration has
-been implemented, reviewed, and verified. Manual payment methods remain
-separate.
+Stripe Connect TEST onboarding, account-scoped Checkout, webhook verification,
+and payment reconciliation are implemented. TEST Checkout remains unavailable
+until its server configuration and store-level TEST setting are ready. Keep
+LIVE Checkout gated off unless separately approved. JazzCash remains
+unavailable because its current browser-post flow would expose the merchant
+password; do not bypass that guard. Easypaisa has no implemented merchant
+API/verification contract. Manual payment methods remain separate.
 
 ## Monitoring and logs
 

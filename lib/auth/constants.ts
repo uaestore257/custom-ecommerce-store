@@ -32,7 +32,7 @@ export function safeAdminReturnTo(value: string | string[] | undefined) {
 
 /** Paths that belong to the admin and are only served on an admin or store host. */
 export function isAdminPath(pathname: string) {
-  return /^\/(admin|login|api\/auth)(\/|$)/.test(pathname);
+  return /^\/(admin|login|forgot-password|reset-password|verify-email|api\/auth)(\/|$)/.test(pathname);
 }
 
 // ---------------------------------------------------------------

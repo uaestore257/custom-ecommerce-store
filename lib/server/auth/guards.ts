@@ -83,9 +83,9 @@ export async function getSignedInUser(): Promise<SignedInUser | null> {
   if (!session) return null;
   const user = await getDb().user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, name: true, isPlatformOwner: true, disabledAt: true },
+    select: { id: true, email: true, name: true, isPlatformOwner: true, disabledAt: true, emailVerified: true },
   });
-  if (!user || user.disabledAt) return null;
+  if (!user || user.disabledAt || !user.emailVerified) return null;
   return { id: user.id, email: user.email, name: user.name, isPlatformOwner: user.isPlatformOwner };
 }
 
