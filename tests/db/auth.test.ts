@@ -430,6 +430,51 @@ test("the password is stored only as a hash in Account", async () => {
   for (const s of sessions) assert.ok(!JSON.stringify(s).includes(OWNER_PASSWORD));
 });
 
+test("password-reset and verification requests return the same response for known and unknown emails", async () => {
+  for (const [path, body] of [
+    ["/request-password-reset", { email: OWNER_EMAIL, redirectTo: `${BASE_URL}/reset-password` }],
+    ["/request-password-reset", { email: `nobody-${uid()}@example.com`, redirectTo: `${BASE_URL}/reset-password` }],
+  ] as const) {
+    const response = await authRequest(path, body);
+    assert.equal(response.status, 200, `${path} ${body.email}`);
+    const json = await response.json();
+    assert.equal(typeof json.message, "string");
+    assert.doesNotMatch(JSON.stringify(json), /not found|does not exist|unknown/i, `${path} must not leak account existence`);
+  }
+  for (const [path, body] of [
+    ["/send-verification-email", { email: OWNER_EMAIL, callbackURL: `${BASE_URL}/verify-email` }],
+    ["/send-verification-email", { email: `nobody-${uid()}@example.com`, callbackURL: `${BASE_URL}/verify-email` }],
+  ] as const) {
+    const response = await authRequest(path, body);
+    assert.equal(response.status, 200, `${path} ${body.email}`);
+    const json = await response.json();
+    assert.equal(typeof json.message, "string");
+    assert.doesNotMatch(JSON.stringify(json), /not found|does not exist|unknown/i, `${path} must not leak account existence`);
+  }
+});
+
+test("password-reset request is rate limited at 3 per minute", async () => {
+  await db.rateLimit.deleteMany();
+  const statuses: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    statuses.push((await authRequest("/request-password-reset", { email: OWNER_EMAIL, redirectTo: `${BASE_URL}/reset-password` })).status);
+  }
+  assert.ok(statuses.slice(0, 3).every((s) => s !== 429), `first 3 should pass: ${statuses.join(",")}`);
+  assert.equal(statuses[4], 429, `5th request should be rate limited: ${statuses.join(",")}`);
+  await db.rateLimit.deleteMany();
+});
+
+test("verification email request is rate limited at 3 per minute", async () => {
+  await db.rateLimit.deleteMany();
+  const statuses: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    statuses.push((await authRequest("/send-verification-email", { email: OWNER_EMAIL, callbackURL: `${BASE_URL}/verify-email` })).status);
+  }
+  assert.ok(statuses.slice(0, 3).every((s) => s !== 429), `first 3 should pass: ${statuses.join(",")}`);
+  assert.equal(statuses[4], 429, `5th request should be rate limited: ${statuses.join(",")}`);
+  await db.rateLimit.deleteMany();
+});
+
 test("audit events can't be edited or deleted", async () => {
   const event = await db.auditEvent.findFirstOrThrow({ where: { actorUserId: ownerId } });
   await rejects(() => db.auditEvent.update({ where: { id: event.id }, data: { action: "auth.sign_out" } }), /cannot be modified/);

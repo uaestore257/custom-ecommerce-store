@@ -121,16 +121,7 @@ export function ResetPasswordForm({ token, invalidLink }: { token: string; inval
         return;
       }
       if (response.status === 429) setError("Too many attempts. Wait a minute and try again.");
-      else {
-        let message = "This reset link is invalid or expired. Request a new one.";
-        try {
-          const result = await response.json() as { message?: string };
-          if (result.message) message = result.message;
-        } catch {
-          // Use the safe reset-link message for non-JSON errors.
-        }
-        setError(message);
-      }
+      else setError("This reset link is invalid or expired. Request a new one.");
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
     } finally {

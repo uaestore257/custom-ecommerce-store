@@ -52,6 +52,48 @@ test("auth settings are validated and fail closed", () => {
   assert.equal(readAuthEnv({ ...goodEnv, TRUSTED_IP_HEADER: "X-Real-IP" } as unknown as NodeJS.ProcessEnv).trustedIpHeader, "x-real-ip");
 });
 
+test("/request-password-reset does not reveal whether an account exists", async () => {
+  const fakeSuccess = {
+    handler: async () => Response.json({ status: true }, { status: 200 }),
+  } as unknown as Auth;
+  const success = await authHandler(
+    new Request("https://admin.codexstore.com/api/auth/request-password-reset", { method: "POST" }),
+    fakeSuccess,
+  );
+  assert.equal(success.status, 200);
+
+  const fakeError = {
+    handler: async () => Response.json({ message: "User not found" }, { status: 500 }),
+  } as unknown as Auth;
+  const error = await authHandler(
+    new Request("https://admin.codexstore.com/api/auth/request-password-reset", { method: "POST" }),
+    fakeError,
+  );
+  assert.equal(error.status, 200);
+  assert.deepEqual(await success.json(), await error.json());
+});
+
+test("/send-verification-email does not reveal whether an account exists", async () => {
+  const fakeSuccess = {
+    handler: async () => Response.json({ status: true }, { status: 200 }),
+  } as unknown as Auth;
+  const success = await authHandler(
+    new Request("https://admin.codexstore.com/api/auth/send-verification-email", { method: "POST" }),
+    fakeSuccess,
+  );
+  assert.equal(success.status, 200);
+
+  const fakeError = {
+    handler: async () => Response.json({ message: "Not found" }, { status: 500 }),
+  } as unknown as Auth;
+  const error = await authHandler(
+    new Request("https://admin.codexstore.com/api/auth/send-verification-email", { method: "POST" }),
+    fakeError,
+  );
+  assert.equal(error.status, 200);
+  assert.deepEqual(await success.json(), await error.json());
+});
+
 test("sign-in does not reveal whether an account is unverified", async () => {
   const fakeAuth = {
     handler: async () => Response.json(
