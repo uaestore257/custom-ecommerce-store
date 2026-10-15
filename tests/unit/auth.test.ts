@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 import { passwordProblem } from "../../lib/auth/password-policy";
 import { isAdminPath, isConfiguredAdminHost, isPublicActionPath, isValidIpHeaderName, normalizeHost } from "../../lib/auth/constants";
 import { AuthConfigError, readAuthEnv } from "../../lib/server/auth/env";
+import { authHandler, type Auth } from "../../lib/server/auth/auth";
 import { assertSafeToSeed, SeedRefused } from "../../prisma/seed-guard";
 import { proxy } from "../../proxy";
 
@@ -49,6 +50,24 @@ test("auth settings are validated and fail closed", () => {
   assert.equal(readAuthEnv(local as unknown as NodeJS.ProcessEnv).adminHost, "admin.localhost:3000", "local production build");
   assert.throws(() => readAuthEnv({ ...local, BETTER_AUTH_URL: "http://admin.localhost.evil.com", ADMIN_HOST: "admin.localhost.evil.com" } as unknown as NodeJS.ProcessEnv), AuthConfigError);
   assert.equal(readAuthEnv({ ...goodEnv, TRUSTED_IP_HEADER: "X-Real-IP" } as unknown as NodeJS.ProcessEnv).trustedIpHeader, "x-real-ip");
+});
+
+test("sign-in does not reveal whether an account is unverified", async () => {
+  const fakeAuth = {
+    handler: async () => Response.json(
+      { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
+      { status: 403 },
+    ),
+  } as unknown as Auth;
+  const response = await authHandler(
+    new Request("https://admin.codexstore.com/api/auth/sign-in/email", { method: "POST" }),
+    fakeAuth,
+  );
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), {
+    code: "INVALID_EMAIL_OR_PASSWORD",
+    message: "Invalid email or password",
+  });
 });
 
 test("production refuses to run sign-in with every visitor in one shared rate-limit bucket", () => {
@@ -97,7 +116,15 @@ test("host helpers", () => {
   assert.equal(isConfiguredAdminHost("localhost:3000", "admin.localhost:3000"), false);
   assert.equal(isConfiguredAdminHost("admin.localhost.evil.com", "admin.localhost:3000"), false);
   assert.equal(isConfiguredAdminHost("admin.localhost:3000", ""), false);
-  for (const p of ["/admin", "/admin/stores/x", "/login", "/api/auth/sign-in/email"]) assert.ok(isAdminPath(p), p);
+  for (const p of [
+    "/admin",
+    "/admin/stores/x",
+    "/login",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+    "/api/auth/sign-in/email",
+  ]) assert.ok(isAdminPath(p), p);
   for (const p of ["/", "/shop", "/administrator", "/loginx", "/api/other"]) assert.ok(!isAdminPath(p), p);
   assert.ok(isPublicActionPath("/contact"));
   assert.ok(isPublicActionPath("/checkout"));

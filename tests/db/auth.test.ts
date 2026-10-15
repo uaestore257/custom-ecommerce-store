@@ -61,13 +61,17 @@ test("every Better Auth endpoint is either enabled on purpose or disabled", () =
 });
 
 test("disabled endpoints are not reachable over HTTP, including ones with parameters", async () => {
-  for (const path of [...DISABLED_PATHS, "/callback/github", "/reset-password/abc", "/sign-in/email/", "/sign-in/social/x"]) {
+  for (const path of [...DISABLED_PATHS, "/callback/github", "/sign-in/email/", "/sign-in/social/x"]) {
     const concrete = path.replace(":id", "github").replace(":token", "abc");
     const response = await authRequest(concrete, {});
     assert.equal(response.status, 404, `${path} should be disabled`);
     const get = await authHandler(new Request(`${BASE_URL}/api/auth${concrete}`, { headers: { host: ADMIN_HOST } }));
     assert.equal(get.status, 404, `GET ${path} should be disabled`);
   }
+  const invalidReset = await authHandler(
+    new Request(`${BASE_URL}/api/auth/reset-password/abc`, { headers: { host: ADMIN_HOST } }),
+  );
+  assert.notEqual(invalidReset.status, 404, "the Better Auth reset callback route is explicitly exposed");
 });
 
 test("a profile update can't be used to become platform owner", async () => {
@@ -223,6 +227,21 @@ test("disabling the user ends access immediately and blocks new sign-ins", async
   }
 });
 
+test("unverified email ends existing access and blocks new sessions", async () => {
+  const cookie = await signIn();
+  await db.user.update({ where: { id: ownerId }, data: { emailVerified: false } });
+  try {
+    actAs(cookie);
+    assert.equal(await getSignedInUser(), null);
+    await expectDenied("unauthenticated");
+    const response = await authRequest("/sign-in/email", { email: OWNER_EMAIL, password: OWNER_PASSWORD });
+    assert.equal(response.ok, false, "unverified users cannot create a new session");
+    assert.equal(cookieHeader(response), "");
+  } finally {
+    await db.user.update({ where: { id: ownerId }, data: { emailVerified: true } });
+  }
+});
+
 test("removing the platform-owner flag takes effect on the next request", async () => {
   const cookie = await signIn();
   await db.user.update({ where: { id: ownerId }, data: { isPlatformOwner: false } });
@@ -250,7 +269,9 @@ test("users who are neither a Platform Owner nor a store owner on this host cann
 });
 
 test("a provisioned Store Owner signs in only on their own hostname and store", async () => {
-  const user = await db.user.create({ data: { email: `store-login-${uid()}@example.com`, name: "Store Owner" } });
+  const user = await db.user.create({
+    data: { email: `store-login-${uid()}@example.com`, name: "Store Owner", emailVerified: true },
+  });
   await db.storeMembership.create({ data: { userId: user.id, storeId: "store-a", role: "OWNER" } });
   const password = "a private store owner passphrase 2026";
   try {
@@ -313,7 +334,7 @@ test("a credential cannot own multiple stores and thereby gain multiple store ho
 
 test("Store Owner account updates re-authenticate and never audit plaintext credentials", async () => {
   const email = `store-change-${uid()}@example.com`;
-  const user = await db.user.create({ data: { email, name: "Original Store Owner" } });
+  const user = await db.user.create({ data: { email, name: "Original Store Owner", emailVerified: true } });
   await db.storeMembership.create({ data: { userId: user.id, storeId: "store-a", role: "OWNER" } });
   const currentPassword = "a current owner passphrase 2026";
   try {

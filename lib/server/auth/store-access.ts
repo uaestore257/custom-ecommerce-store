@@ -96,13 +96,16 @@ export async function storePortalMemberships(db: Db, userId: string): Promise<St
 
 /**
  * Whether a session may be opened for this user on this host (Better
- * Auth's session hook): the platform owner on ADMIN_HOST, or an eligible
- * member on the business-root portal or a dedicated Store Admin host.
- * Disabled users never.
+ * Auth's session hook): only verified, enabled users can access the
+ * platform owner host or an eligible store-admin host.
  */
 export async function sessionAllowed(db: Db, userId: string, rawHost: string): Promise<boolean> {
-  const user = await db.user.findUnique({ where: { id: userId }, select: { isPlatformOwner: true, disabledAt: true } });
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { isPlatformOwner: true, disabledAt: true, emailVerified: true },
+  });
   if (!user) return false;
+  if (!user.emailVerified) return false;
   const { host, hostStore } = await hostContext(db, rawHost);
   if (host.kind === "store-portal") {
     return !user.isPlatformOwner && user.disabledAt === null && (await storePortalMemberships(db, userId)).length > 0;

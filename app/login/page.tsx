@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 // from Agency settings); the sign-in flow itself is LoginForm's, unchanged.
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   await connection();
-  const [{ returnTo }, requestHeaders] = await Promise.all([searchParams, headers()]);
+  const [{ returnTo, emailVerified, passwordReset }, requestHeaders] = await Promise.all([searchParams, headers()]);
   const host = requestHeaders.get("host") ?? "";
   const returnToPath = safeAdminReturnTo(returnTo);
   const hostKind = adminHostOf(host, storeHostConfig()).kind;
@@ -98,7 +98,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">{copy.eyebrow}</p>
           <h1 className="mt-5 font-heading text-5xl leading-none tracking-tight sm:text-6xl">{copy.title}</h1>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">{copy.text}</p>
-          <LoginForm returnTo={returnToPath} />
+          <LoginForm
+            returnTo={returnToPath}
+            emailVerified={emailVerified === "1"}
+            passwordReset={passwordReset === "1"}
+          />
           <p className="mt-10 border-t border-border pt-6 text-xs leading-relaxed text-muted-foreground">
             Accounts are created by invitation only.{" "}
             {storeLogin ? "Ask your store owner or the agency for access." : "There is no public sign-up."}

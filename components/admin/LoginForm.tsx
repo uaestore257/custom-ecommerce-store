@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { focusRing } from "@/components/platform/site/styles";
 
@@ -16,7 +17,15 @@ const input = `block min-h-12 w-full min-w-0 rounded-md border border-border bg-
  * wrong password, so the form doesn't reveal which accounts exist.
  * Styled with the agency website's semantic tokens (set by the login page).
  */
-export function LoginForm({ returnTo }: { returnTo: string | null }) {
+export function LoginForm({
+  returnTo,
+  emailVerified = false,
+  passwordReset = false,
+}: {
+  returnTo: string | null;
+  emailVerified?: boolean;
+  passwordReset?: boolean;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,7 +55,9 @@ export function LoginForm({ returnTo }: { returnTo: string | null }) {
         return;
       }
       setError(
-        response.status === 429 ? "Too many sign-in attempts. Wait a minute and try again." : GENERIC,
+        response.status === 429
+          ? "Too many sign-in attempts. Wait a minute and try again."
+          : GENERIC,
       );
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
@@ -57,6 +68,16 @@ export function LoginForm({ returnTo }: { returnTo: string | null }) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-6">
+      {emailVerified && (
+        <p role="status" className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-foreground">
+          Email verified. You can now sign in.
+        </p>
+      )}
+      {passwordReset && (
+        <p role="status" className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-foreground">
+          Password updated. Sign in using your new password.
+        </p>
+      )}
       {error && (
         <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-foreground">
           {error}
@@ -109,6 +130,14 @@ export function LoginForm({ returnTo }: { returnTo: string | null }) {
         {pending ? "Signing in…" : "Sign in"}
         {!pending && <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1 rtl:rotate-180" aria-hidden />}
       </button>
+      <div className="flex flex-wrap justify-between gap-3 text-sm text-muted-foreground">
+        <Link href="/forgot-password" className={`underline underline-offset-4 hover:text-foreground ${focusRing}`}>
+          Forgot password?
+        </Link>
+        <Link href="/verify-email" className={`underline underline-offset-4 hover:text-foreground ${focusRing}`}>
+          Resend verification email
+        </Link>
+      </div>
     </form>
   );
 }

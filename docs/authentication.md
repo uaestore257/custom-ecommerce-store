@@ -67,8 +67,25 @@ Public storefront subdomains and custom domains cannot serve Store Admin
 routes or open Store Owner sessions. The shared **Account** link lets the
 user change their name, email, and password after confirming their current password.
 Changing email or password revokes all sessions, so the user must sign
-in again. A changed email is marked unverified; email verification and
-email-based password recovery are not configured.
+in again. A changed email is marked unverified.
+
+Email verification is required before an account can sign in. When an
+unverified user tries to sign in, Better Auth sends a one-hour verification
+link; the sign-in page also provides a rate-limited resend flow. Changing an
+account email marks it unverified and requires the new address to be verified.
+The Platform Owner and Store Owner provision commands create unverified
+accounts, so configure email delivery before enabling those accounts for use.
+
+Password recovery is available from the sign-in page. Reset links are
+single-use, expire after one hour, use the shared password policy, and revoke
+all existing sessions when accepted. Responses do not disclose whether an
+email address belongs to an account; authentication-email responses are
+normalized and delivery errors are recorded without exposing the address.
+
+Both flows use the shared SMTP mailer. Without SMTP configuration, recovery
+requests and verification resends are unavailable; an unverified account
+cannot sign in until email delivery is provisioned. Configure authenticated
+TLS SMTP as described above before enabling production accounts.
 
 ## Isolation and authorization
 
@@ -76,8 +93,8 @@ email-based password recovery are not configured.
 | --- | --- |
 | `proxy.ts` | Platform administration is allowed only on exact `ADMIN_HOST`. Store login/admin routes are allowed on the exact business-root portal or the optional recognized nested Store Admin host. Public storefront and custom-domain hosts return 404 for admin routes. |
 | Better Auth | Uses host-only, httpOnly session cookies. Trusted origins include the configured platform admin origin, exact business root, and recognized nested Store Admin origins. Sign-up stays disabled and auth HTTP endpoints are allow-listed. |
-| Session creation | A server hook allows the Platform Owner only on `ADMIN_HOST`, or a non-platform user with an eligible membership on the business root/nested Store Admin host. |
-| Admin pages and actions | Store pages/actions recheck membership, the validated selected store, and route `storeId`. Platform-only pages/actions independently require the Platform Owner on `ADMIN_HOST`. |
+| Session creation | A server hook requires a verified, enabled account and allows the Platform Owner only on `ADMIN_HOST`, or a non-platform user with an eligible membership on the business root/nested Store Admin host. |
+| Admin pages and actions | Store pages/actions recheck verified account status, membership, the validated selected store, and route `storeId`. Platform-only pages/actions independently require the Platform Owner on `ADMIN_HOST`. |
 | Data access | Store reads and writes include the authorized `storeId`; audit events include actor/store identifiers and changed-field names only. |
 
 Store members sign in on the business root and can select only a store
@@ -142,8 +159,7 @@ account changes. Passwords, hashes, session tokens, and verification
 tokens are not added to audit metadata. Sign-in, failed sign-in, sign-out,
 owner changes, account changes, and store operations are audited.
 
-Email-based password recovery is not configured. Existing Manager/Staff
-accounts can sign in on their own store host under the role matrix above.
+Existing Manager/Staff accounts can sign in on their own store host under the role matrix above.
 If no SMTP delivery is configured, invitation creation remains disabled;
 the invitation application flow is ready but requires a mail transport to
 deliver the one-time link.
